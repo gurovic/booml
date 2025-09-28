@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}booml{% endblock %}</title>
+    {% load static %}
+    <link rel="stylesheet" href="{% static 'css/style.css' %}">
+</head>
+<body>
+    <header>
+        <nav class="navbar">
+            <div class="nav-container">
+                <h1 class="nav-title">BOOML </h1>
+                <div class="nav-links">
+                    <a href="{% url 'home' %}" class="nav-link">Главная</a>
+                    {% if user.is_authenticated %}
+                        <a href="{% url 'username' %}" class="nav-link">Профиль</a> <!--Ульяна (профиль)-->
+                        <a href="{% url 'logout' %}" class="nav-link">Выйти</a> <!--Кирилл (страница лог)-->
+                    {% else %}
+                        <a href="{% url 'login' %}" class="nav-link">Войти</a> <!--Кирилл (страница лог)-->
+                    {% endif %}
+                </div>
+            </div>
+        </nav>
+    </header>
+
+    <main class="main-content">
+        {% block content %}
+        {% endblock %}
+    </main>
+
+    <footer class="footer">
+        <p>&copy; 2025 booml</p>
+    </footer>
+</body>
+</html>

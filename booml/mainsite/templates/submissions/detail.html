@@ -1,0 +1,33 @@
+{% extends "mainsite/base.html" %}
+{% block content %}
+<div class="container mt-4">
+  <h2>Посылка #{{ submission.id }}</h2>
+  <p><strong>Задача:</strong> {{ submission.problem.title }}</p>
+  <p><strong>Статус:</strong> {{ submission.get_status_display }}</p>
+  <p><strong>Размер кода:</strong> {{ submission.code_size }} B</p>
+  <p><strong>Отправлена:</strong> {{ submission.submitted_at|date:"Y-m-d H:i" }}</p>
+
+  {% if submission.metrics %}
+  <h4>📊 Метрики</h4>
+  <ul>
+    {% for key, value in submission.metrics.items %}
+    <li>{{ key }}: {{ value }}</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+
+  <h4>📝 Код</h4>
+  <pre class="bg-light p-3 rounded">
+      {% if submission.file %}
+        <h4>📎 Загруженный файл:</h4>
+        <a href="{{ submission.file.url }}" target="_blank">{{ submission.file.name }}</a>
+      {% else %}
+        <p>Файл не прикреплён</p>
+      {% endif %}
+  </pre>
+  
+  <a href="{% url 'display_submission' submission.id %}" class="btn btn-info mt-3">🔍 Посмотреть результат</a>
+  
+  <a href="{% url 'submission_history' %}" class="btn btn-secondary mt-3">⬅ Назад</a>
+</div>
+{% endblock %}

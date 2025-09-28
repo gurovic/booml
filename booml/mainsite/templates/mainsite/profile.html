@@ -1,0 +1,43 @@
+{% extends "mainsite/base.html" %}
+{% load static %}
+
+{% block title %}Профиль {{ user_profile.username }}{% endblock %}
+
+{% block content %}
+<div class="profile">
+  <div class="profile-header">
+      {% if user_profile.avatar %}
+          <img src="{{ user_profile.avatar.url }}"
+               alt="Avatar" width="150" height="150"
+               style="object-fit:cover;border-radius:8px;">
+      {% else %}
+          <img src="{% static 'images/default-avatar.png' %}"
+               alt="Default Avatar" width="150" height="150"
+               style="object-fit:cover;border-radius:8px;">
+      {% endif %}
+    <h1>{{ user_profile.username }}</h1>
+
+    {% if show_email %}
+      <p>Email: {{ user_profile.email }}</p>
+    {% else %}
+      <p>Email: (скрыт)</p>
+    {% endif %}
+
+    <p>Пароль: <em>хранится безопасно и не отображается</em>.</p>
+  </div>
+
+  <div class="profile-recent">
+    <h3>Последние решённые задачи</h3>
+    <ul>
+      {% for sol in recent_solutions %}
+        <li>
+          <a href="{% url 'problems:problem_detail' sol.problem.id %}">{{ sol.problem.title }}</a>
+          — {{ sol.solved_at|date:"Y-m-d H:i" }}
+        </li>
+      {% empty %}
+        <li>Пока нет решённых задач</li>
+      {% endfor %}
+    </ul>
+  </div>
+</div>
+{% endblock %}

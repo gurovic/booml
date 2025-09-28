@@ -1,0 +1,28 @@
+{% comment %}
+    КОМПОНЕНТ: Список задач
+    ВЫВОДИТ: Название задачи (ссылка) и дату создания
+    ИСПОЛЬЗУЕТ: Переменную 'problems' из контекста
+{% endcomment %}
+
+<div class="problems-container">
+    {# Заголовок списка задач #}
+    <h2>Список задач</h2>
+
+    <ul class="problems-list">
+        {% for problem in problems %}
+        {# Элемент списка задач #}
+        
+        <li class="problem-item">
+            {# Ссылка на страницу задачи #}
+            <a href="{% url 'problem_detail' problem.id %}" class="problem-link">
+                {{ problem.title }}
+            </a>
+            {# Дата создания задачи #}
+            <span class="publication-date">, {{ problem.created_at|date:"d.m.Y H:i" }}</span>
+        </li>
+        {% empty %}
+        {# выводит, если список пуст #}
+        <li class="no-problems">Задач нет</li>
+        {% endfor %}
+    </ul>
+</div>

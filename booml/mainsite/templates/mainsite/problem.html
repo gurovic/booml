@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Отправка решения</title>
+</head>
+<body>
+<h2>Отправка решения</h2>
+<form method="post" enctype="multipart/form-data" action="/problem/{{ problem_id }}/submit/">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <input type="hidden" name="problem_id" value="{{ problem_id }}">
+    <button type="submit">Отправить</button>
+</form>
+</body>
+</html>

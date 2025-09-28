@@ -1,0 +1,44 @@
+{% extends "mainsite/base.html" %}
+{% block content %}
+<div class="container mt-4">
+  <h2>📜 История посылок</h2>
+  <table class="table table-hover mt-3">
+    <thead class="table-dark">
+      <tr>
+        <th>ID</th>
+        <th>Задача</th>
+        <th>Статус</th>
+        <th>Размер кода</th>
+        <th>Время отправки</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for sub in submissions %}
+      <tr>
+        <td>{{ sub.id }}</td>
+        <td>{{ sub.problem.title }}</td>
+        <td>
+          {% if sub.status == "accepted" %}
+            <span class="badge bg-success">✅ Принято</span>
+          {% elif sub.status == "failed" %}
+            <span class="badge bg-danger">❌ Ошибка</span>
+          {% elif sub.status == "running" %}
+            <span class="badge bg-warning text-dark">🏃 Выполняется</span>
+          {% else %}
+            <span class="badge bg-secondary">⏳ В очереди</span>
+          {% endif %}
+        </td>
+        <td>{{ sub.code_size }} B</td>
+        <td>{{ sub.submitted_at|date:"Y-m-d H:i" }}</td>
+        <td>
+          <a href="{% url 'submission_detail' sub.pk %}" class="btn btn-sm btn-outline-primary">Открыть</a>
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="6" class="text-center">Посылок пока нет</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

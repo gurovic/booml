@@ -1,0 +1,15 @@
+{% extends 'mainsite/base.html' %}
+
+{% block title %}Главная - BOOML{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="hero-section">
+        <h1 class="hero-title">Добро пожаловать в BOOML</h1>
+        <p class="hero-description">Лучший в мире сборник задач по ML!</p>
+    </div>
+
+    {% include 'mainsite/problems_list.html' %} <!--Даша (список задач)-->
+
+</div>
+{% endblock %}
