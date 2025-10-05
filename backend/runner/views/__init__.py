@@ -1,0 +1,1 @@
+from .authorization import register_view, login_view
