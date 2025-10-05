@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>{{ notebook.title }}</title>
+</head>
+<body>
+    <h1>{{ notebook.title }}</h1>
+
+    <div>
+        <button onclick="createCell()">Новая ячейка</button>
+    </div>
+
+    <div id="cellsContainer">
+        {% for cell in cells %}
+            {% include 'cell.html' with cell=cell %}
+        {% endfor %}
+    </div>
+
+    <input type="hidden" id="notebookId" value="{{ notebook.id }}">
+    {% csrf_token %}
+
+    <script>
+        const notebookId = document.getElementById('notebookId').value;
+        const csrftoken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+
+        // Функция запуска кода
+        async function runCode(code) {
+            const res = await fetch('/run', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrftoken
+                },
+                body: JSON.stringify({
+                    code: code,
+                    lang: 'python',
+                    run_id: crypto.randomUUID()
+                })
+            });
+
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            return await res.json();
+        }
+
+        async function createCell() {
+            try {
+                const response = await fetch(`/${notebookId}/cell/new/`, {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRFToken': csrftoken
+                    }
+                });
+                const html = await response.text();
+                document.getElementById('cellsContainer').innerHTML += html;
+            } catch (error) {
+                alert('Ошибка при создании ячейки');
+            }
+        }
+
+        async function runCell(cellId) {
+            const code = document.querySelector(`textarea[data-cell-id="${cellId}"]`).value;
+            const outputElement = document.getElementById(`output-${cellId}`);
+
+            try {
+                outputElement.textContent = 'Выполнение...';
+
+                // Используем систему запуска от разработчика
+                const result = await runCode(code);
+
+                // Показываем результат
+                outputElement.textContent = result.output || result.result || JSON.stringify(result);
+
+                // Сохраняем результат в нашу базу
+                await fetch(`/${notebookId}/cell/${cellId}/save_output/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrftoken
+                    },
+                    body: JSON.stringify({
+                        code: code,
+                        output: outputElement.textContent
+                    })
+                });
+
+            } catch (error) {
+                outputElement.textContent = `Ошибка: ${error.message}`;
+
+                // Сохраняем ошибку
+                await fetch(`/${notebookId}/cell/${cellId}/save_output/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrftoken
+                    },
+                    body: JSON.stringify({
+                        code: code,
+                        output: `Ошибка: ${error.message}`
+                    })
+                });
+            }
+        }
+
+        async function deleteCell(cellId) {
+            if (!confirm('Удалить ячейку?')) return;
+
+            try {
+                await fetch(`/${notebookId}/cell/${cellId}/delete/`, {
+                    method: 'DELETE',
+                    headers: {
+                        'X-CSRFToken': csrftoken
+                    }
+                });
+                document.querySelector(`[data-cell-id="${cellId}"]`).remove();
+            } catch (error) {
+                alert('Ошибка при удалении ячейки');
+            }
+        }
+    </script>
+</body>
+</html>

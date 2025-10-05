@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Блокноты</title>
+</head>
+<body>
+    <h1>Блокноты</h1>
+
+    <button onclick="createNotebook()">Новый блокнот</button>
+
+    <div>
+        {% for notebook in notebooks %}
+        <div>
+            <a href="{% url 'notebook:notebook_detail' notebook.id %}">
+                {{ notebook.title }}
+            </a>
+        </div>
+        {% endfor %}
+    </div>
+
+    {% csrf_token %}
+
+    <script>
+        const csrftoken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+
+        async function createNotebook() {
+            try {
+                const response = await fetch('/new/', {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRFToken': csrftoken
+                    }
+                });
+                const data = await response.json();
+                window.location.href = `/${data.notebook_id}/`;
+            } catch (error) {
+                alert('Ошибка при создании блокнота');
+            }
+        }
+    </script>
+</body>
+</html>
