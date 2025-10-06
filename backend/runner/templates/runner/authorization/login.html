@@ -1,0 +1,29 @@
+<h2>Вход в аккаунт</h2>
+
+<form method="post" novalidate>
+    {% csrf_token %}
+
+    <div>
+        {{ form.username.label_tag }}
+        {{ form.username }}
+        {% if form.username.errors %}
+            <div class="error">{{ form.username.errors.0 }}</div>
+        {% endif %}
+    </div>
+
+    <div>
+        {{ form.password.label_tag }}
+        {{ form.password }}
+        {% if form.password.errors %}
+            <div class="error">{{ form.password.errors.0 }}</div>
+        {% endif %}
+    </div>
+
+    {% if form.non_field_errors %}
+        <div class="error">{{ form.non_field_errors.0 }}</div>
+    {% endif %}
+
+    <button type="submit">Войти</button>
+</form>
+
+<p>Нет аккаунта? <a href="{% url 'register' %}">Зарегистрироваться</a></p>
