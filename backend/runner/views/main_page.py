@@ -1,6 +1,6 @@
 from django.shortcuts import render
-from ..models import Problem
+from ..models import Task
 
-def problem_list(request):
-    problems = Problem.objects.all().only("title", "condition", "created_at")
-    return render(request, "runner/list_of_problems.html", {"problems": problems})
+def main_page(request):
+    tasks = Task.objects.only("title", "statement", "created_at").order_by("?")[:15]
+    return render(request, "runner/main_page.html", {"tasks": tasks})

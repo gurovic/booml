@@ -1,1 +1,1 @@
-from .list_of_problems import problem_list
+from .main_page import main_page

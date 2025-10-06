@@ -1,8 +1,6 @@
 from django.urls import path
-from .views.list_of_problems import problem_list
-
-app_name = "runner"
+from .views.main_page import main_page
 
 urlpatterns = [
-    path("", problem_list, name="problem_list"),
+    path("", main_page, name="task_list"),
 ]
