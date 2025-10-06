@@ -29,4 +29,4 @@ def login_view(request):
     return render(request, 'runner/authorization/login.html', {'form': form})
 
 def home_view(reqeust):
-    return HttpResponse(f'Dear, {reqeust.user.username}, the login page is currently under development')
+    return HttpResponse(f'Dear, {reqeust.user.username}, the home page is currently under development')

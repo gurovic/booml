@@ -23,17 +23,17 @@ class RegisterForm(forms.ModelForm):
         }
 
     def clean_password2(self):
-        p1 = self.cleaned_data.get('password1')
-        p2 = self.cleaned_data.get('password2')
-        if p1 and p2 and p1 != p2:
+        password1 = self.cleaned_data.get('password1')
+        password2 = self.cleaned_data.get('password2')
+        if password1 and password2 and password1 != password2:
             raise ValidationError('Пароли не совпадают')
-        return p2
+        return password2
 
     def clean_password1(self):
-        p1 = self.cleaned_data.get('password1')
-        if p1 and len(p1) < 8:
+        password1 = self.cleaned_data.get('password1')
+        if password1 and len(password1) < 8:
             raise ValidationError('Пароль должен быть не менее 8 символов')
-        return p1
+        return password1
 
     def save(self, commit=True):
         user = super().save(commit=False)
