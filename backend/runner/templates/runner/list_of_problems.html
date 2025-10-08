@@ -1,0 +1,21 @@
+<h1>Список задач</h1>
+<table>
+    <thead>
+        <tr>
+            <th>Название</th>
+            <th>Условие</th>
+            <th>Дата создания</th>
+        </tr>
+    </thead>
+    <tbody>
+    {% for task in tasks %}
+        <tr>
+            <td><a href="{% url 'task_detail' task.id %}">{{ task.title }}</a></td>
+            <td>{{ task.statement | truncatechars:50}}</td>
+            <td>{{ task.created_at }}</td>
+        </tr>
+    {% empty %}
+        <tr><td colspan="3">Нет задач</td></tr>
+    {% endfor %}
+    </tbody>
+</table>
