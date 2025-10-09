@@ -1,35 +1,27 @@
-from django.shortcuts import render
-from django.http import Http404
-
-# Тестовые задачи
-tasks = [
-    {
-        "id": 1,
-        "title": "MNIST classifier",
-        "description": "Predict handwritten digits",
-        "data": "mnist.csv",
-        "tags": ["classification", "MNIST", "deep learning"]
-    },
-    {
-        "id": 2,
-        "title": "Titanic survival",
-        "description": "Predict survival",
-        "data": "titanic.csv",
-        "tags": ["classification", "logistic regression", "tabular data"]
-    }
-]
+from django.shortcuts import render, get_object_or_404
+from django.http import HttpResponse
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen import canvas
+from io import BytesIO
+from .models import Task
 
 def task_detail(request, task_id):
-    for task in tasks:
-        if task["id"] == task_id:
-            return render(request, "runner/task_detail.html", {"task": task})
-    raise Http404("Task not found")
+    task = get_object_or_404(Task, id=task_id)
+    return render(request, "runner/task_detail.html", {"task": task})
 
-# Заглушка для PDF (еще не реализовано)
+
 def task_pdf(request, task_id):
-    # пока просто возвращаем текст, можно позже подключить xhtml2pdf или weasyprint
-    for task in tasks:
-        if task["id"] == task_id:
-            from django.http import HttpResponse
-            return HttpResponse(f"PDF for task {task['title']} would be generated here.", content_type="text/plain")
-    raise Http404("Task not found")
+    task = get_object_or_404(Task, id=task_id)
+    buffer = BytesIO()
+    pdf = canvas.Canvas(buffer, pagesize=letter)
+    pdf.setFont("Helvetica", 14)
+    pdf.drawString(100, 750, f"Task: {task.title}")
+    pdf.setFont("Helvetica", 12)
+    pdf.drawString(100, 720, f"Description: {task.description}")
+    if task.data:
+        pdf.drawString(100, 700, f"Dataset: {task.data}")
+    pdf.showPage()
+    pdf.save()
+
+    buffer.seek(0)
+    return HttpResponse(buffer, content_type="application/pdf")

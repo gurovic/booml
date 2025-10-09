@@ -1,21 +1,21 @@
+{% load static %}
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <title>{{ task.title }}</title>
-    <style>
-        body { font-family: Arial, sans-serif; padding: 20px; }
-        .tags { color: #555; margin-top: 10px; }
-        .pdf-link { margin-top: 20px; display: inline-block; padding: 8px 12px; background: #007bff; color: white; text-decoration: none; border-radius: 4px; }
-        .pdf-link:hover { background: #0056b3; }
-    </style>
+    <link rel="stylesheet" href="{% static 'runner/style.css' %}">
 </head>
 <body>
-    <h1>{{ task.title }}</h1>
-    <p><strong>Description:</strong> {{ task.description }}</p>
-    <p><strong>Data:</strong> {{ task.data }}</p>
-    <p class="tags"><strong>Tags:</strong> {{ task.tags|join:", " }}</p>
+    <div class="task-container">
+        <h1>{{ task.title }}</h1>
+        <p class="description">{{ task.description }}</p>
 
-    <a href="{% url 'runner:task_pdf' task.id %}" class="pdf-link">Download PDF</a>
+        {% if task.data %}
+            <p><strong>Dataset:</strong> {{ task.data }}</p>
+        {% endif %}
+
+        <a href="{% url 'task_pdf' task.id %}" class="btn">📄 Скачать в PDF</a>
+    </div>
 </body>
 </html>
