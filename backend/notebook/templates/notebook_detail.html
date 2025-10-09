@@ -19,32 +19,15 @@
     <input type="hidden" id="notebookId" value="{{ notebook.id }}">
     {% csrf_token %}
 
+    <script src="{% url 'reverse_js' %}" type="text/javascript"></script>
+
     <script>
         const notebookId = document.getElementById('notebookId').value;
         const csrftoken = document.querySelector('[name=csrfmiddlewaretoken]').value;
 
-        // Функция запуска кода
-        async function runCode(code) {
-            const res = await fetch('/run', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': csrftoken
-                },
-                body: JSON.stringify({
-                    code: code,
-                    lang: 'python',
-                    run_id: crypto.randomUUID()
-                })
-            });
-
-            if (!res.ok) throw new Error('HTTP ' + res.status);
-            return await res.json();
-        }
-
         async function createCell() {
             try {
-                const response = await fetch(`/${notebookId}/cell/new/`, {
+                const response = await fetch(Urls['notebook:create_cell'](notebookId), {
                     method: 'POST',
                     headers: {
                         'X-CSRFToken': csrftoken
@@ -57,55 +40,11 @@
             }
         }
 
-        async function runCell(cellId) {
-            const code = document.querySelector(`textarea[data-cell-id="${cellId}"]`).value;
-            const outputElement = document.getElementById(`output-${cellId}`);
-
-            try {
-                outputElement.textContent = 'Выполнение...';
-
-                // Используем систему запуска от разработчика
-                const result = await runCode(code);
-
-                // Показываем результат
-                outputElement.textContent = result.output || result.result || JSON.stringify(result);
-
-                // Сохраняем результат в нашу базу
-                await fetch(`/${notebookId}/cell/${cellId}/save_output/`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRFToken': csrftoken
-                    },
-                    body: JSON.stringify({
-                        code: code,
-                        output: outputElement.textContent
-                    })
-                });
-
-            } catch (error) {
-                outputElement.textContent = `Ошибка: ${error.message}`;
-
-                // Сохраняем ошибку
-                await fetch(`/${notebookId}/cell/${cellId}/save_output/`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRFToken': csrftoken
-                    },
-                    body: JSON.stringify({
-                        code: code,
-                        output: `Ошибка: ${error.message}`
-                    })
-                });
-            }
-        }
-
         async function deleteCell(cellId) {
             if (!confirm('Удалить ячейку?')) return;
 
             try {
-                await fetch(`/${notebookId}/cell/${cellId}/delete/`, {
+                await fetch(Urls['notebook:delete_cell'](notebookId, cellId), {
                     method: 'DELETE',
                     headers: {
                         'X-CSRFToken': csrftoken

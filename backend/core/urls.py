@@ -15,9 +15,13 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 from django.contrib import admin
-from django.urls import path
+from django.urls import path, include
+from django_reverse_js import views
+
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-
+    path('runner/', include('runner.urls')),
+    path('notebook/', include('notebook.urls', namespace='notebook')),
+    path('reverse.js', views.urls_js, name='reverse_js'),
 ]

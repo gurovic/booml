@@ -1,6 +1,6 @@
 from django.db import models
-from django.contrib.auth.models import User
-from mainsite.models.problem import Problem
+# from django.contrib.auth.models import User
+# from runner.models.problem import Problem
 
 
 class Notebook(models.Model):

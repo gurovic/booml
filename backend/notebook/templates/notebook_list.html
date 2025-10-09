@@ -20,19 +20,22 @@
 
     {% csrf_token %}
 
+    <script src="{% url 'reverse_js' %}" type="text/javascript"></script>
+
     <script>
         const csrftoken = document.querySelector('[name=csrfmiddlewaretoken]').value;
 
         async function createNotebook() {
             try {
-                const response = await fetch('/new/', {
+                const response = await fetch(Urls['notebook:create_notebook'](), {
                     method: 'POST',
                     headers: {
                         'X-CSRFToken': csrftoken
                     }
                 });
                 const data = await response.json();
-                window.location.href = `/${data.notebook_id}/`;
+                window.location.href = Urls['notebook:notebook_detail'](data.notebook_id);
+
             } catch (error) {
                 alert('Ошибка при создании блокнота');
             }
