@@ -1,0 +1,55 @@
+<h2>Сравнение посылок по задаче: {{ task.title }}</h2>
+
+<table border="1" cellpadding="5">
+  <tr>
+    <th>ID</th>
+    <th>Дата</th>
+    <th>Статус</th>
+    <th>Метрика ({{ task.metric_name }})</th>
+  </tr>
+  {% for s in submissions %}
+  <tr>
+    <td>{{ s.id }}</td>
+    <td>{{ s.created_at|date:"d.m.Y H:i" }}</td>
+    <td>{{ s.get_status_display }}</td>
+    <td>{% if s.metric %}{{ s.metric }}{% else %}-{% endif %}</td>
+  </tr>
+  {% empty %}
+  <tr><td colspan="4">Вы ничего не выбрали</td></tr>
+  {% endfor %}
+</table>
+
+<hr>
+
+<h2>График выбранных посылок ({{ task.metric_name }})</h2>
+<canvas id="compareChart" width="600" height="300"></canvas>
+
+{{ labels|json_script:"compare-labels" }}
+{{ metrics|json_script:"compare-metrics" }}
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+  const compareLabels = JSON.parse(document.getElementById("compare-labels").textContent);
+  const compareMetrics = JSON.parse(document.getElementById("compare-metrics").textContent);
+
+  const ctx = document.getElementById('compareChart').getContext('2d');
+  const compareChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: compareLabels,
+      datasets: [{
+        label: '{{ task.metric_name }}',
+        data: compareMetrics,
+        backgroundColor: 'rgba(255, 99, 132, 0.7)',
+        borderColor: 'rgba(255, 99, 132, 1)',
+        borderWidth: 1
+      }]
+    },
+    options: {
+      responsive: true,
+      scales: {
+        y: { beginAtZero: true }
+      }
+    }
+  });
+</script>
