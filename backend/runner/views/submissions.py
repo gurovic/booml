@@ -54,6 +54,9 @@ def submission_compare(request, task_id):
     task = get_object_or_404(Task, id=task_id)
 
     ids = request.GET.getlist("ids")
+    ids = [int(i) for i in ids if i.isdigit()]
+    if not ids:
+        return HttpResponseBadRequest("No valid submission IDs provided.")
     submissions = Submission.objects.filter(task=task, user=request.user, id__in=ids).order_by("created_at")
 
     labels, metrics = extract_labels_and_metrics(submissions)
