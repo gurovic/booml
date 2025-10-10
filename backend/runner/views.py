@@ -1,53 +1,47 @@
-from django.http import JsonResponse, HttpResponse
-from django.views.decorators.csrf import csrf_exempt
-import json
-from .checker_service import checker_service
-from .models import CheckReport
-from .report_serializer import ReportJSONSerializer
+# backend/runner/views.py
+from rest_framework import status
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+from .report_service import ReportGenerator
+from .serializers import ReportSerializer
+import logging
+from .models import Report
+
+logger = logging.getLogger(__name__)
 
 
-@csrf_exempt
-def run_checks_view(request):
-    """API endpoint для запуска проверок"""
-    if request.method == 'POST':
-        try:
-            context = json.loads(request.body) if request.body else {}
-            report_id = checker_service.run_checks(context=context)
-
-            return JsonResponse({
-                'status': 'success',
-                'report_id': report_id,
-                'message': 'Checks completed successfully'
-            })
-        except Exception as e:
-            return JsonResponse({
-                'status': 'error',
-                'message': str(e)
-            }, status=500)
-
-    return JsonResponse({'error': 'Method not allowed'}, status=405)
-
-
-def get_report_json(request, report_id):
-    """API endpoint для получения отчёта в JSON формате"""
+@api_view(['POST'])
+def receive_test_result(request):
+    """
+    Эндпоинт для получения результатов проверки от тестирующей системы
+    """
     try:
-        json_data = ReportJSONSerializer.serialize_report(report_id)
-        return HttpResponse(json_data, content_type='application/json')
-    except ValueError as e:
-        return JsonResponse({'error': str(e)}, status=404)
+        test_result = request.data
+
+        # Логируем полученные данные для отладки
+        logger.info(f"Получены результаты проверки для файла: {test_result.get('file_name')}")
+
+        # Создаём отчёт
+        generator = ReportGenerator()
+        report = generator.create_report_from_testing_system(test_result)
+
+        # Возвращаем созданный отчёт
+        serializer = ReportSerializer(report)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    except Exception as e:
+        logger.error(f"Ошибка при обработке результатов теста: {str(e)}")
+        return Response(
+            {'error': f'Ошибка при создании отчёта: {str(e)}'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
 
 
+@api_view(['GET'])
 def get_reports_list(request):
-    """API endpoint для получения списка отчётов"""
-    reports = CheckReport.objects.all()[:10]  # Последние 10 отчётов
-    reports_data = [
-        {
-            'id': report.id,
-            'timestamp': report.timestamp.isoformat(),
-            'status': report.status,
-            'execution_time': report.execution_time
-        }
-        for report in reports
-    ]
-
-    return JsonResponse({'reports': reports_data})
+    """
+    Эндпоинт для получения списка всех отчётов
+    """
+    reports = Report.objects.all()
+    serializer = ReportSerializer(reports, many=True)
+    return Response(serializer.data)
