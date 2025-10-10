@@ -1,5 +1,12 @@
 from django.urls import path
-from .views import *
+from .views import (
+    notebook_list,
+    create_notebook,
+    notebook_detail,
+    create_cell,
+    delete_cell,
+    save_cell_output,
+)
 
 
 app_name = 'notebook'
