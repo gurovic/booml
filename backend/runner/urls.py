@@ -8,5 +8,4 @@ urlpatterns = [
     path('register/', register_view, name='register'),
     path('login/', login_view, name='login'),
     path("tasks/<int:task_id>/", task_detail, name="task_detail"),
-    path("tasks/<int:task_id>/pdf/", task_pdf, name="task_pdf"),
 ]
