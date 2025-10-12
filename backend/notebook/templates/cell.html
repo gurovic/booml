@@ -1,0 +1,15 @@
+<div data-cell-id="{{ cell.id }}">
+    <div>
+        <button onclick="deleteCell('{{ cell.id }}')">Удалить ячейку</button>
+    </div>
+
+    <div>
+        <textarea data-cell-id="{{ cell.id }}" style="width: 100%; height: 150px;">{{ cell.content }}</textarea>
+    </div>
+
+    <div>
+        <pre id="output-{{ cell.id }}">{{ cell.output }}</pre>
+    </div>
+
+    <hr>
+</div>

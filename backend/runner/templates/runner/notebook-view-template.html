@@ -1,0 +1,25 @@
+<!-- templates/code_runner.html -->
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Code Runner</title>
+</head>
+<body>
+    <h2>Python Code Runner</h2>
+    <form method="post">
+        {% csrf_token %}
+        <textarea name="code" rows="10" cols="70">{{ code|default_if_none:"" }}</textarea><br>
+        <input type="hidden" name="lang" value="python"/>
+        <button type="submit">Run</button>
+    </form>
+    {% if result %}
+        <h3>Result:</h3>
+        <pre>{{ result.outputs.0.data.text }}</pre>
+        {% if result.stderr %}
+            <h4>Error output (stderr):</h4>
+            <pre>{{ result.stderr }}</pre>
+        {% endif %}
+    {% endif %}
+    <!-- Для интеграции с JS фронтендом, добавить компонент <code-runner> и подключить JS -->
+</body>
+</html>
