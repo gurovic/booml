@@ -18,6 +18,5 @@ from django.contrib import admin
 from django.urls import path, include
 
 urlpatterns = [
-    path('admin/', admin.site.urls),
-    path('checker/', include('runner.urls')),  # Добавляем маршруты чекера
+    path('runner/', include('runner.urls'))  # Добавляем маршруты чекера
 ]
