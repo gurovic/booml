@@ -2,27 +2,14 @@
 <html lang="ru">
 <head>
   <meta charset="UTF-8">
-  <title>Список задач</title>
-  <style>
-    body { font-family: system-ui,sans-serif; margin:24px; }
-    a.button { display:inline-block; padding:8px 14px; background:#2563eb; color:#fff; text-decoration:none; border-radius:4px; margin-bottom:14px; }
-    table { border-collapse: collapse; width:100%; }
-    th,td { border:1px solid #ccc; padding:6px 10px; font-size:14px; text-align:left; vertical-align:top; }
-    th { background:#f5f5f5; }
-    tbody tr:hover { background:#fafafa; }
-    .pagination { margin-top:14px; display:flex; gap:8px; align-items:center; }
-    .pagination a { padding:6px 10px; border:1px solid #ccc; border-radius:4px; text-decoration:none; color:#2563eb; }
-    .pagination .current { padding:6px 10px; border:1px solid #ccc; border-radius:4px; background:#f5f5f5; }
-  </style>
+  <title>Список всех задач</title>
 </head>
 <body>
   <h1>Список задач</h1>
-
   <table>
     <thead>
       <tr>
         <th>Название</th>
-        <th>Условие</th>
         <th>Создана</th>
       </tr>
     </thead>
@@ -30,7 +17,6 @@
       {% for p in page_obj %}
       <tr>
           <td><a href="{% url 'task_details' p.id %}">{{ p.title }}</a></td>
-          <td>{{ p.statement|truncatechars:50 }}</td>
           <td>{{ p.created_at|date:"d.m.Y" }}</td>
       </tr>
       {% empty %}
