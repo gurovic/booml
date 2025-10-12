@@ -25,6 +25,42 @@
         const notebookId = document.getElementById('notebookId').value;
         const csrftoken = document.querySelector('[name=csrfmiddlewaretoken]').value;
 
+        async function runCode(code) {
+            try {
+                const response = await fetch(Urls['runner:run_code'](), {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrftoken
+                    },
+                    body: JSON.stringify({
+                        code: code,
+                        lang: 'python',
+                        run_id: crypto.randomUUID()
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+
+                if (data.status === 'success') {
+                    return {
+                        output: data.output,
+                        run_id: data.run_id,
+                        stats: data.stats
+                    };
+                } else {
+                    throw new Error(data.message || 'Execution failed');
+                }
+
+            } catch (error) {
+                throw new Error(`Execution error: ${error.message}`);
+            }
+        }
+
         async function createCell() {
             try {
                 const response = await fetch(Urls['notebook:create_cell'](notebookId), {
@@ -53,6 +89,55 @@
                 document.querySelector(`[data-cell-id="${cellId}"]`).remove();
             } catch (error) {
                 alert('Ошибка при удалении ячейки');
+            }
+        }
+
+        async function runCell(cellId) {
+            const code = document.querySelector(`[data-cell-id="${cellId}"] textarea`).value;
+            const outputElement = document.getElementById(`output-${cellId}`);
+
+            try {
+                outputElement.textContent = 'Выполнение...';
+                outputElement.className = 'output running';
+
+                const result = await runCode(code);
+
+                outputElement.textContent = result.output;
+                outputElement.className = 'output success';
+
+                if (result.stats) {
+                    const stats = result.stats;
+                    const statsText = `\n\n---\nВремя: ${stats.execution_time_ms}ms` +
+                                     (stats.memory_used_mb ? ` | Память: ${stats.memory_used_mb}MB` : '') +
+                                     (stats.timeout ? ' | Таймаут' : '');
+                    outputElement.textContent += statsText;
+                }
+
+                await saveCellOutput(cellId, code, result.output);
+
+            } catch (error) {
+                outputElement.textContent = `Ошибка: ${error.message}`;
+                outputElement.className = 'output error';
+
+                await saveCellOutput(cellId, code, `Ошибка: ${error.message}`);
+            }
+        }
+
+        async function saveCellOutput(cellId, code, output) {
+            try {
+                await fetch(Urls['notebook:save_cell_output'](notebookId, cellId)   , {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrftoken
+                    },
+                    body: JSON.stringify({
+                        code: code,
+                        output: output
+                    })
+                });
+            } catch (error) {
+                console.error('Ошибка сохранения:', error);
             }
         }
     </script>
