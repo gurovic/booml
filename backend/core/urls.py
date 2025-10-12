@@ -24,4 +24,5 @@ urlpatterns = [
     path('', include('runner.urls')),
     path('notebook/', include('notebook.urls', namespace='notebook')),
     path('reverse.js', views.urls_js, name='reverse_js'),
+    path('', views.home, name='home'),
 ]
