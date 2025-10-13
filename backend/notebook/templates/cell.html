@@ -1,15 +1,14 @@
-<div data-cell-id="{{ cell.id }}">
-    <div>
-        <button onclick="deleteCell('{{ cell.id }}')">Удалить ячейку</button>
+<div class="cell" data-cell-id="{{ cell.id }}">
+    <div class="cell__actions">
+        <button type="button" data-run-button="{{ cell.id }}" onclick="runCell('{{ cell.id }}')">Выполнить</button>
+        <button type="button" onclick="deleteCell('{{ cell.id }}')">Удалить ячейку</button>
     </div>
 
-    <div>
+    <div class="cell__editor">
         <textarea data-cell-id="{{ cell.id }}" style="width: 100%; height: 150px;">{{ cell.content }}</textarea>
     </div>
 
-    <div>
-        <pre id="output-{{ cell.id }}">{{ cell.output }}</pre>
-    </div>
+    <div class="cell__output" id="output-{{ cell.id }}"{% if cell.output %} data-initial-output="{{ cell.output|escape }}"{% endif %}></div>
 
     <hr>
 </div>

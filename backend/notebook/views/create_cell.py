@@ -12,7 +12,7 @@ def create_cell(request, notebook_id):
 
     cell = Cell.objects.create(
         notebook=notebook,
-        content='print("Hello World")',
+        content='',
         execution_order=new_order
     )
 

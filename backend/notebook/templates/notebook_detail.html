@@ -25,6 +25,164 @@
         const notebookId = document.getElementById('notebookId').value;
         const csrftoken = document.querySelector('[name=csrfmiddlewaretoken]').value;
 
+        const cellsContainer = document.getElementById('cellsContainer');
+
+        function initializeCell(cellElement) {
+            if (!cellElement) {
+                return;
+            }
+            const outputElement = cellElement.querySelector('.cell__output');
+            if (!outputElement) {
+                return;
+            }
+            const initial = outputElement.dataset.initialOutput;
+            if (initial) {
+                try {
+                    renderRunResult(outputElement, JSON.parse(initial));
+                    return;
+                } catch (error) {
+                    console.error('Не удалось разобрать сохранённый вывод', error);
+                    outputElement.textContent = initial;
+                    return;
+                }
+            }
+            outputElement.textContent = 'Нет вывода';
+        }
+
+        function renderRunResult(outputElement, result) {
+            outputElement.innerHTML = '';
+
+            if (result) {
+                outputElement.dataset.initialOutput = JSON.stringify(result);
+            }
+
+            let hasContent = false;
+            if (result && Array.isArray(result.outputs)) {
+                result.outputs.forEach((item) => {
+                    const wrapper = document.createElement('div');
+                    wrapper.className = 'cell-output-item';
+
+                    if (item.type === 'text') {
+                        const pre = document.createElement('pre');
+                        pre.textContent = item.data?.text ?? '';
+                        wrapper.appendChild(pre);
+                    } else if (item.type === 'html') {
+                        const htmlContainer = document.createElement('div');
+                        htmlContainer.innerHTML = item.data?.html ?? '';
+                        wrapper.appendChild(htmlContainer);
+                        if (item.data?.source_url) {
+                            const link = document.createElement('a');
+                            link.href = item.data.source_url;
+                            link.target = '_blank';
+                            link.rel = 'noopener noreferrer';
+                            link.textContent = 'Открыть исходный HTML';
+                            wrapper.appendChild(link);
+                        }
+                    } else if (item.type === 'image') {
+                        if (item.data?.url) {
+                            const img = document.createElement('img');
+                            img.src = item.data.url;
+                            img.alt = item.data?.name ?? 'Изображение';
+                            img.style.maxWidth = '100%';
+                            wrapper.appendChild(img);
+                        }
+                    } else if (item.type === 'table') {
+                        const tableWrapper = document.createElement('div');
+                        const table = document.createElement('table');
+                        table.border = '1';
+                        table.cellPadding = '4';
+                        table.cellSpacing = '0';
+
+                        if (Array.isArray(item.data?.columns) && item.data.columns.length) {
+                            const thead = document.createElement('thead');
+                            const headerRow = document.createElement('tr');
+                            item.data.columns.forEach((column) => {
+                                const th = document.createElement('th');
+                                th.textContent = column;
+                                headerRow.appendChild(th);
+                            });
+                            thead.appendChild(headerRow);
+                            table.appendChild(thead);
+                        }
+
+                        if (Array.isArray(item.data?.rows)) {
+                            const tbody = document.createElement('tbody');
+                            item.data.rows.forEach((row) => {
+                                const tr = document.createElement('tr');
+                                row.forEach((value) => {
+                                    const td = document.createElement('td');
+                                    td.textContent = value;
+                                    tr.appendChild(td);
+                                });
+                                tbody.appendChild(tr);
+                            });
+                            table.appendChild(tbody);
+                        }
+
+                        tableWrapper.appendChild(table);
+
+                        if (item.data?.truncated) {
+                            const note = document.createElement('div');
+                            note.textContent = 'Показаны не все строки.';
+                            tableWrapper.appendChild(note);
+                        }
+
+                        if (item.data?.download_url) {
+                            const download = document.createElement('a');
+                            download.href = item.data.download_url;
+                            download.target = '_blank';
+                            download.rel = 'noopener noreferrer';
+                            download.textContent = 'Скачать CSV';
+                            tableWrapper.appendChild(download);
+                        }
+
+                        wrapper.appendChild(tableWrapper);
+                    } else {
+                        const pre = document.createElement('pre');
+                        pre.textContent = JSON.stringify(item.data ?? {}, null, 2);
+                        wrapper.appendChild(pre);
+                    }
+
+                    outputElement.appendChild(wrapper);
+                    hasContent = true;
+                });
+            }
+
+            if (result?.stderr) {
+                const stderrBlock = document.createElement('pre');
+                stderrBlock.className = 'cell-output-stderr';
+                stderrBlock.textContent = result.stderr;
+                outputElement.appendChild(stderrBlock);
+                hasContent = true;
+            }
+
+            if (Array.isArray(result?.errors) && result.errors.length) {
+                const errorList = document.createElement('ul');
+                errorList.className = 'cell-output-errors';
+                result.errors.forEach((err) => {
+                    const li = document.createElement('li');
+                    li.textContent = `${err.code ?? 'error'}: ${err.msg ?? ''}`;
+                    errorList.appendChild(li);
+                });
+                outputElement.appendChild(errorList);
+                hasContent = true;
+            }
+
+            if (result?.stats) {
+                const stats = document.createElement('div');
+                stats.className = 'cell-output-stats';
+                const cpu = typeof result.stats.cpu_s === 'number' ? `${result.stats.cpu_s.toFixed(3)} с CPU` : 'CPU н/д';
+                const mem = typeof result.stats.mem_mb === 'number' ? `${result.stats.mem_mb} МБ` : 'RAM н/д';
+                stats.textContent = `Exit ${result.stats.exit_code}, ${result.stats.elapsed_ms} мс, ${cpu}, ${mem}`;
+                outputElement.appendChild(stats);
+                hasContent = true;
+            }
+
+            if (!hasContent) {
+                outputElement.textContent = 'Нет вывода';
+            }
+        }
+
         async function createCell() {
             try {
                 const response = await fetch(Urls['notebook:create_cell'](notebookId), {
@@ -33,10 +191,67 @@
                         'X-CSRFToken': csrftoken
                     }
                 });
+
+                if (!response.ok) {
+                    throw new Error('Не удалось создать ячейку');
+                }
+
                 const html = await response.text();
-                document.getElementById('cellsContainer').innerHTML += html;
+                const wrapper = document.createElement('div');
+                wrapper.innerHTML = html.trim();
+                const newCell = wrapper.firstElementChild;
+                if (newCell) {
+                    cellsContainer.appendChild(newCell);
+                    initializeCell(newCell);
+                }
             } catch (error) {
+                console.error(error);
                 alert('Ошибка при создании ячейки');
+            }
+        }
+
+        async function runCell(cellId) {
+            const textarea = document.querySelector(`textarea[data-cell-id="${cellId}"]`);
+            const outputElement = document.getElementById(`output-${cellId}`);
+            const runButton = document.querySelector(`[data-run-button="${cellId}"]`);
+
+            if (!textarea || !outputElement) {
+                return;
+            }
+
+            const originalLabel = runButton ? runButton.textContent : '';
+            if (runButton) {
+                runButton.disabled = true;
+                runButton.textContent = 'Выполняется...';
+            }
+
+            outputElement.textContent = 'Выполняется...';
+
+            try {
+                const response = await fetch(Urls['notebook:execute_cell'](notebookId, cellId), {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrftoken
+                    },
+                    body: JSON.stringify({ code: textarea.value })
+                });
+
+                if (!response.ok) {
+                    const errorMessage = await response.text();
+                    throw new Error(errorMessage || 'Ошибка исполнения');
+                }
+
+                const data = await response.json();
+                renderRunResult(outputElement, data);
+            } catch (error) {
+                console.error(error);
+                outputElement.textContent = `Ошибка выполнения: ${error.message}`;
+            } finally {
+                if (runButton) {
+                    runButton.disabled = false;
+                    runButton.textContent = originalLabel || 'Выполнить';
+                }
             }
         }
 
@@ -44,17 +259,29 @@
             if (!confirm('Удалить ячейку?')) return;
 
             try {
-                await fetch(Urls['notebook:delete_cell'](notebookId, cellId), {
+                const response = await fetch(Urls['notebook:delete_cell'](notebookId, cellId), {
                     method: 'DELETE',
                     headers: {
                         'X-CSRFToken': csrftoken
                     }
                 });
-                document.querySelector(`[data-cell-id="${cellId}"]`).remove();
+
+                if (!response.ok) {
+                    throw new Error('Не удалось удалить ячейку');
+                }
+
+                const cellElement = document.querySelector(`[data-cell-id="${cellId}"]`);
+                if (cellElement) {
+                    cellElement.remove();
+                }
             } catch (error) {
+                console.error(error);
                 alert('Ошибка при удалении ячейки');
             }
         }
+
+        document.querySelectorAll('#cellsContainer .cell').forEach((cell) => initializeCell(cell));
     </script>
 </body>
 </html>
+

@@ -8,8 +8,7 @@ def create_notebook(request):
     try:
         notebook = Notebook.objects.create(
             title="Новый блокнот",
-            owner=request.user,
-            problem=None
+            owner=request.user if request.user.is_authenticated else None,
         )
         return JsonResponse({
             'status': 'success',

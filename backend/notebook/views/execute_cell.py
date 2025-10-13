@@ -2,31 +2,23 @@ import json
 
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
-from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
 from notebook.models import Notebook, Cell
 from notebook.services.execution import execute_cell_code
 
 
-@csrf_exempt
 @require_http_methods(["POST"])
-def save_cell_output(request, notebook_id, cell_id):
+def execute_cell(request, notebook_id, cell_id):
     notebook = get_object_or_404(Notebook, id=notebook_id)
     cell = get_object_or_404(Cell, id=cell_id, notebook=notebook)
 
     try:
-        data = json.loads(request.body or "{}")
+        payload = json.loads(request.body or "{}")
     except json.JSONDecodeError:
         return JsonResponse({"error": "Invalid JSON payload"}, status=400)
 
-    code = data.get('code', cell.content)
-
-    if 'output' in data:
-        cell.content = code
-        cell.output = data['output']
-        cell.save(update_fields=['content', 'output'])
-        return JsonResponse({'status': 'success'})
+    code = payload.get("code", cell.content)
 
     result = execute_cell_code(cell, code, request)
-    return JsonResponse({'status': 'success', 'result': result})
+    return JsonResponse(result)
