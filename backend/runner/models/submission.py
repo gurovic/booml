@@ -2,7 +2,7 @@ from django.db import models
 from django.contrib.auth.models import User
 from django.db.models.signals import pre_save, post_save
 from django.dispatch import receiver
-from .tasks import enqueue_submission_for_evaluation
+from ..problems import enqueue_submission_for_evaluation
 
 
 class Submission(models.Model):
@@ -80,8 +80,3 @@ def submission_post_save(sender, instance, created, **kwargs):
         # если обновление прошло (== 1), ставим таск в очередь
         if updated_count:
             enqueue_submission_for_evaluation.delay(instance.pk)
-
-
-from django.db import models
-
-# Create your models here.
