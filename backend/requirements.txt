@@ -1,1 +1,2 @@
 Django==5.2.*
+django-reverse-js==0.1.8
