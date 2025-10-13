@@ -1,0 +1,19 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>{{ task.title }}</title>
+    <link rel="stylesheet" href="{% static 'runner/style.css' %}">
+</head>
+<body>
+    <div class="task-container">
+        <h1>{{ task.title }}</h1>
+        <p class="description">{{ task.description }}</p>
+
+        {% if task.data %}
+            <p><strong>Dataset:</strong> {{ task.data }}</p>
+        {% endif %}
+    </div>
+</body>
+</html>
