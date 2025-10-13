@@ -5,13 +5,13 @@
     <title>Главная Booml</title>
 </head>
 <body>
-    <div style="background: #eaeaea; padding: 14px 0; text-align: center; margin-bottom: 30px;">
-        <span style="margin: 0 14px; font-weight: bold;">Список задач</span>|
-        <a href="/notebook/" style="margin: 0 14px; text-decoration:none;" onclick="alert('Переход в блокнот пока недоступен (заглушка)'); return false;">Блокнот</a>|
+    <div>
+        <span>Список задач</span> |
+        <a href="/notebook/">Блокнот</a> |
         {% if user %}
-            <span style="margin: 0 14px; cursor:pointer;" onclick="alert('Заглушка на выход');">Выйти</span>
+            <a href="/logout/">Выйти</a>
         {% else %}
-            <a href="/login/" style="margin: 0 14px; text-decoration:none;">Войти</a>
+            <a href="/login/">Войти</a>
         {% endif %}
     </div>
     <div>
