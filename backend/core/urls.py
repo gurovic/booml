@@ -20,6 +20,7 @@ from django_reverse_js import views
 
 
 urlpatterns = [
+    path('runner/', include('runner.urls')),
     path('admin/', admin.site.urls),
     path('', include('runner.urls')),
     path('notebook/', include('notebook.urls', namespace='notebook')),
