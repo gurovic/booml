@@ -9,7 +9,7 @@ def create_notebook(request):
         notebook = Notebook.objects.create(
             title="Новый блокнот",
             owner=request.user,
-            problem=None
+            # problem=None
         )
         return JsonResponse({
             'status': 'success',
