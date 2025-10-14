@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Главная Booml</title>
+</head>
+<body>
+    <div>
+        <span>Список задач</span> |
+        <a href="/notebook/">Блокнот</a> |
+        {% if user %}
+            <a href="/logout/">Выйти</a>
+        {% else %}
+            <a href="/login/">Войти</a>
+        {% endif %}
+    </div>
+    <div>
+        <h2>Список задач</h2>
+        <ul>
+            {% for task in tasks %}
+                <li>{{ task.title }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+</body>
+</html>
