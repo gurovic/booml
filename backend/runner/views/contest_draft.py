@@ -8,7 +8,7 @@ def create_contest(request):
         form = ContestForm(request.POST)
         if form.is_valid():
             form.save()
-            return redirect('contest_success')  # имя URL для страницы успеха
+            return redirect('contest/success')  # имя URL для страницы успеха
     else:
         form = ContestForm()
 
