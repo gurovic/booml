@@ -1,20 +1,24 @@
 from django.db import models
-from django.db.models import CharField, IntegerField, DateField, BooleanField
+from django.db.models import CharField, IntegerField, DateField, ManyToManyField
 
 class Contest(models.Model):
-  tasks = models.ManyToManyField("Task", null=True)
+  tasks = ManyToManyField("Task", blank=True)
   source = CharField()
-  _type = IntegerField(db_column="type", null=True)
-  difficulty = IntegerField(null=True)
+  _type = IntegerField(db_column="type", blank=True)
+  difficulty = IntegerField(blank=True)
   start_time = DateField()
-  duration = IntegerField(null=True)
+  duration = IntegerField(blank=True)
   
   STATUS_CHOICES = {
-    "going": "user",
-    "after-soluting": "дорешка"
+    "user": "going",
+    "дорешка": "after-solving"
   }
-  
   status = CharField(choices=STATUS_CHOICES)
   
-  open = BooleanField()
+  OPEN_CHOICES = {
+    0: "closed",
+    1: "opened"
+  }
+  open = IntegerField(default=0, choices=OPEN_CHOICES)
+  
   leaderBoard = models.ForeignKey("Leaderboard", on_delete=models.CASCADE)
