@@ -20,4 +20,6 @@ urlpatterns = [
     path('task/<int:task_id>/compare/', submission_compare, name="submission_compare"),
     path("tasks/<int:task_id>/", task_detail, name="task_detail"),
     path("tasks/", task_list, name="task_list"),
+    path('contest/new/', views.create_contest, name='create_contest'),
+    path('contest/success/', views.contest_success, name='contest_success'),
 ]
