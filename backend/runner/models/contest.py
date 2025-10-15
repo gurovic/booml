@@ -8,9 +8,13 @@ class Contest(models.Model):
   difficulty = IntegerField(null=True)
   start_time = DateField()
   duration = IntegerField(null=True)
-  status = CharField(choices=[
-    "user",
-    "дорешка"
-  ])
+  
+  STATUS_CHOICES = {
+    "going": "user",
+    "after-soluting": "дорешка"
+  }
+  
+  status = CharField(choices=STATUS_CHOICES)
+  
   open = BooleanField()
-  leaderBoard = models.ForeignKey("LeaderBoard", on_delete=models.CASCADE)
+  leaderBoard = models.ForeignKey("Leaderboard", on_delete=models.CASCADE)
