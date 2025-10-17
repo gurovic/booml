@@ -1,7 +1,7 @@
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
-from .serializers import ReportSerializer
-from .models import Report
+from ..services.serializers import ReportSerializer
+from ..models.report import Report
 
 @api_view(['GET'])
 def get_reports_list(request):

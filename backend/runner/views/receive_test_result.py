@@ -1,8 +1,8 @@
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
-from .report_service import ReportGenerator
-from .serializers import ReportSerializer
+from ..services.report_service import ReportGenerator
+from ..services.serializers import ReportSerializer
 import logging
 
 logger = logging.getLogger(__name__)
