@@ -40,5 +40,4 @@ class Submission(models.Model):
 
 @receiver(post_save, sender=Submission)
 def submission_post_save(sender, instance, created, **kwargs):
-    if created:
-        enqueue_submission_for_evaluation.delay(instance.id)
+    enqueue_submission_for_evaluation.delay(instance.id)
