@@ -38,45 +38,7 @@ class Submission(models.Model):
     def __str__(self):
         return f"{self.user.username} - {self.problem} ({self.score})"
 
-
-@receiver(pre_save, sender=Submission)
-def submission_pre_save(sender, instance, **kwargs):
-    """
-    Сохраняем предыдущий статус в временное поле instance._previous_status.
-    Это нужно, чтобы в post_save понять, изменился ли статус.
-    """
-    if not instance.pk:
-        instance._previous_status = None
-    else:
-        try:
-            prev = Submission.objects.get(pk=instance.pk)
-            instance._previous_status = prev.status
-        except Submission.DoesNotExist:
-            instance._previous_status = None
-
-
 @receiver(post_save, sender=Submission)
 def submission_post_save(sender, instance, created, **kwargs):
-    """
-    Если статус только что стал 'validated' (и раньше не был 'validated'),
-    автоматически переводим объект в 'pending' (в очередь) и ставим задачу в Celery.
-    Используем QuerySet.update(...) чтобы не вызывать повторно save()/сигналы.
-    """
-    prev_status = getattr(instance, "_previous_status", None)
-
-    # реагируем только при переходе в 'validated' (и не при создании)
-    if not created and instance.status == Submission.STATUS_VALIDATED and prev_status != Submission.STATUS_VALIDATED:
-        # читаем текущее значение в БД (на случай гонок)
-        current_db_status = Submission.objects.filter(pk=instance.pk).values_list("status", flat=True).first()
-
-        # если в БД уже в очереди/выполняется/принято — пропускаем
-        if current_db_status in (Submission.STATUS_PENDING, Submission.STATUS_RUNNING, Submission.STATUS_ACCEPTED):
-            return
-
-        # атомарно обновляем статус в БД (без вызова .save и без сигналов)
-        updated_count = Submission.objects.filter(pk=instance.pk, status=instance.status).update(
-            status=Submission.STATUS_PENDING)
-
-        # если обновление прошло (== 1), ставим таск в очередь
-        if updated_count:
-            enqueue_submission_for_evaluation.delay(instance.pk)
+    if created:
+        enqueue_submission_for_evaluation.delay(instance.id)
