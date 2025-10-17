@@ -10,10 +10,10 @@ class Contest(models.Model):
   duration = IntegerField(blank=True)
   
   STATUS_CHOICES = {
-    "user": "going",
-    "дорешка": "after-solving"
+    0: "going",
+    1: "after-solving"
   }
-  status = CharField(choices=STATUS_CHOICES)
+  status = IntegerField(choices=STATUS_CHOICES, default=0)
   
   OPEN_CHOICES = {
     0: "closed",
