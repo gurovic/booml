@@ -1,0 +1,15 @@
+<h2>Посылка #{{ submission.id }}</h2>
+
+<p><b>Задача:</b> {{ submission.task.title }}</p>
+<p><b>Дата:</b> {{ submission.created_at|date:"d.m.Y H:i" }}</p>
+<p><b>Статус:</b> {{ submission.get_status_display }}</p>
+<p><b>Метрика:</b> {{ submission.metric }}</p>
+
+{% if submission.prediction_file %}
+<p><a href="{{ submission.prediction_file.url }}">Скачать файл предсказаний</a></p>
+{% endif %}
+
+{% if submission.log_file %}
+<h3>Лог проверки:</h3>
+<pre>{{ submission.log_file }}</pre>
+{% endif %}

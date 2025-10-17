@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>Список всех задач</title>
+</head>
+<body>
+  <h1>Список задач</h1>
+  <table>
+    <thead>
+      <tr>
+        <th>Название</th>
+        <th>Создана</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for p in page_obj %}
+      <tr>
+          <td><a href="{% url 'task_details' p.id %}">{{ p.title }}</a></td>
+          <td>{{ p.created_at|date:"d.m.Y" }}</td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="3">Нет задач</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="pagination">
+    {% if page_obj.has_previous %}
+      <a href="?page=1">« Первая</a>
+      <a href="?page={{ page_obj.previous_page_number }}">‹ Пред</a>
+    {% endif %}
+
+    <span class="current">Стр. {{ page_obj.number }} из {{ page_obj.paginator.num_pages }}</span>
+
+    {% if page_obj.has_next %}
+      <a href="?page={{ page_obj.next_page_number }}">След ›</a>
+      <a href="?page={{ page_obj.paginator.num_pages }}">Последняя »</a>
+    {% endif %}
+  </div>
+</body>
+</html>
