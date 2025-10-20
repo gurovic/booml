@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Блокноты</title>
+    {% load static %}
+    <script src="{% static 'notebook/js/utils.js' %}"></script>
+    <script src="{% static 'notebook/js/notebook_list.js' %}"></script>
+</head>
+<body>
+    <h1>Блокноты</h1>
+
+    <div id="notebooks-container"
+         data-create-notebook-url="{% url 'runner:create_notebook' %}"
+         data-notebook-detail-url="{% url 'runner:notebook_detail' %}">
+
+        <button id="create-notebook-btn" data-action="create-notebook">Новый блокнот</button>
+
+        <div id="notebooks-list">
+            {% for notebook in notebooks %}
+            <div class="notebook-item" data-notebook-id="{{ notebook.id }}">
+                <a href="{% url 'notebook:notebook_detail' notebook.id %}">
+                    {{ notebook.title }} (ID: {{ notebook.id }})
+                </a>
+            </div>
+            {% empty %}
+            <p>Нет блокнотов</p>
+            {% endfor %}
+        </div>
+    </div>
+
+    {% csrf_token %}
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            notebookList.init({
+                csrfToken: '{{ csrf_token }}'
+            });
+        });
+    </script>
+</body>
+</html>
