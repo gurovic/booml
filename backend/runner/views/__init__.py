@@ -13,3 +13,8 @@ from .save_cell_output import save_cell_output
 from .notebook_detail import notebook_detail
 from .create_notebook import create_notebook
 from .notebook_list import notebook_list
+from .get_reports_list import get_reports_list
+from .receive_test_result import receive_test_result
+from .task_detail import task_detail
+from .contest_draft import create_contest
+from .contest_draft import contest_success

@@ -12,6 +12,8 @@ from .views import (
     create_cell,
     delete_cell,
     save_cell_output,
+    get_reports_list,
+    receive_test_result
 )
 
 

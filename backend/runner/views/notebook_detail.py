@@ -1,5 +1,5 @@
 from django.shortcuts import render, get_object_or_404
-from ...runner.models import Notebook
+from ..models import Notebook
 
 
 def notebook_detail(request, notebook_id):
