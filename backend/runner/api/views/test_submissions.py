@@ -5,8 +5,8 @@ from django.urls import reverse
 from django.core.files.uploadedfile import SimpleUploadedFile
 from rest_framework.test import APITestCase
 from django.contrib.auth import get_user_model
-from app.models.task import Task
-from app.models.submission import Submission
+from runner.models.task import Task
+from runner.models.submission import Submission
 
 User = get_user_model()
 
@@ -19,7 +19,7 @@ class SubmissionAPITests(APITestCase):
         )
         self.url = reverse("submission-create")
 
-    @patch("app.api.views.submissions.enqueue_submission_for_evaluation.delay", lambda *a, **k: None)
+    @patch("runner.api.views.submissions.enqueue_submission_for_evaluation.delay", lambda *a, **k: None)
     def test_upload_valid_csv(self):
         f = SimpleUploadedFile("preds.csv", b"id,pred\n1,0.1\n2,0.2\n", content_type="text/csv")
         resp = self.client.post(self.url, {"task_id": self.task.id, "file": f}, format="multipart")
@@ -33,8 +33,8 @@ class SubmissionAPITests(APITestCase):
         self.assertEqual(resp.status_code, 400)
         self.assertIn("task_id", resp.data)
 
-    @patch("app.api.views.submissions.enqueue_submission_for_evaluation.delay")
-    @patch("app.api.views.submissions.run_pre_validation")
+    @patch("runner.api.views.submissions.enqueue_submission_for_evaluation.delay")
+    @patch("runner.api.views.submissions.run_pre_validation")
     def test_enqueue_only_if_valid(self, mock_validate, mock_enqueue):
         mock_validate.return_value = mock.Mock(valid=True)
         f = SimpleUploadedFile("preds.csv", b"id,pred\n1,0.1\n", content_type="text/csv")

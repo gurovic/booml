@@ -4,8 +4,8 @@ from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
 from rest_framework.test import APIRequestFactory
 
-from app.models.task import Task
-from app.models.submision import Submission
+from runner.models.task import Task
+from runner.models.submission import Submission
 from .submissions import SubmissionCreateSerializer
 
 User = get_user_model()
