@@ -1,0 +1,18 @@
+<div class="cell" data-cell-id="{{ cell.id }}">
+    <div class="cell-header">
+        <div class="cell-title">
+            Ячейка {{ cell.execution_order|add:1 }}
+        </div>
+        <div class="cell-actions">
+            <button data-action="run-cell">Запустить</button>
+            <button data-action="delete-cell">Удалить</button>
+        </div>
+    </div>
+
+    <div class="cell-content">
+        <textarea placeholder="Введите ваш код здесь...">{{ cell.content }}</textarea>
+        <div class="output" id="output-{{ cell.id }}">
+            {% if cell.output %}{{ cell.output }}{% endif %}
+        </div>
+    </div>
+</div>

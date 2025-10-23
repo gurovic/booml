@@ -5,3 +5,6 @@ from .contest import Contest
 #from .problem_desriptor import ProblemDescriptor
 from .submission_pre_validation import SubmissionPreValidation
 from .leaderboard import Leaderboard
+from .task import Task
+from .notebook import Notebook
+from .cell import Cell

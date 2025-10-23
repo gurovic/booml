@@ -5,6 +5,14 @@ from .views.main_page import main_page
 from .views.authorization import register_view, login_view, home_view
 from .views import task_detail
 from .views.tasks import task_list
+from .views import (
+    notebook_list,
+    create_notebook,
+    notebook_detail,
+    create_cell,
+    delete_cell,
+    save_cell_output,
+)
 
 
 urlpatterns = [
@@ -22,4 +30,10 @@ urlpatterns = [
     path("tasks/", task_list, name="task_list"),
     path('contest/new/', views.create_contest, name='create_contest'),
     path('contest/success/', views.contest_success, name='contest_success'),
+    path('notebook', notebook_list, name='notebook_list'),
+    path('notebook/new/', create_notebook, name='create_notebook'),
+    path('notebook/<int:notebook_id>/', notebook_detail, name='notebook_detail'),
+    path('notebook/<int:notebook_id>/cell/new/', create_cell, name='create_cell'),
+    path('notebook/<int:notebook_id>/cell/<int:cell_id>/delete/', delete_cell, name='delete_cell'),
+    path('notebook/<int:notebook_id>/cell/<int:cell_id>/save_output/', save_cell_output, name='save_cell_output'),
 ]
