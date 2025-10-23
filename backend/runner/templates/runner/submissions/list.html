@@ -1,76 +1,36 @@
 <h2>Мои посылки по задаче: {{ task.title }}</h2>
 
-<div style="padding:10px; border:1px solid #ccc; margin-bottom:15px;">
+{% if result %}
   {% if result.status == "OK" %}
-    ✅ <b>Задача сдана!</b> Итоговая метрика: {{ result.metric }}
+    <div><b>Задача сдана!</b> Итоговая метрика: {{ result.metric }}</div>
   {% elif result.status == "FAILED" %}
-    ❌ <b>Задача пока не сдана.</b><br>
-    Лучшая метрика: {% if result.best_metric %}{{ result.best_metric }}{% else %}-{% endif %}<br>
-    Метрика в последней посылке: {% if result.last_metric %}{{ result.last_metric }}{% else %}-{% endif %}
-  {% else %}
-    ℹ️ Пока нет посылок по этой задаче.
+    <div><b>Задача пока не сдана.</b></div>
   {% endif %}
-</div>
+{% else %}
+  <div><b>Пока нет посылок по этой задаче.</b></div>
+{% endif %}
 
-<form method="get" action="{% url 'submission_compare' task.id %}">
-  <table border="1" cellpadding="5">
-    <tr>
-      <th>Выбрать</th>
-      <th>ID</th>
-      <th>Дата</th>
-      <th>Статус</th>
+<table border="1" cellpadding="5">
+  <tr>
+    <th>ID</th>
+    <th>Дата</th>
+    <th>Статус</th>
+    {% if result and result.status == "OK" %}
       <th>Метрика ({{ task.metric_name }})</th>
-      <th>Детали</th>
-    </tr>
-    {% for s in submissions %}
-    <tr>
-      <td><input type="checkbox" name="ids" value="{{ s.id }}"></td>
-      <td>{{ s.id }}</td>
-      <td>{{ s.created_at|date:"d.m.Y H:i" }}</td>
-      <td>{{ s.get_status_display }}</td>
-      <td>{% if s.metric %}{{ s.metric }}{% else %}-{% endif %}</td>
-      <td><a href="{% url 'submission_detail' s.id %}">Открыть</a></td>
-    </tr>
-    {% empty %}
-    <tr><td colspan="6">Нет посылок</td></tr>
-    {% endfor %}
-  </table>
-  <br>
-  <button type="submit">Сравнить выбранные</button>
-</form>
-
-<hr>
-
-<h2>Прогресс по метрике ({{ task.metric_name }})</h2>
-<canvas id="metricChart" width="600" height="300"></canvas>
-
-{{ labels|json_script:"labels-data" }}
-{{ metrics|json_script:"metrics-data" }}
-
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<script>
-  const labels = JSON.parse(document.getElementById("labels-data").textContent);
-  const metrics = JSON.parse(document.getElementById("metrics-data").textContent);
-
-  const ctx = document.getElementById('metricChart').getContext('2d');
-  const metricChart = new Chart(ctx, {
-    type: 'bar',
-    data: {
-      labels: labels,
-      datasets: [{
-        label: '{{ task.metric_name }}',
-        data: metrics,
-        backgroundColor: 'rgba(54, 162, 235, 0.7)',
-        borderColor: 'rgba(54, 162, 235, 1)',
-        borderWidth: 1
-      }]
-    },
-    options: {
-      responsive: true,
-      scales: {
-        y: { beginAtZero: true }
-      }
-    }
-  });
-</script>
-
+    {% endif %}
+    <th>Детали</th>
+  </tr>
+  {% for submission in submissions %}
+  <tr>
+    <td>{{ submission.id }}</td>
+    <td>{{ submission.created_at|date:"d.m.Y H:i" }}</td>
+    <td>{{ submission.get_status_display }}</td>
+    {% if result and result.status == "OK" %}
+      <td>{% if submission.metric %}{{ submission.metric }}{% else %}-{% endif %}</td>
+    {% endif %}
+    <td><a href="{% url 'submission_detail' submission.id %}">Открыть</a></td>
+  </tr>
+  {% empty %}
+  <tr><td colspan="5">Нет посылок</td></tr>
+  {% endfor %}
+</table>
