@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>{{ notebook.title }}</title>
+    {% load static %}
+    <script src="{% static 'notebook/js/utils.js' %}"></script>
+    <script src="{% static 'notebook/js/notebook_detail.js' %}"></script>
+</head>
+<body>
+    <div id="notebook-{{ notebook.id }}"
+         data-notebook-id="{{ notebook.id }}"
+         data-create-cell-url="{% url 'runner:create_cell' notebook.id %}"
+         data-runner-url="{% url 'runner:run_code' %}"
+         data-delete-url="{% url 'runner:delete_cell' %}"
+         data-save-output-url="{% url 'runner:save_cell_output' %}">
+
+        <h1>{{ notebook.title }}</h1>
+
+        <div class="notebook-actions">
+            <button data-action="create-cell">➕ Новая ячейка</button>
+        </div>
+
+        <div id="cells-container">
+            {% for cell in cells %}
+                {% include 'notebook/cell.html' with cell=cell notebook=notebook %}
+            {% endfor %}
+        </div>
+    </div>
+
+    {% csrf_token %}
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            notebookDetail.init({
+                notebookId: {{ notebook.id }},
+                csrfToken: '{{ csrf_token }}'
+            });
+        });
+    </script>
+</body>
+</html>
