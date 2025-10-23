@@ -3,3 +3,4 @@ from .notebook import Notebook
 from .cell import Cell
 from .report import Report
 from .submission import Submission
+from .contest import Contest

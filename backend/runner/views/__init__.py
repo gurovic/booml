@@ -11,3 +11,4 @@ from .get_reports_list import get_reports_list
 from .receive_test_result import receive_test_result
 from .task_detail import task_detail
 from .contest_draft import create_contest
+from .contest_draft import contest_success
