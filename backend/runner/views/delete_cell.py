@@ -1,7 +1,7 @@
 from django.shortcuts import get_object_or_404
 from django.http import JsonResponse
 from django.views.decorators.http import require_http_methods
-from ...runner.models import Notebook, Cell
+from ..models import Notebook, Cell
 
 
 @require_http_methods(["DELETE"])

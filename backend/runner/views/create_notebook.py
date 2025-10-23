@@ -1,6 +1,6 @@
 from django.http import JsonResponse
 from django.views.decorators.http import require_http_methods
-from ...runner.models import Notebook
+from ..models import Notebook
 
 
 @require_http_methods(["POST"])

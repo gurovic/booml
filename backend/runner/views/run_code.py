@@ -4,7 +4,7 @@ from django.views.decorators.csrf import csrf_protect
 from django.contrib.auth.decorators import login_required
 import json
 from pathlib import Path
-from ...runner.services import executor
+from ..services import executor
 
 
 @csrf_protect

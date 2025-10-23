@@ -3,7 +3,7 @@ from django.http import JsonResponse
 from django.views.decorators.http import require_http_methods
 from django.views.decorators.csrf import csrf_exempt
 import json
-from ...runner.models import Notebook, Cell
+from ..models import Notebook, Cell
 
 
 @csrf_exempt

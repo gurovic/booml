@@ -1,5 +1,5 @@
 from django.shortcuts import render
-from ...runner.models import Notebook
+from ..models import Notebook
 
 
 def notebook_list(request):
