@@ -21,4 +21,4 @@ class Contest(models.Model):
   }
   open = IntegerField(default=0, choices=OPEN_CHOICES)
   
-  leaderBoard = models.ForeignKey("Leaderboard", on_delete=models.CASCADE)
+  # leaderBoard = models.ForeignKey("Leaderboard", on_delete=models.CASCADE, null=True, blank=True)

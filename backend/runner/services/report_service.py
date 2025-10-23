@@ -1,7 +1,7 @@
 import logging
 from typing import Dict, Any
 from django.core.exceptions import ValidationError
-from .models import Report
+from ..models import Report
 
 logger = logging.getLogger(__name__)
 
