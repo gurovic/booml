@@ -20,12 +20,20 @@ class Submission(models.Model):
     ]
 
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="submissions")
-    problem = models.ForeignKey("Problem", on_delete=models.CASCADE, related_name="submissions")
+    task = models.ForeignKey("Task", on_delete=models.CASCADE, related_name="submissions")
     file = models.FileField(upload_to="submissions/")
     submitted_at = models.DateTimeField(auto_now_add=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="pending")
     code_size = models.PositiveIntegerField(default=0)
     metrics = models.JSONField(null=True, blank=True)  # {"accuracy": 0.87, "f1": 0.65}
+    
+    @property
+    def file_path(self) -> str:
+        """Алиас для совместимости с validation_service."""
+        try:
+            return self.file.path
+        except Exception:
+            return ""
 
     def save(self, *args, **kwargs):
         if self.file and not self.code_size:
@@ -36,8 +44,4 @@ class Submission(models.Model):
         super().save(*args, **kwargs)
 
     def __str__(self):
-        return f"{self.user.username} - {self.problem} ({self.score})"
-
-@receiver(post_save, sender=Submission)
-def submission_post_save(sender, instance, created, **kwargs):
-    enqueue_submission_for_evaluation.delay(instance.id)
+        return f"{self.user.username} - {self.task} [{self.status}]"
