@@ -1,5 +1,5 @@
 from django.shortcuts import render, get_object_or_404
-from ..models.task import Task
+from ..models.problem import Task
 
 
 def task_detail(request, task_id):
