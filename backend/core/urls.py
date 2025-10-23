@@ -23,6 +23,5 @@ urlpatterns = [
     path('runner/', include('runner.urls')),
     path('admin/', admin.site.urls),
     path('', include('runner.urls')),
-    path('notebook/', include('notebook.urls', namespace='notebook')),
     path('reverse.js', views.urls_js, name='reverse_js'),
 ]
