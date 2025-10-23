@@ -11,13 +11,15 @@
       <tr>
         <th>Название</th>
         <th>Создана</th>
+        <th>Рейтинг</th>
       </tr>
     </thead>
     <tbody>
       {% for p in page_obj %}
       <tr>
-          <td><a href="{% url 'task_details' p.id %}">{{ p.title }}</a></td>
+          <td><a href="{% url 'task_detail' p.id %}">{{ p.title }}</a></td>
           <td>{{ p.created_at|date:"d.m.Y" }}</td>
+          <td>{{ p.rating }}</td>
       </tr>
       {% empty %}
       <tr><td colspan="3">Нет задач</td></tr>
