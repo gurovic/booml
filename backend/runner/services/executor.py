@@ -58,7 +58,7 @@ def build_env() -> Dict[str, str]:
     return dict(cfg.PYTHON_ENV)
 
 
-def collect_outputs(run_dir: Path, stdout_bytes: bytes) -> List[OutputItem]:
+def collect_outputs(run_dir: Path, stdout_bytes: bytes, user=None, run_id=None, submission=None) -> List[OutputItem]:
     outputs: List[OutputItem] = []
 
     stdout_text = (stdout_bytes or b"")[:cfg.MAX_STD_BYTES].decode("utf-8", errors="replace")
@@ -105,8 +105,22 @@ def collect_outputs(run_dir: Path, stdout_bytes: bytes) -> List[OutputItem]:
 
     return outputs
 
+    # Регистрируем файлы в UserFile, если передан пользователь
+    if user and run_id:
+        try:
+            from .file_registry import register_files_from_directory
+            registered_files = register_files_from_directory(
+                run_dir=run_dir,
+                user=user,
+                run_id=run_id,
+                submission=submission
+            )
+            print(f"Зарегистрировано {len(registered_files)} файлов для пользователя {user.username}")
+        except Exception as e:
+            print(f"Ошибка регистрации файлов: {e}")
 
-def run_python(code: str, media_root: Path, run_id: str | None = None, timeout_s: int = cfg.TIMEOUT_S) -> RunResult:
+
+def run_python(code: str, media_root: Path, run_id: str | None = None, timeout_s: int = cfg.TIMEOUT_S, user=None, submission=None) -> RunResult:
     started_at = time.time()
     rid = run_id or uuid.uuid4().hex
     run_dir = media_root / cfg.RUNS_SUBDIR / rid
@@ -163,7 +177,7 @@ def run_python(code: str, media_root: Path, run_id: str | None = None, timeout_s
             except Exception:
                 cpu_s = mem_mb = None
 
-        outputs = collect_outputs(run_dir, stdout_bytes or b"")
+        outputs = collect_outputs(run_dir, stdout_bytes or b"", user=user, run_id=rid, submission=submission)
         stderr_text = (stderr_bytes or b"")[:cfg.MAX_STD_BYTES].decode("utf-8", errors="replace")
 
         ok = (proc.returncode == 0) and (not timed_out)

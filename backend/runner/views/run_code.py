@@ -4,7 +4,7 @@ from django.views.decorators.csrf import csrf_protect
 from django.contrib.auth.decorators import login_required
 import json
 from pathlib import Path
-from ...runner.services import executor
+from ..services import executor
 
 
 @csrf_protect
@@ -34,7 +34,8 @@ def run_code(request):
         result = executor.run_python(
             code=code,
             media_root=media_root,
-            run_id=run_id
+            run_id=run_id,
+            user=request.user
         )
 
         response_data = {
