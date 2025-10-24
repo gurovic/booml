@@ -8,3 +8,4 @@ from .contest import Contest
 from .submission_pre_validation import SubmissionPreValidation
 from .leaderboard import Leaderboard
 from .notebook import Notebook
+from .task import Task as Problem
