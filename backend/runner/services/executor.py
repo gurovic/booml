@@ -46,12 +46,26 @@ class RunResult:
 
 
 def _apply_limits() -> None:
-    os.setsid()
+    try:
+        os.setsid()
+    except Exception:
+        return
     if resource is None:
         return
-    resource.setrlimit(resource.RLIMIT_CPU, (cfg.TIMEOUT_S + 1, cfg.TIMEOUT_S + 1))
-    resource.setrlimit(resource.RLIMIT_FSIZE, (cfg.MAX_FILE_BYTES, cfg.MAX_FILE_BYTES))
-    resource.setrlimit(resource.RLIMIT_AS, (512 * 1024 * 1024, 512 * 1024 * 1024))
+    try:
+        resource.setrlimit(resource.RLIMIT_CPU, (cfg.TIMEOUT_S + 1, cfg.TIMEOUT_S + 1))
+    except Exception:
+        pass
+
+    try:
+        resource.setrlimit(resource.RLIMIT_FSIZE, (cfg.MAX_FILE_BYTES, cfg.MAX_FILE_BYTES))
+    except Exception:
+        pass
+
+    try:
+        resource.setrlimit(resource.RLIMIT_AS, (512 * 1024 * 1024, 512 * 1024 * 1024))
+    except Exception:
+        pass
 
 
 def build_env() -> Dict[str, str]:
@@ -109,7 +123,8 @@ def collect_outputs(run_dir: Path, stdout_bytes: bytes) -> List[OutputItem]:
 def run_python(code: str, media_root: Path, run_id: str | None = None, timeout_s: int = cfg.TIMEOUT_S) -> RunResult:
     started_at = time.time()
     rid = run_id or uuid.uuid4().hex
-    run_dir = media_root / cfg.RUNS_SUBDIR / rid
+    run_root = media_root / cfg.RUNS_SUBDIR if cfg.RUNS_SUBDIR else media_root
+    run_dir = run_root / rid
 
     try:
         code_bytes = code.encode("utf-8", errors="replace")
