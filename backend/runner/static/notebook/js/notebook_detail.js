@@ -15,7 +15,13 @@ const notebookDetail = {
             return '';
         }
 
-        return template.replace(/0\/?$/, `${cellId}/`);
+        const placeholderRegex = /\/0(\/|$)/;
+
+        if (!placeholderRegex.test(template)) {
+            return '';
+        }
+
+        return template.replace(placeholderRegex, (_match, separator) => `/${cellId}${separator}`);
     },
 
     bindEvents() {
@@ -44,6 +50,11 @@ const notebookDetail = {
     async createCell() {
         try {
             const createCellUrl = this.notebookElement.dataset.createCellUrl;
+
+            if (!createCellUrl) {
+                throw new Error('URL создания ячейки недоступен');
+            }
+
             const response = await fetch(createCellUrl, {
                 method: 'POST',
                 headers: {
@@ -54,7 +65,13 @@ const notebookDetail = {
             if (!response.ok) throw new Error('HTTP error ' + response.status);
 
             const html = await response.text();
-            document.getElementById('cells-container').innerHTML += html;
+            const container = document.getElementById('cells-container');
+
+            if (!container) {
+                throw new Error('Контейнер для ячеек не найден');
+            }
+
+            container.insertAdjacentHTML('beforeend', html);
 
         } catch (error) {
             console.error('Ошибка:', error);
@@ -95,7 +112,8 @@ const notebookDetail = {
                 cellId,
                 code,
                 `<div class="output-error">Ошибка: ${NotebookUtils.escapeHtml(error.message)}</div>`,
-                this.config.csrfToken
+                this.config.csrfToken,
+                saveOutputUrl
             );
         }
     },
@@ -104,7 +122,12 @@ const notebookDetail = {
         if (!confirm('Удалить ячейку?')) return;
 
         try {
-            const deleteUrl = this.notebookElement.dataset.deleteUrl;
+            const deleteUrl = this.buildCellUrl(this.deleteUrlTemplate, cellId);
+
+            if (!deleteUrl) {
+                throw new Error('URL удаления ячейки недоступен');
+            }
+
             const response = await fetch(deleteUrl, {
                 method: 'DELETE',
                 headers: {

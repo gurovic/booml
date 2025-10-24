@@ -13,7 +13,7 @@ def _int(name: str, default: int) -> int:
 
 @dataclass(frozen=True)
 class RunnerConfig:
-    RUNS_SUBDIR: str = os.getenv("RUNS_SUBDIR", "runs")
+    RUNS_SUBDIR: str = os.getenv("RUNS_SUBDIR", "")
 
     TIMEOUT_S: int = _int("RUN_TIMEOUT_S", 10)
     MAX_CODE_BYTES: int = _int("RUN_MAX_CODE_BYTES", 200_000)
