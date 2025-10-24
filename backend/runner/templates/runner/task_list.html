@@ -5,40 +5,58 @@
   <title>Список всех задач</title>
 </head>
 <body>
-  <h1>Список задач</h1>
-  <table>
-    <thead>
-      <tr>
-        <th>Название</th>
-        <th>Создана</th>
-        <th>Рейтинг</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for p in page_obj %}
-      <tr>
-          <td><a href="{% url 'task_detail' p.id %}">{{ p.title }}</a></td>
-          <td>{{ p.created_at|date:"d.m.Y" }}</td>
-          <td>{{ p.rating }}</td>
-      </tr>
-      {% empty %}
-      <tr><td colspan="3">Нет задач</td></tr>
+  <!-- html -->
+<h1>Список задач</h1>
+
+<form method="get" class="filters">
+  <label>Мин. рейтинг:
+    <input type="number" name="min_rating" value="{{ min_rating }}">
+  </label>
+  <label>Макс. рейтинг:
+    <input type="number" name="max_rating" value="{{ max_rating }}">
+  </label>
+  <button type="submit">Фильтровать</button>
+  <a href="{{ request.path }}">Сбросить</a>
+</form>
+
+<table>
+  <thead>
+    <tr>
+      <th>Название</th>
+      <th>Дата создания</th>
+      <th>Рейтинг</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% if page_obj.object_list %}
+      {% for task in page_obj.object_list %}
+        <tr>
+          <td><a href="{% url 'task_detail' task.id %}">{{ task.title }}</a></td>
+          <td>{{ task.created_at }}</td>
+          <td>{{ task.rating }}</td>
+        </tr>
       {% endfor %}
-    </tbody>
-  </table>
-
-  <div class="pagination">
-    {% if page_obj.has_previous %}
-      <a href="?page=1">« Первая</a>
-      <a href="?page={{ page_obj.previous_page_number }}">‹ Пред</a>
+    {% else %}
+      <tr>
+        <td colspan="3">Нет задач</td>
+      </tr>
     {% endif %}
+  </tbody>
+</table>
 
-    <span class="current">Стр. {{ page_obj.number }} из {{ page_obj.paginator.num_pages }}</span>
+{% if page_obj.has_other_pages %}
+<nav class="pagination">
+  {% if page_obj.has_previous %}
+    <a href="?page={{ page_obj.previous_page_number }}{% if querystring %}&{{ querystring }}{% endif %}">Предыдущая</a>
+  {% endif %}
 
-    {% if page_obj.has_next %}
-      <a href="?page={{ page_obj.next_page_number }}">След ›</a>
-      <a href="?page={{ page_obj.paginator.num_pages }}">Последняя »</a>
-    {% endif %}
-  </div>
+  <span>Страница {{ page_obj.number }} из {{ page_obj.paginator.num_pages }}</span>
+
+  {% if page_obj.has_next %}
+    <a href="?page={{ page_obj.next_page_number }}{% if querystring %}&{{ querystring }}{% endif %}">Следующая</a>
+  {% endif %}
+</nav>
+{% endif %}
+
 </body>
 </html>
