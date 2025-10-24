@@ -11,8 +11,8 @@
          data-notebook-id="{{ notebook.id }}"
          data-create-cell-url="{% url 'runner:create_cell' notebook.id %}"
          data-runner-url="{% url 'runner:run_code' %}"
-         data-delete-url="{% url 'runner:delete_cell' %}"
-         data-save-output-url="{% url 'runner:save_cell_output' %}">
+         data-delete-url-template="{% url 'runner:delete_cell' notebook.id 0 %}"
+         data-save-output-url-template="{% url 'runner:save_cell_output' notebook.id 0 %}">
 
         <h1>{{ notebook.title }}</h1>
 

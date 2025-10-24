@@ -16,4 +16,4 @@ def create_cell(request, notebook_id):
         execution_order=new_order
     )
 
-    return render(request, 'cell.html', {'cell': cell})
+    return render(request, 'notebook/cell.html', {'cell': cell, 'notebook': notebook})

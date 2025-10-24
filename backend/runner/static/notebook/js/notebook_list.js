@@ -26,7 +26,7 @@ const notebookList = {
         try {
             const container = document.getElementById('notebooks-container');
             const createUrl = container.dataset.createNotebookUrl;
-            const notebookUrl = container.dataset.notebookDetailUrl
+            const notebookUrlTemplate = container.dataset.notebookDetailUrl;
 
             const response = await fetch(createUrl, {
                 method: 'POST',
@@ -40,7 +40,8 @@ const notebookList = {
             const data = await response.json();
 
             if (data.status === 'success') {
-                window.location.href = notebookUrl;
+                const detailUrl = notebookUrlTemplate.replace(/0\/?$/, `${data.notebook_id}/`);
+                window.location.href = detailUrl;
             } else {
                 alert('Ошибка: ' + (data.message || 'неизвестная ошибка'));
             }

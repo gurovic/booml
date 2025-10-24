@@ -22,6 +22,9 @@ const NotebookUtils = {
                     output += `<div class="output-text"><pre>${escapedText}</pre></div>`;
                 }
             });
+        } else if (data.output) {
+            const escapedText = this.escapeHtml(data.output);
+            output += `<div class="output-text"><pre>${escapedText}</pre></div>`;
         }
 
         if (data.stderr) {
@@ -31,16 +34,17 @@ const NotebookUtils = {
 
         if (data.errors && data.errors.length > 0) {
             const errorMessages = data.errors.map(error =>
-                `${error.code}: ${error.msg}`
+                error.code && error.msg ? `${error.code}: ${error.msg}` : error.msg || error
             );
             const escapedErrors = this.escapeHtml(errorMessages.join('\n'));
             output += `<div class="output-errors"><strong>ERRORS:</strong><pre>${escapedErrors}</pre></div>`;
         }
 
-        if (data.elapsed_ms !== undefined) {
+        const elapsed = data.elapsed_ms ?? data.stats?.execution_time_ms;
+        if (elapsed !== undefined) {
             output += `<div class="output-stats">
                 <hr>
-                <small>Время выполнения: ${data.elapsed_ms}ms |
+                <small>Время выполнения: ${elapsed}ms |
                 Exit code: ${data.stats?.exit_code || 0}
                 ${data.stats?.timeout ? '| ⚠️ Таймаут' : ''}
                 </small>
@@ -71,18 +75,18 @@ const NotebookUtils = {
 
             const data = await response.json();
 
-            if (data.ok) {
+            if (data.status === 'success') {
                 return {
                     output: this.formatRunnerOutput(data),
                     run_id: data.run_id,
                     stats: {
-                        execution_time_ms: data.elapsed_ms,
+                        execution_time_ms: data.stats?.execution_time_ms ?? data.elapsed_ms ?? null,
                         exit_code: data.stats?.exit_code || 0,
                         timeout: data.stats?.timeout || false
                     }
                 };
             } else {
-                const errorMsg = data.errors?.[0]?.msg || 'Execution failed';
+                const errorMsg = data.errors?.[0]?.msg || data.message || 'Execution failed';
                 throw new Error(errorMsg);
             }
 
@@ -92,6 +96,10 @@ const NotebookUtils = {
     },
 
     async saveCellOutput(notebookId, cellId, code, output, csrfToken, saveOutputUrl) {
+
+        if (!saveOutputUrl) {
+            return;
+        }
 
         try {
             await fetch(saveOutputUrl, {

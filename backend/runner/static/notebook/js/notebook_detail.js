@@ -5,7 +5,17 @@ const notebookDetail = {
     init(config) {
         this.config = config;
         this.notebookElement = document.querySelector(`[data-notebook-id="${config.notebookId}"]`);
+        this.deleteUrlTemplate = this.notebookElement?.dataset.deleteUrlTemplate || '';
+        this.saveOutputUrlTemplate = this.notebookElement?.dataset.saveOutputUrlTemplate || '';
         this.bindEvents();
+    },
+
+    buildCellUrl(template, cellId) {
+        if (!template) {
+            return '';
+        }
+
+        return template.replace(/0\/?$/, `${cellId}/`);
     },
 
     bindEvents() {
@@ -56,7 +66,7 @@ const notebookDetail = {
         const code = document.querySelector(`[data-cell-id="${cellId}"] textarea`).value;
         const outputElement = document.getElementById(`output-${cellId}`);
         const runnerUrl = this.notebookElement.dataset.runnerUrl;
-        const OutputUrl = this.notebookElement.dataset.saveOutputUrl;
+        const saveOutputUrl = this.buildCellUrl(this.saveOutputUrlTemplate, cellId);
 
         try {
             outputElement.innerHTML = '<div class="output-loading">Выполнение...</div>';
@@ -73,7 +83,7 @@ const notebookDetail = {
                 code,
                 result.output,
                 this.config.csrfToken,
-                OutputUrl
+                saveOutputUrl
             );
 
         } catch (error) {
