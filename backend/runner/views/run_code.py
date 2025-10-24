@@ -1,7 +1,6 @@
 from django.http import JsonResponse
 from django.views.decorators.http import require_http_methods
 from django.views.decorators.csrf import csrf_protect
-from django.contrib.auth.decorators import login_required
 import json
 from pathlib import Path
 from ..services import executor
@@ -9,7 +8,6 @@ from ..services import executor
 
 @csrf_protect
 @require_http_methods(["POST"])
-@login_required
 def run_code(request):
     try:
         data = json.loads(request.body)

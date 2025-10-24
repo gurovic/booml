@@ -210,3 +210,5 @@ __marimo__/
 backend/runner/migrations/
 *.sqlite
 *.db
+
+backend/data/

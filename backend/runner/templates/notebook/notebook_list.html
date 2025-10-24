@@ -11,14 +11,14 @@
 
     <div id="notebooks-container"
          data-create-notebook-url="{% url 'runner:create_notebook' %}"
-         data-notebook-detail-url="{% url 'runner:notebook_detail' %}">
+         data-notebook-detail-url="{% url 'runner:notebook_detail' 0 %}">
 
         <button id="create-notebook-btn" data-action="create-notebook">Новый блокнот</button>
 
         <div id="notebooks-list">
             {% for notebook in notebooks %}
             <div class="notebook-item" data-notebook-id="{{ notebook.id }}">
-                <a href="{% url 'notebook:notebook_detail' notebook.id %}">
+                <a href="{% url 'runner:notebook_detail' notebook.id %}">
                     {{ notebook.title }} (ID: {{ notebook.id }})
                 </a>
             </div>

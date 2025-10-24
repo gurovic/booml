@@ -18,11 +18,9 @@ from django.contrib import admin
 from django.urls import path, include
 from django_reverse_js import views
 
-
 urlpatterns = [
-    path('runner/', include('runner.urls')),
     path('admin/', admin.site.urls),
-    path('', include('runner.urls')),
+    path('', include(('runner.urls', 'runner'), namespace='runner')),
     path('reverse.js', views.urls_js, name='reverse_js'),
     path('api/', include('runner.api.urls'))
 ]

@@ -6,9 +6,10 @@ from ..models import Notebook
 @require_http_methods(["POST"])
 def create_notebook(request):
     try:
+        owner = request.user if request.user.is_authenticated else None
         notebook = Notebook.objects.create(
             title="Новый блокнот",
-            owner=request.user,
+            owner=owner,
             # problem=None
         )
         return JsonResponse({
