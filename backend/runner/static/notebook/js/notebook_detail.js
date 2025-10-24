@@ -85,6 +85,8 @@ const notebookDetail = {
         const runnerUrl = this.notebookElement.dataset.runnerUrl;
         const saveOutputUrl = this.buildCellUrl(this.saveOutputUrlTemplate, cellId);
 
+        this.renderArtifacts(cellId, []);
+
         try {
             outputElement.innerHTML = '<div class="output-loading">Выполнение...</div>';
             outputElement.className = 'output running';
@@ -93,6 +95,8 @@ const notebookDetail = {
 
             outputElement.innerHTML = result.output;
             outputElement.className = 'output success';
+
+            this.renderArtifacts(cellId, result.artifacts);
 
             await NotebookUtils.saveCellOutput(
                 this.config.notebookId,
@@ -107,6 +111,9 @@ const notebookDetail = {
             outputElement.innerHTML = `<div class="output-error"><strong>Ошибка:</strong> ${NotebookUtils.escapeHtml(error.message)}</div>`;
             outputElement.className = 'output error';
 
+            const artifacts = Array.isArray(error?.artifacts) ? error.artifacts : [];
+            this.renderArtifacts(cellId, artifacts);
+
             await NotebookUtils.saveCellOutput(
                 this.config.notebookId,
                 cellId,
@@ -116,6 +123,33 @@ const notebookDetail = {
                 saveOutputUrl
             );
         }
+    },
+
+    renderArtifacts(cellId, artifacts) {
+        const container = document.getElementById(`artifacts-${cellId}`);
+
+        if (!container) {
+            return;
+        }
+
+        if (!Array.isArray(artifacts) || artifacts.length === 0) {
+            container.innerHTML = '';
+            container.classList.remove('has-artifacts');
+            return;
+        }
+
+        const items = artifacts.map(artifact => {
+            const name = NotebookUtils.escapeHtml(artifact?.name || 'artifact');
+            const url = typeof artifact?.url === 'string' ? encodeURI(artifact.url) : '#';
+
+            return `<li><a href="${url}" download target="_blank" rel="noopener noreferrer">${name}</a></li>`;
+        }).join('');
+
+        container.innerHTML = `
+            <div class="artifacts-title">Attachments</div>
+            <ul class="artifacts-list">${items}</ul>
+        `;
+        container.classList.add('has-artifacts');
     },
 
     async deleteCell(cellId, cellElement) {
