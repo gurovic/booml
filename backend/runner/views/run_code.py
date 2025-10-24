@@ -73,6 +73,9 @@ def run_code(request):
 def serialize_artifacts(artifacts, media_root: Path, request) -> list[dict]:
     media_root = media_root.resolve()
     media_url = settings.MEDIA_URL or '/'
+    base_media_url = request.build_absolute_uri(media_url)
+    if not base_media_url.endswith('/'):
+        base_media_url = f"{base_media_url}/"
     serialized = []
 
     for artifact_path in artifacts:
@@ -84,12 +87,8 @@ def serialize_artifacts(artifacts, media_root: Path, request) -> list[dict]:
             relative_url = relative_path.name
 
         artifact_name = relative_path.name
-        absolute_url = request.build_absolute_uri(
-            urljoin(
-                media_url if media_url.endswith('/') else f"{media_url}/",
-                relative_url.replace(os.sep, '/')
-            )
-        )
+        relative_url_normalized = relative_url.replace(os.sep, '/')
+        absolute_url = urljoin(base_media_url, relative_url_normalized)
         serialized.append({
             'name': artifact_name,
             'url': absolute_url

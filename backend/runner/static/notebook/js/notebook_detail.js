@@ -146,7 +146,7 @@ const notebookDetail = {
         }).join('');
 
         container.innerHTML = `
-            <div class="artifacts-title">Attachments</div>
+            <div class="artifacts-title">Вложения</div>
             <ul class="artifacts-list">${items}</ul>
         `;
         container.classList.add('has-artifacts');
