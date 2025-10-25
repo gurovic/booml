@@ -43,6 +43,7 @@ class RunResult:
     stderr: str
     stats: RunStats
     errors: List[Dict[str, Any]]
+    artifacts: List[Path]
 
 
 def _apply_limits() -> None:
@@ -120,6 +121,27 @@ def collect_outputs(run_dir: Path, stdout_bytes: bytes) -> List[OutputItem]:
     return outputs
 
 
+def collect_artifacts(run_dir: Path) -> List[Path]:
+    artifacts: List[Path] = []
+
+    for path in sorted(run_dir.rglob("*")):
+        if not path.is_file():
+            continue
+
+        if path.name == "main.py":
+            continue
+
+        try:
+            if path.stat().st_size > cfg.MAX_FILE_BYTES:
+                continue
+        except Exception:
+            continue
+
+        artifacts.append(path)
+
+    return artifacts
+
+
 def run_python(code: str, media_root: Path, run_id: str | None = None, timeout_s: int = cfg.TIMEOUT_S) -> RunResult:
     started_at = time.time()
     rid = run_id or uuid.uuid4().hex
@@ -136,6 +158,7 @@ def run_python(code: str, media_root: Path, run_id: str | None = None, timeout_s
                 stderr="",
                 stats=RunStats(-1, 0, None, None, False),
                 errors=[{"code": "payload_too_large", "msg": f"code > {cfg.MAX_CODE_BYTES} bytes"}],
+                artifacts=[],
             )
 
         run_dir.mkdir(parents=True, exist_ok=True)
@@ -188,6 +211,8 @@ def run_python(code: str, media_root: Path, run_id: str | None = None, timeout_s
         if proc.returncode != 0 and not timed_out:
             errors.append({"code": "nonzero_exit", "msg": f"exit {proc.returncode}"})
 
+        artifacts = collect_artifacts(run_dir)
+
         return RunResult(
             ok=ok,
             run_id=rid,
@@ -195,6 +220,7 @@ def run_python(code: str, media_root: Path, run_id: str | None = None, timeout_s
             stderr=stderr_text,
             stats=RunStats(int(proc.returncode or 0), elapsed_ms, cpu_s, mem_mb, timed_out),
             errors=errors,
+            artifacts=artifacts,
         )
 
     except Exception as e:
@@ -205,4 +231,5 @@ def run_python(code: str, media_root: Path, run_id: str | None = None, timeout_s
             stderr="",
             stats=RunStats(-1, int((time.time() - started_at) * 1000), None, None, False),
             errors=[{"code": "internal", "msg": str(e), "traceback": traceback.format_exc(limit=5)}],
+            artifacts=[],
         )

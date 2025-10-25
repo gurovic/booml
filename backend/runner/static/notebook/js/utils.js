@@ -83,15 +83,25 @@ const NotebookUtils = {
                         execution_time_ms: data.stats?.execution_time_ms ?? data.elapsed_ms ?? null,
                         exit_code: data.stats?.exit_code || 0,
                         timeout: data.stats?.timeout || false
-                    }
+                    },
+                    artifacts: Array.isArray(data.artifacts) ? data.artifacts : []
                 };
             } else {
                 const errorMsg = data.errors?.[0]?.msg || data.message || 'Execution failed';
-                throw new Error(errorMsg);
+                const error = new Error(errorMsg);
+                error.artifacts = Array.isArray(data.artifacts) ? data.artifacts : [];
+                throw error;
             }
 
         } catch (error) {
-            throw new Error(`Execution error: ${error.message}`);
+            const message = error instanceof Error ? error.message : String(error);
+            const wrappedError = new Error(`Execution error: ${message}`);
+
+            if (error && typeof error === 'object' && 'artifacts' in error) {
+                wrappedError.artifacts = error.artifacts;
+            }
+
+            throw wrappedError;
         }
     },
 
