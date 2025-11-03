@@ -1,19 +1,37 @@
-<div class="cell" data-cell-id="{{ cell.id }}">
+<div class="cell" data-cell-id="{{ cell.id }}" data-cell-type="{{ cell.cell_type }}">
     <div class="cell-header">
         <div class="cell-title">
             Ячейка {{ cell.execution_order|add:1 }}
         </div>
         <div class="cell-actions">
-            <button data-action="run-cell">Запустить</button>
-            <button data-action="delete-cell">Удалить</button>
+            {% if cell.cell_type == cell.CODE %}
+                <button type="button" data-action="run-cell">Запустить</button>
+            {% endif %}
+            <button type="button" data-action="delete-cell">Удалить</button>
         </div>
     </div>
 
-    <div class="cell-content">
-        <textarea placeholder="Введите ваш код здесь...">{{ cell.content }}</textarea>
-        <div class="output" id="output-{{ cell.id }}">
-            {% if cell.output %}{{ cell.output|safe }}{% endif %}
+    {% if cell.cell_type == cell.LATEX %}
+        <div class="cell-content latex-cell" data-latex-container>
+            <div class="latex-display" data-latex-display>{{ cell.content }}</div>
+            <div class="latex-editor" data-latex-editor hidden>
+                <textarea data-latex-textarea disabled placeholder="Введите ваш LaTeX или текст здесь...">{{ cell.content }}</textarea>
+                <div class="latex-editor-actions">
+                    <button type="button" data-action="save-latex">Сохранить</button>
+                    <button type="button" data-action="cancel-latex">Отмена</button>
+                </div>
+            </div>
+            <div class="latex-actions">
+                <button type="button" data-action="edit-latex">Редактировать</button>
+            </div>
         </div>
-        <div class="cell-artifacts" id="artifacts-{{ cell.id }}"></div>
-    </div>
+    {% else %}
+        <div class="cell-content">
+            <textarea placeholder="Введите ваш код здесь...">{{ cell.content }}</textarea>
+            <div class="output" id="output-{{ cell.id }}">
+                {% if cell.output %}{{ cell.output|safe }}{% endif %}
+            </div>
+            <div class="cell-artifacts" id="artifacts-{{ cell.id }}"></div>
+        </div>
+    {% endif %}
 </div>

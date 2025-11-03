@@ -3,6 +3,28 @@
 <head>
     <title>{{ notebook.title }}</title>
     {% load static %}
+    <script>
+        window.MathJax = {
+            tex: {
+                inlineMath: [['$', '$'], ['\\(', '\\)']],
+                displayMath: [['$$', '$$'], ['\\[', '\\]']]
+            },
+            svg: {
+                fontCache: 'global'
+            },
+            startup: {
+                typeset: false,
+                ready: () => {
+                    MathJax.startup.defaultReady();
+                    if (window.NotebookUtils?.flushLatexQueue) {
+                        window.NotebookUtils.flushLatexQueue();
+                    }
+                }
+            }
+        };
+    </script>
+    <script defer src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/markdown-it@13.0.1/dist/markdown-it.min.js"></script>
     <script src="{% static 'notebook/js/utils.js' %}"></script>
     <script src="{% static 'notebook/js/notebook_detail.js' %}"></script>
 </head>
@@ -10,6 +32,7 @@
     <div id="notebook-{{ notebook.id }}"
          data-notebook-id="{{ notebook.id }}"
          data-create-cell-url="{% url 'runner:create_cell' notebook.id %}"
+         data-create-latex-cell-url="{% url 'runner:create_latex_cell' notebook.id %}"
          data-runner-url="{% url 'runner:run_code' %}"
          data-delete-url-template="{% url 'runner:delete_cell' notebook.id 0 %}"
          data-save-output-url-template="{% url 'runner:save_cell_output' notebook.id 0 %}">
@@ -43,6 +66,7 @@
                 <button type="submit" data-action="delete-notebook">🗑 Удалить блокнот</button>
             </form>
             <button data-action="create-cell">➕ Новая ячейка</button>
+            <button data-action="create-latex-cell">➕ Новая LaTeX-ячейка</button>
         </div>
 
         <div id="cells-container">
