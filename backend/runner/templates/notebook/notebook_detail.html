@@ -15,7 +15,10 @@
          data-save-output-url-template="{% url 'runner:save_cell_output' notebook.id 0 %}">
 
         <div class="notebook-header">
-            <h1 id="notebook-title">{{ notebook.title }}</h1>
+            <div class="notebook-header-title">
+                <a class="notebook-back-link" href="{% url 'runner:notebook_list' %}">← К списку блокнотов</a>
+                <h1 id="notebook-title">{{ notebook.title }}</h1>
+            </div>
             <form id="rename-notebook-form"
                   class="notebook-rename-form"
                   method="post"
