@@ -28,15 +28,33 @@ const notebookDetail = {
         if (this.notebookElement) {
             this.notebookElement.addEventListener('click', this.handleNotebookClick.bind(this));
         }
+
+        const deleteForm = document.getElementById('delete-notebook-form');
+        if (deleteForm) {
+            deleteForm.addEventListener('submit', (event) => {
+                if (!confirm('Удалить ноутбук?')) {
+                    event.preventDefault();
+                }
+            });
+        }
     },
 
     handleNotebookClick(e) {
-        const target = e.target;
-        const action = target.dataset.action;
-        const cellElement = target.closest('[data-cell-id]');
+        const actionTarget = e.target.closest('[data-action]');
+
+        if (!actionTarget || !this.notebookElement?.contains(actionTarget)) {
+            return;
+        }
+
+        const action = actionTarget.dataset.action;
+        const cellElement = actionTarget.closest('[data-cell-id]');
         const cellId = cellElement ? cellElement.dataset.cellId : null;
 
-        if (action === 'create-cell') {
+        if (action === 'delete-notebook') {
+            e.preventDefault();
+            this.deleteNotebook(actionTarget);
+        }
+        else if (action === 'create-cell') {
             this.createCell();
         }
         else if (action === 'run-cell' && cellId) {
@@ -176,6 +194,18 @@ const notebookDetail = {
         } catch (error) {
             console.error('Ошибка:', error);
             alert('Ошибка при удалении ячейки: ' + error.message);
+        }
+    }
+
+    deleteNotebook(buttonElement) {
+        const form = buttonElement.closest('form');
+
+        if (!form) {
+            return;
+        }
+
+        if (confirm('Удалить ноутбук?')) {
+            form.submit();
         }
     }
 };

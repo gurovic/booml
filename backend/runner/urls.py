@@ -7,6 +7,7 @@ from .views.tasks import task_list
 
 from .views.notebook_list import notebook_list
 from .views.create_notebook import create_notebook
+from .views.delete_notebook import delete_notebook
 from .views.rename_notebook import rename_notebook
 from .views.notebook_detail import notebook_detail
 from .views.create_cell import create_cell
@@ -38,6 +39,7 @@ urlpatterns = [
     path('contest/success/', contest_success, name='contest_success'),
     path('notebook', notebook_list, name='notebook_list'),
     path('notebook/new/', create_notebook, name='create_notebook'),
+    path('notebook/<int:notebook_id>/delete/', delete_notebook, name='delete_notebook'),
     path('notebook/<int:notebook_id>/rename/', rename_notebook, name='rename_notebook'),
     path('notebook/<int:notebook_id>/', notebook_detail, name='notebook_detail'),
     path('notebook/<int:notebook_id>/cell/new/', create_cell, name='create_cell'),

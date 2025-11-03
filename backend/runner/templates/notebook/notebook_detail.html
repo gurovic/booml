@@ -32,6 +32,13 @@
         </div>
 
         <div class="notebook-actions">
+            <form id="delete-notebook-form"
+                  class="delete-notebook-form"
+                  method="post"
+                  action="{% url 'runner:delete_notebook' notebook.id %}">
+                {% csrf_token %}
+                <button type="submit" data-action="delete-notebook">🗑 Удалить блокнот</button>
+            </form>
             <button data-action="create-cell">➕ Новая ячейка</button>
         </div>
 
