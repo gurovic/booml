@@ -14,7 +14,22 @@
          data-delete-url-template="{% url 'runner:delete_cell' notebook.id 0 %}"
          data-save-output-url-template="{% url 'runner:save_cell_output' notebook.id 0 %}">
 
-        <h1>{{ notebook.title }}</h1>
+        <div class="notebook-header">
+            <h1 id="notebook-title">{{ notebook.title }}</h1>
+            <form id="rename-notebook-form"
+                  class="notebook-rename-form"
+                  method="post"
+                  action="{% url 'runner:rename_notebook' notebook.id %}">
+                {% csrf_token %}
+                <label for="notebook-rename-input">Новое название:</label>
+                <input type="text"
+                       id="notebook-rename-input"
+                       name="title"
+                       value="{{ notebook.title }}"
+                       placeholder="Введите новое название блокнота">
+                <button type="submit">Сохранить</button>
+            </form>
+        </div>
 
         <div class="notebook-actions">
             <button data-action="create-cell">➕ Новая ячейка</button>

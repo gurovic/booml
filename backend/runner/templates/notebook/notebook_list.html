@@ -18,7 +18,7 @@
         <div id="notebooks-list">
             {% for notebook in notebooks %}
             <div class="notebook-item" data-notebook-id="{{ notebook.id }}">
-                <a href="{% url 'runner:notebook_detail' notebook.id %}">
+                <a class="notebook-link" href="{% url 'runner:notebook_detail' notebook.id %}">
                     {{ notebook.title }} (ID: {{ notebook.id }})
                 </a>
             </div>
