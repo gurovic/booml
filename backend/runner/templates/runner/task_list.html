@@ -17,7 +17,7 @@
     <tbody>
       {% for p in page_obj %}
       <tr>
-          <td><a href="{% url 'task_detail' p.id %}">{{ p.title }}</a></td>
+          <td><a href="{% url 'runner:task_detail' p.id %}">{{ p.title }}</a></td>
           <td>{{ p.created_at|date:"d.m.Y" }}</td>
           <td>{{ p.rating }}</td>
       </tr>

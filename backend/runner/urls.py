@@ -27,7 +27,7 @@ urlpatterns = [
     path('api/reports/', get_reports_list, name='reports-list'),
     # POST /runner/api/reports/create/ - создать новый отчёт
     path('api/reports/create/', receive_test_result, name='receive-test-result'),
-    path("", main_page, name="task_list"),
+    path("", main_page, name="main_page"),
     path('register/', register_view, name='register'),
     path('login/', login_view, name='login'),
     path('task/<int:task_id>/submissions/', submission_list, name="submission_list"),
