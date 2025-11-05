@@ -9,10 +9,14 @@
 <body>
     <div class="task-container">
         <h1>{{ task.title }}</h1>
-        <p class="description">{{ task.description }}</p>
+        <p>Сложность: {{ task.rating }}</p>
+        <p class="description">{{ task.statement }}</p>
 
         {% if task.data %}
-            <p><strong>Dataset:</strong> {{ task.data }}</p>
+            <p>
+                <strong>Dataset:</strong>
+                <a href="{{ task.data.url }}" download>Скачать файл</a>
+            </p>
         {% endif %}
     </div>
 </body>
