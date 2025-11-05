@@ -31,7 +31,7 @@
     {% if page_obj.object_list %}
       {% for task in page_obj.object_list %}
         <tr>
-          <td><a href="{% url 'task_detail' task.id %}">{{ task.title }}</a></td>
+          <td><a href="{% url 'runner:task_detail' task.id %}">{{ task.title }}</a></td>
           <td>{{ task.created_at }}</td>
           <td>{{ task.rating }}</td>
         </tr>
