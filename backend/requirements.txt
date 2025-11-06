@@ -3,6 +3,11 @@ django-reverse-js==0.1.8
 celery==5.3.0
 djangorestframework==3.16.1
 pydantic==2.12.3
+<<<<<<< HEAD
 coverage==7.11.0
 pandas==2.2.3
 scikit-learn==1.6.1
+=======
+coverage=7.11.0
+markdown>=3.5
+>>>>>>> main
