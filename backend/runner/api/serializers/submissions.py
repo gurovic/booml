@@ -2,18 +2,18 @@ from rest_framework import serializers
 from django.contrib.auth import get_user_model
 
 from ...models.submission import Submission
-from ...models.task import Task
+from ...models.problem import Problem
 
 User = get_user_model()
 
 
 class SubmissionCreateSerializer(serializers.ModelSerializer):
-    task_id = serializers.IntegerField(write_only=True)
+    problem_id = serializers.IntegerField(write_only=True)
     file = serializers.FileField(write_only=True)
 
     class Meta:
         model = Submission
-        fields = ["id", "task_id", "file", "submitted_at", "status", "code_size"]
+        fields = ["id", "problem_id", "file", "submitted_at", "status", "code_size"]
         read_only_fields = ["id", "submitted_at", "status", "code_size"]
 
     def validate_file(self, f):
@@ -28,26 +28,26 @@ class SubmissionCreateSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         request = self.context.get("request")
         user = request.user
-        task_id = validated_data.pop("task_id")
+        problem_id = validated_data.pop("problem_id")
 
         try:
-            task = Task.objects.get(pk=task_id)
-        except Task.DoesNotExist:
-            raise serializers.ValidationError({"task_id": "Задача (Task) не найдена"})
+            problem = Problem.objects.get(pk=problem_id)
+        except Problem.DoesNotExist:
+            raise serializers.ValidationError({"problem_id": "Задача (Problem) не найдена"})
 
-        submission = Submission.objects.create(user=user, task=task, **validated_data)
+        submission = Submission.objects.create(user=user, problem=problem, **validated_data)
         return submission
 
 
 class SubmissionReadSerializer(serializers.ModelSerializer):
-    task_id = serializers.IntegerField(source="task.id", read_only=True)
-    task_title = serializers.CharField(source="task.title", read_only=True)
+    problem_id = serializers.IntegerField(source="problem.id", read_only=True)
+    problem_title = serializers.CharField(source="problem.title", read_only=True)
     file_url = serializers.FileField(source="file", read_only=True)
 
     class Meta:
         model = Submission
         fields = [
-            "id", "task_id", "task_title", "file_url",
+            "id", "problem_id", "problem_title", "file_url",
             "submitted_at", "status", "code_size", "metrics",
         ]
 

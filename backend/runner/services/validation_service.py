@@ -5,7 +5,11 @@ from typing import Dict, Any, Optional
 
 from django.db import transaction
 
+<<<<<<< HEAD
 from ..models import Submission, PreValidation
+=======
+from runner.models import Submission, PreValidation
+>>>>>>> 340d0c5db8711ec6c976d7d5c28d0f9636acc622
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +39,7 @@ def run_pre_validation(submission: Submission, descriptor: Optional[Dict[str, An
 
     Returns
     -------
-    SubmissionPreValidation:
+    PreValidation:
         A filled validation report instance (saved to DB inside this function).
     """
     start_ts = time.time()
