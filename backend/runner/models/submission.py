@@ -1,47 +1,41 @@
-import os
-import shutil
-import tempfile
-from datetime import date
-
-from django.test import TestCase, override_settings
-from django.core.files.uploadedfile import SimpleUploadedFile
-from django.contrib.auth import get_user_model
-
-from ..models.problem import Problem
-from ..models.submission import Submission
-
-User = get_user_model()
+from django.db import models
+from django.contrib.auth.models import User
+from django.db.models.signals import pre_save, post_save
+from django.dispatch import receiver
+from ..problems import enqueue_submission_for_evaluation
 
 
-class SubmissionModelTests(TestCase):
-    def setUp(self):
-        # создаём отдельную временную директорию под MEDIA_ROOT
-        self.media_dir = tempfile.mkdtemp(prefix="test_media_")
-        self._override = override_settings(MEDIA_ROOT=self.media_dir)
-        self._override.enable()
+class Submission(models.Model):
+    STATUS_PENDING = "pending"
+    STATUS_RUNNING = "running"
+    STATUS_ACCEPTED = "accepted"
+    STATUS_FAILED = "failed"
+    STATUS_VALIDATED = "validated"
+    STATUS_CHOICES = [
+        ("pending", "⏳ В очереди"),
+        ("running", "🏃 Выполняется"),
+        ("accepted", "✅ Принято"),
+        ("failed", "❌ Ошибка"),
+        ("validated", "✅ Валидировано")
+    ]
 
-        self.user = User.objects.create_user(username="u1", password="pass")
-        self.problem = Problem.objects.create(
-            title="Demo Problem",
-            statement="predict something",
-            created_at=date.today(),
-        )
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="submissions")
+    problem = models.ForeignKey("Problem", on_delete=models.CASCADE, related_name="submissions", null=True)
+    file = models.FileField(upload_to="submissions/")
+    submitted_at = models.DateTimeField(auto_now_add=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="pending")
+    code_size = models.PositiveIntegerField(default=0)
+    metrics = models.JSONField(null=True, blank=True)  # {"accuracy": 0.87, "f1": 0.65}
+    
+    @property
+    def file_path(self) -> str:
+        """Алиас для совместимости с validation_service."""
+        return self.file.path
 
-    def tearDown(self):
-        # откатываем MEDIA_ROOT и чистим временную директорию
-        self._override.disable()
-        if os.path.isdir(self.media_dir):
-            shutil.rmtree(self.media_dir, ignore_errors=True)
+    def save(self, *args, **kwargs):
+        if self.file and not self.code_size:
+            self.code_size = self.file.size
+        super().save(*args, **kwargs)
 
-    def test_code_size_file_path_and_str(self):
-        content = b"id,pred\n1,0.1\n"
-        f = SimpleUploadedFile("preds.csv", content, content_type="text/csv")
-
-        sub = Submission.objects.create(user=self.user, problem=self.problem, file=f)
-
-        self.assertGreater(sub.code_size, 0)
-        # Используем sub.file.name вместо sub.file_path
-        self.assertTrue(sub.file.name.endswith("preds.csv"))
-        s = str(sub)
-        self.assertIn(self.user.username, s)
-        self.assertIn(str(self.problem), s)
+    def __str__(self):
+        return f"{self.user.username} - {self.problem} [{self.status}]"
