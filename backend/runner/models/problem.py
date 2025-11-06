@@ -1,13 +1,10 @@
 import markdown
 from django.db import models
 from django.core.validators import MinValueValidator, MaxValueValidator
-<<<<<<< HEAD
 from ..models.problem_data import ProblemData
 from ..models.problem_desriptor import ProblemDescriptor
 
-=======
 from django.utils.safestring import mark_safe
->>>>>>> main
 
 class Problem(models.Model):
     title = models.CharField("Название", max_length=255)
