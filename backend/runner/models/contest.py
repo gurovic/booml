@@ -2,7 +2,7 @@ from django.db import models
 from django.db.models import CharField, IntegerField, DateField, ManyToManyField
 
 class Contest(models.Model):
-  tasks = ManyToManyField("Task", blank=True)
+  problems = ManyToManyField("Problem", blank=True)
   source = CharField()
   _type = IntegerField(db_column="type", blank=True)
   difficulty = IntegerField(blank=True)

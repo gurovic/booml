@@ -1,11 +1,11 @@
-<h2>Сравнение посылок по задаче: {{ task.title }}</h2>
+<h2>Сравнение посылок по задаче: {{ problem.title }}</h2>
 
 <table border="1" cellpadding="5">
   <tr>
     <th>ID</th>
     <th>Дата</th>
     <th>Статус</th>
-    <th>Метрика ({{ task.metric_name }})</th>
+    <th>Метрика ({{ problem.metric_name }})</th>
   </tr>
   {% for s in submissions %}
   <tr>
@@ -21,7 +21,7 @@
 
 <hr>
 
-<h2>График выбранных посылок ({{ task.metric_name }})</h2>
+<h2>График выбранных посылок ({{ problem.metric_name }})</h2>
 <canvas id="compareChart" width="600" height="300"></canvas>
 
 {{ labels|json_script:"compare-labels" }}
@@ -38,7 +38,7 @@
     data: {
       labels: compareLabels,
       datasets: [{
-        label: '{{ task.metric_name }}',
+        label: '{{ problem.metric_name }}',
         data: compareMetrics,
         backgroundColor: 'rgba(255, 99, 132, 0.7)',
         borderColor: 'rgba(255, 99, 132, 1)',

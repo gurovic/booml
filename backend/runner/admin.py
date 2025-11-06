@@ -1,6 +1,6 @@
 from django.contrib import admin
 from .models import Report
-from .models import Task
+from .models import Problem
 
 @admin.register(Report)  # Регистрируем модель в админке
 class ReportAdmin(admin.ModelAdmin):
@@ -28,7 +28,7 @@ class ReportAdmin(admin.ModelAdmin):
     )
 
 
-@admin.register(Task)
+@admin.register(Problem)
 class ProblemAdmin(admin.ModelAdmin):
     list_display = ("id", "title", "created_at")
     search_fields = ("title", "condition")
