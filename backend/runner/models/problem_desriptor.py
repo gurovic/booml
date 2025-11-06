@@ -2,7 +2,7 @@ from django.db import models
 from django.utils import timezone
 
 class ProblemDescriptor(models.Model):
-    problem = models.ForeignKey("Problem", on_delete=models.CASCADE, related_name="descriptor", db_index=True)
+    problem = models.OneToOneField("Problem", on_delete=models.CASCADE, related_name="descriptor", db_index=True)
     
     id_column = models.CharField(max_length=100, default="id")
     target_column = models.CharField(max_length=100, default="prediction")
