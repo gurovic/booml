@@ -155,7 +155,7 @@ class SubmissionChecker:
                 return str(first_key)
         
         logger.warning(f"No valid metric found in submission {submission.id} metrics: {submission.metrics}")
-        return None
+        return None 
 
 
     def _calculate_metric(self, submission_df: pd.DataFrame, 
