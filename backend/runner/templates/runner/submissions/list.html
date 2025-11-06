@@ -2,7 +2,7 @@
 
 {% if result %}
   {% if result.status == "OK" %}
-    <div><b>Задача сдана!</b> Итоговая метрика: {{ result.metric }}</div>
+    <div><b>Задача сдана.</b> Итоговая метрика: {{ result.metric }}</div>
   {% elif result.status == "FAILED" %}
     <div><b>Задача пока не сдана.</b></div>
   {% endif %}
@@ -16,7 +16,7 @@
     <th>Дата</th>
     <th>Статус</th>
     {% if result and result.status == "OK" %}
-      <th>Метрика ({{ problem.metric_name }})</th>
+      <th>Метрика</th>
     {% endif %}
     <th>Детали</th>
   </tr>
