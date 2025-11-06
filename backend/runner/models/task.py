@@ -7,9 +7,15 @@ class Task(models.Model):
     statement = models.TextField("Условие", blank=True)
     created_at = models.DateField("Дата создания", blank=True)
     rating = models.IntegerField("Рейтинг сложности", validators=[MinValueValidator(800), MaxValueValidator(3000)], default=800)
-    data = models.FileField(
-        "Файл с данными",
-        upload_to='taskdata/',
+    train_data = models.FileField(
+        "Файл с данными для тренировки модели",
+        upload_to='tasktraindata/',
+        blank=True,
+        null=True
+    )
+    test_data = models.FileField(
+        "Файл с данными для тестирования модели",
+        upload_to='tasktestdata/',
         blank=True,
         null=True
     )
