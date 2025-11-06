@@ -20,7 +20,7 @@ class Submission(models.Model):
     ]
 
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="submissions")
-    task = models.ForeignKey("Task", on_delete=models.CASCADE, related_name="submissions")
+    problem = models.ForeignKey("Problem", on_delete=models.CASCADE, related_name="submissions", null=True)
     file = models.FileField(upload_to="submissions/")
     submitted_at = models.DateTimeField(auto_now_add=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="pending")
@@ -44,4 +44,4 @@ class Submission(models.Model):
         super().save(*args, **kwargs)
 
     def __str__(self):
-        return f"{self.user.username} - {self.task} [{self.status}]"
+        return f"{self.user.username} - {self.problem} [{self.status}]"

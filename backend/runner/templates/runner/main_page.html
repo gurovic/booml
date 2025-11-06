@@ -2,9 +2,18 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Title</title>
+    <title>Главная BOOML</title>
 </head>
 <body>
+    <header>
+        <a href="{% url 'runner:problem_list' %}">Список задач</a> |
+        <a href="{% url 'runner:notebook_list' %}">Блокноты</a> |
+        {% if user.is_authenticated %}
+            <a href="{% url 'runner:logout' %}">Выйти</a>
+        {% else %}
+            <a href="{% url 'runner:login' %}">Войти</a>
+        {% endif %}
+    </header>
     {% include 'runner/list_of_problems.html' %}
 </body>
 </html>

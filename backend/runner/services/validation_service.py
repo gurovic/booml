@@ -5,7 +5,7 @@ from typing import Dict, Any, Optional
 
 from django.db import transaction
 
-from runner.models import Submission, SubmissionPreValidation
+from runner.models import Submission, PreValidation
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +18,7 @@ MAX_COLLECTED_WARNINGS = 50
 # Entry point
 # ---------------------------------------------------------------------
 def run_pre_validation(submission: Submission, descriptor: Optional[Dict[str, Any]] = None, *,
-                       id_column: int = 0, check_order: bool = False) -> SubmissionPreValidation:
+                       id_column: int = 0, check_order: bool = False) -> PreValidation:
     """
     Main entry point for pre-validation.
 
@@ -35,13 +35,13 @@ def run_pre_validation(submission: Submission, descriptor: Optional[Dict[str, An
 
     Returns
     -------
-    SubmissionPreValidation:
+    PreValidation:
         A filled validation report instance (saved to DB inside this function).
     """
     start_ts = time.time()
 
     # Create a new in-memory validation record. We'll populate fields and save at the end.
-    validation = SubmissionPreValidation(
+    validation = PreValidation(
         submission=submission,
         valid=False,
         status="failed",
@@ -164,7 +164,7 @@ def _validate_schema(file_path: str, descriptor: Optional[Dict[str, Any]]) -> Di
 # ID validation (streaming)
 # ---------------------------------------------------------------------
 def _validate_ids(file_path: str, *, id_column: int = 0, check_order: bool = False,
-                  validation: Optional[SubmissionPreValidation] = None) -> Dict[str, Any]:
+                  validation: Optional[PreValidation] = None) -> Dict[str, Any]:
     """
     Stream through CSV rows and validate IDs.
 
@@ -260,7 +260,7 @@ def _validate_ids(file_path: str, *, id_column: int = 0, check_order: bool = Fal
 # ---------------------------------------------------------------------
 # Target validation
 # ---------------------------------------------------------------------
-def _validate_target_column(file_path: str, descriptor: dict, validation: SubmissionPreValidation) -> dict:
+def _validate_target_column(file_path: str, descriptor: dict, validation: PreValidation) -> dict:
     """
     Checks that target column values match expected type (float, int, str).
     """
