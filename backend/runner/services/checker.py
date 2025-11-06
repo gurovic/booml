@@ -101,8 +101,8 @@ class SubmissionChecker:
             )
 
         except Exception as e:
-            logger.error(f"Error checking submission {submission.id}: {str(e)}")
-            return CheckResult(False, errors=f"Checker error: {str(e)}")
+            logger.error(f"Error checking submission {submission.id}: {e}")
+            return CheckResult(False, errors=f"Checker error: {e}")
 
     def _get_problem_data(self, task: Task) -> ProblemData:
         """Получаем ProblemData для task через one-to-one связь"""
@@ -130,40 +130,33 @@ class SubmissionChecker:
             else:
                 return pd.read_csv(file_field)
         except Exception as e:
-            logger.error(f"Error loading submission file: {str(e)}")
+            logger.error(f"Error loading submission file: {e}")
             return None
 
     def _load_ground_truth(self, file_field) -> pd.DataFrame:
         """Загружаем ground truth из test_file ProblemData"""
-        try:
-            if file_field and hasattr(file_field, 'path'):
-                return pd.read_csv(file_field.path)
-            else:
-                logger.warning("Test file not available in ProblemData")
-                return None
-        except Exception as e:
-            logger.error(f"Error loading test file from ProblemData: {str(e)}")
+        if file_field and hasattr(file_field, 'path'):
+            return pd.read_csv(file_field.path)
+        else:
+            logger.warning("Test file not available in ProblemData")
             return None
 
     def _get_metric_name(self, submission: Submission) -> str:
         """
         Получаем название метрики из submission.metrics
         """
-        try:
-            if submission.metrics and isinstance(submission.metrics, dict):
-                # Если метрика указана явно в ключе 'metric'
-                if 'metric' in submission.metrics:
-                    return str(submission.metrics['metric'])
-                # Или берем первый ключ, если это название метрики
-                elif submission.metrics:
-                    first_key = list(submission.metrics.keys())[0]
-                    return str(first_key)
-            
-            logger.warning(f"No valid metric found in submission {submission.id} metrics: {submission.metrics}")
-            return None
-        except Exception as e:
-            logger.error(f"Error extracting metric name from submission {submission.id}: {str(e)}")
-            return None
+        if submission.metrics and isinstance(submission.metrics, dict):
+            # Если метрика указана явно в ключе 'metric'
+            if 'metric' in submission.metrics:
+                return str(submission.metrics['metric'])
+            # Или берем первый ключ, если это название метрики
+            elif submission.metrics:
+                first_key = list(submission.metrics.keys())[0]
+                return str(first_key)
+        
+        logger.warning(f"No valid metric found in submission {submission.id} metrics: {submission.metrics}")
+        return None
+
 
     def _calculate_metric(self, submission_df: pd.DataFrame, 
                          ground_truth_df: pd.DataFrame,
@@ -172,54 +165,45 @@ class SubmissionChecker:
         """
         Вычисление метрики качества
         """
-        try:
-            # Сопоставляем данные по ID колонке
-            merged_df = pd.merge(
-                ground_truth_df, 
-                submission_df, 
-                on=descriptor.id_column, 
-                suffixes=('_true', '_pred')
-            )
+        # Сопоставляем данные по ID колонке
+        merged_df = pd.merge(
+            ground_truth_df, 
+            submission_df, 
+            on=descriptor.id_column, 
+            suffixes=('_true', '_pred')
+        )
 
-            if merged_df.empty:
-                return {
-                    'success': False,
-                    'error': 'No matching IDs found between submission and ground truth',
-                    'score': 0.0
-                }
-
-            # Проверяем, что в ground_truth есть target колонка
-            true_target_column = f"{descriptor.target_column}_true"
-            pred_target_column = f"{descriptor.target_column}_pred"
-            
-            if true_target_column not in merged_df.columns:
-                return {
-                    'success': False,
-                    'error': f'Target column "{descriptor.target_column}" not found in ground truth data',
-                    'score': 0.0
-                }
-
-            # Получаем настоящие значения и предсказания
-            y_true = merged_df[true_target_column]
-            y_pred = merged_df[pred_target_column]
-
-            # Вычисляем метрику
-            score = calculate_metric(metric_name, y_true, y_pred)
-
-            logger.info(f"Calculated metric '{metric_name}': {score:.4f} for {len(y_true)} samples")
-
-            return {
-                'success': True,
-                'score': score
-            }
-
-        except Exception as e:
-            logger.error(f"Error in metric calculation: {str(e)}")
+        if merged_df.empty:
             return {
                 'success': False,
-                'error': f'Metric calculation error: {str(e)}',
+                'error': 'No matching IDs found between submission and ground truth',
                 'score': 0.0
             }
+
+        # Проверяем, что в ground_truth есть target колонка
+        true_target_column = f"{descriptor.target_column}_true"
+        pred_target_column = f"{descriptor.target_column}_pred"
+        
+        if true_target_column not in merged_df.columns:
+            return {
+                'success': False,
+                'error': f'Target column "{descriptor.target_column}" not found in ground truth data',
+                'score': 0.0
+            }
+
+        # Получаем настоящие значения и предсказания
+        y_true = merged_df[true_target_column]
+        y_pred = merged_df[pred_target_column]
+
+        # Вычисляем метрику
+        score = calculate_metric(metric_name, y_true, y_pred)
+
+        logger.info(f"Calculated metric '{metric_name}': {score:.4f} for {len(y_true)} samples")
+
+        return {
+            'success': True,
+            'score': score
+        }
 
 
 # Функция для импорта в worker.py
