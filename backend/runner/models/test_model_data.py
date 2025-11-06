@@ -5,7 +5,8 @@ from django.utils import timezone
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import IntegrityError
 
-from runner.models import Problem, ProblemData
+from runner.models import Problem
+from runner.models.problem_data import ProblemData
 
 
 class ProblemDataModelTest(TestCase):

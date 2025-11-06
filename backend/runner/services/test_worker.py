@@ -21,19 +21,20 @@ class TasksTestCase(TestCase):
 
         # Мокаем объект сабмишена
         mock_submission = MagicMock()
+        mock_submission.id = submission_id
         mock_get.return_value = mock_submission
 
         # Мокаем результат чекера
         mock_result = MagicMock()
         mock_result.ok = True
-        mock_result.outputs = [{"metric": "accuracy", "value": 0.95}]
+        mock_result.outputs = {"metric": "accuracy", "value": 0.95}
         mock_result.errors = []
         mock_checker.return_value = mock_result
 
         result = evaluate_submission(submission_id)
 
         # Проверяем вызовы
-        mock_get.assert_called_once_with(pk=submission_id)
+        mock_get.assert_called_once_with(id=submission_id)
         mock_checker.assert_called_once_with(mock_submission)
         mock_submission.save.assert_called_once()
 
