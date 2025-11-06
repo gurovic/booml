@@ -11,6 +11,7 @@ class ProblemData(models.Model):
     train_file = models.FileField(upload_to=f"problem_data/{problem.id}/train/", null=True, blank=True)
     test_file = models.FileField(upload_to=f"problem_data/{problem.id}/test/", null=True, blank=True)
     sample_submission_file = models.FileField(upload_to=f"problem_data/{problem.id}/sample_submission/", null=True, blank=True)
+    answer_file = models.FileField(upload_to=f"problem_data/{problem.id}/answer/", null=True, blank=True)
 
     created_at = models.DateTimeField(default=timezone.now)
     updated_at = models.DateTimeField(auto_now=True)

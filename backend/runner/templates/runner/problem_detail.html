@@ -12,38 +12,38 @@
         <p>Сложность: {{ problem.rating }}</p>
         <p class="description">{{ problem.statement }}</p>
 
-        {% if problem.train_data %}
+        {% if data.train_file %}
             <p>
                 <strong>Данные для обучения:</strong>
-                <a href="{{ problem.train_data.url }}" download="{{ problem.train_data.name }}">
-                    {{ problem.train_data.name }}
+                <a href="{{ data.train_file.url }}" download="{{ data.train_file.name }}">
+                    {{ _data.train_file.name }}
                 </a>
             </p>
         {% endif %}
 
-        {% if problem.test_data %}
+        {% if pdata.test_file %}
             <p>
                 <strong>Данные для тестирования:</strong>
-                <a href="{{ problem.test_data.url }}" download="{{ problem.test_data.name }}">
-                    {{ problem.test_data.name }}
+                <a href="{{ data.test_file.url }}" download="{{ data.test_file.name }}">
+                    {{ data.test_file.name }}
                 </a>
             </p>
         {% endif %}
 
-        {% if problem.sample_submission_data %}
+        {% if data.sample_submission_file %}
             <p>
                 <strong>Пример правильного ответа:</strong>
-                <a href="{{ problem.sample_submission_data.url }}" download="{{ problem.sample_submission_data.name }}">
-                    {{ problem.sample_submission_data.name }}
+                <a href="{{ data.sample_submission_file.url }}" download="{{ data.sample_submission_file.name }}">
+                    {{ data.sample_submission_file.name }}
                 </a>
             </p>
         {% endif %}
 
-        {% if problem.answer_data %}
+        {% if data.answer_file %}
             <p>
                 <strong>Файл с правильным ответом:</strong>
-                <a href="{{ problem.answer_data.url }}" download="{{ problem.answer_data.name }}">
-                    {{ problem.answer_data.name }}
+                <a href="{{ data.answer_file.url }}" download="{{ data.answer_file.name }}">
+                    {{ data.answer_file.name }}
                 </a>
             </p>
         {% endif %}
