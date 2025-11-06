@@ -48,8 +48,8 @@ class SubmissionCreateView(generics.CreateAPIView):
             submission: Submission = serializer.save()
 
         # 2) Пре-валидация
-        task = submission.task
-        descriptor = build_descriptor_from_task(task)
+        problem = submission.problem
+        descriptor = build_descriptor_from_task(problem)
         report = run_pre_validation(submission, descriptor=descriptor)
 
         # 3) Ветвление по результату
