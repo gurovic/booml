@@ -6,7 +6,7 @@ from unittest.mock import Mock, patch, MagicMock
 
 from checker import SubmissionChecker, check_submission, CheckResult
 from ..models.submission import Submission
-from ..models.task import Task
+from ..models.problem import Problem
 from ..models.problem_data import ProblemData
 from ..models.problem_desriptor import ProblemDescriptor
 from .report_service import ReportGenerator, Report
@@ -18,9 +18,9 @@ class TestChecker(unittest.TestCase):
         """Настройка моков для моделей Django"""
         
         # Мок для Task
-        self.mock_task = Mock(spec=Task)
+        self.mock_task = Mock(spec=Problem)
         self.mock_task.id = 1
-        self.mock_task.title = "Test Task"
+        self.mock_task.title = "Test Problem"
         
         # Мок для ProblemData
         self.mock_problem_data = Mock(spec=ProblemData)

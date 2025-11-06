@@ -6,7 +6,7 @@ import logging
 from django.core.exceptions import ObjectDoesNotExist
 
 from ..models.submission import Submission
-from ..models.task import Task
+from ..models.problem import Problem
 from ..models.problem_data import ProblemData
 from ..models.problem_desriptor import ProblemDescriptor
 from .report_service import ReportGenerator
@@ -31,107 +31,80 @@ class SubmissionChecker:
         """
         Основная функция проверки submission
         """
-        try:
-            logger.info(f"Starting check for submission {submission.id}")
+        logger.info(f"Starting check for submission {submission.id}")
+        
+        # 1. Получаем связанные данные напрямую из Problem
+        problem = submission.problem
+        
+        # Получаем ProblemData и ProblemDescriptor через one-to-one связь с Task
+        problem_data = problem.problem_data
+        problem_descriptor = problem.problem_descriptor
+        
+        if not problem_data:
+            return CheckResult(False, errors="ProblemData not found for this task")
             
-            # 1. Получаем связанные данные напрямую из Task
-            task = submission.task
+        if not problem_descriptor:
+            return CheckResult(False, errors="ProblemDescriptor not found for this task")
+
+        # 2. Загружаем файлы
+        submission_df = self._load_submission_file(submission.file)
+        ground_truth_df = self._load_ground_truth(problem_data.test_file)
+        
+        if submission_df is None:
+            return CheckResult(False, errors="Failed to load submission file")
             
-            # Получаем ProblemData и ProblemDescriptor через one-to-one связь с Task
-            problem_data = self._get_problem_data(task)
-            problem_descriptor = self._get_problem_descriptor(task)
-            
-            if not problem_data:
-                return CheckResult(False, errors="ProblemData not found for this task")
-                
-            if not problem_descriptor:
-                return CheckResult(False, errors="ProblemDescriptor not found for this task")
+        if ground_truth_df is None:
+            return CheckResult(False, errors="Failed to load ground truth from problem data")
 
-            # 2. Загружаем файлы
-            submission_df = self._load_submission_file(submission.file)
-            ground_truth_df = self._load_ground_truth(problem_data.test_file)
-            
-            if submission_df is None:
-                return CheckResult(False, errors="Failed to load submission file")
-                
-            if ground_truth_df is None:
-                return CheckResult(False, errors="Failed to load ground truth from problem data")
+        # 3. Получаем название метрики из submission.metrics
+        metric_name = self._get_metric_name(submission)
+        if not metric_name:
+            return CheckResult(False, errors="Metric name not found in submission.metrics")
 
-            # 3. Получаем название метрики из submission.metrics
-            metric_name = self._get_metric_name(submission)
-            if not metric_name:
-                return CheckResult(False, errors="Metric name not found in submission.metrics")
+        # 4. Сопоставляем данные и вычисляем метрику
+        metric_result = self._calculate_metric(
+            submission_df, 
+            ground_truth_df, 
+            problem_descriptor,
+            metric_name
+        )
 
-            # 4. Сопоставляем данные и вычисляем метрику
-            metric_result = self._calculate_metric(
-                submission_df, 
-                ground_truth_df, 
-                problem_descriptor,
-                metric_name
-            )
+        if not metric_result['success']:
+            return CheckResult(False, errors=metric_result.get('error', 'Metric calculation failed'))
 
-            if not metric_result['success']:
-                return CheckResult(False, errors=metric_result.get('error', 'Metric calculation failed'))
-
-            # 5. Создаем отчет
-            report_data = {
-                'metric': metric_result['score'],
-                'file_name': submission.file.name,
-                'status': 'success',
-                'log': f"Metric {metric_name}: {metric_result['score']:.4f}",
-                'errors': '',
-                'test_data': {
-                    'submission_id': submission.id,
-                    'task_id': task.id,
-                    'metric_used': metric_name
-                }
+        # 5. Создаем отчет
+        report_data = {
+            'metric': metric_result['score'],
+            'file_name': submission.file.name,
+            'status': 'success',
+            'log': f"Metric {metric_name}: {metric_result['score']:.4f}",
+            'errors': '',
+            'test_data': {
+                'submission_id': submission.id,
+                'problem_id': problem.id,
+                'metric_used': metric_name
             }
+        }
 
-            report = self.report_generator.create_report_from_testing_system(report_data)
-            
-            logger.info(f"Check completed for submission {submission.id}. Metric {metric_name}: {metric_result['score']}")
+        report = self.report_generator.create_report_from_testing_system(report_data)
+        
+        logger.info(f"Check completed for submission {submission.id}. Metric {metric_name}: {metric_result['score']}")
 
-            return CheckResult(
-                ok=True,
-                outputs={
-                    'report_id': report.id,
-                    'metric_score': metric_result['score'],
-                    'metric_name': metric_name
-                }
-            )
-
-        except Exception as e:
-            logger.error(f"Error checking submission {submission.id}: {e}")
-            return CheckResult(False, errors=f"Checker error: {e}")
-
-    def _get_problem_data(self, task: Task) -> ProblemData:
-        """Получаем ProblemData для task через one-to-one связь"""
-        try:
-            # Прямой доступ через one-to-one связь
-            return task.ProblemData
-        except (ObjectDoesNotExist, AttributeError):
-            logger.warning(f"ProblemData not found for task {task.id}")
-            return None
-
-    def _get_problem_descriptor(self, task: Task) -> ProblemDescriptor:
-        """Получаем ProblemDescriptor для task через one-to-one связь"""
-        try:
-            # Прямой доступ через one-to-one связь
-            return task.ProblemDescriptor
-        except (ObjectDoesNotExist, AttributeError):
-            logger.warning(f"ProblemDescriptor not found for task {task.id}")
-            return None
+        return CheckResult(
+            ok=True,
+            outputs={
+                'report_id': report.id,
+                'metric_score': metric_result['score'],
+                'metric_name': metric_name
+            }
+        )
 
     def _load_submission_file(self, file_field) -> pd.DataFrame:
         """Загружаем файл submission"""
-        try:
-            if hasattr(file_field, 'path'):
-                return pd.read_csv(file_field.path)
-            else:
-                return pd.read_csv(file_field)
-        except Exception as e:
-            logger.error(f"Error loading submission file: {e}")
-            return None
+        if hasattr(file_field, 'path'):
+            return pd.read_csv(file_field.path)
+        else:
+            return pd.read_csv(file_field)
 
     def _load_ground_truth(self, file_field) -> pd.DataFrame:
         """Загружаем ground truth из test_file ProblemData"""
