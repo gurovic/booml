@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 from unittest.mock import patch, MagicMock
 
-from .metrics import MetricCalculator, calculate_metric
+from runner.services.metrics import MetricCalculator, calculate_metric
 
 
 class TestMetrics(unittest.TestCase):
