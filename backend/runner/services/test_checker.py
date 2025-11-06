@@ -4,9 +4,11 @@ import tempfile
 import os
 from unittest.mock import Mock, patch, MagicMock
 
-from ..services.checker import SubmissionChecker, check_submission, CheckResult
-from ..models import Submission, Problem, ProblemData, ProblemDescriptor
-from ..services.report_service import ReportGenerator, Report
+from runner.services.checker import SubmissionChecker, check_submission, CheckResult
+from runner.models import Submission, Problem
+from runner.models.problem_data import ProblemData
+from models.problem_desriptor import ProblemDescriptor
+from runner.services.report_service import ReportGenerator, Report
 
 
 class TestChecker(unittest.TestCase):
@@ -167,7 +169,10 @@ class TestChecker(unittest.TestCase):
                 'id': [10, 20, 30],  # Другие ID
                 'target': [0.1, 0.9, 0.2]
             }),
-            'ground_truth': self.test_data['ground_truth']
+            'ground_truth': pd.DataFrame({
+                'id': [1, 2, 3, 4, 5],  # Другие ID
+                'target': [0.0, 1.0, 0.0, 1.0, 0.0]
+            })
         }
         mock_read_csv.side_effect = [different_data['submission'], different_data['ground_truth']]
         
