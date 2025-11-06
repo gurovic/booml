@@ -1,17 +1,17 @@
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render, get_object_or_404
-from runner.models import Task, Submission
+from runner.models import Problem, Submission
 from django.http.response import HttpResponseBadRequest
 
 @login_required
-def submission_list(request, task_id):
-    task = get_object_or_404(Task, id=task_id)
-    submissions = Submission.objects.filter(task=task, user=request.user).order_by("-created_at")
+def submission_list(request, problem_id):
+    problem = get_object_or_404(Problem, id=problem_id)
+    submissions = Submission.objects.filter(problem=problem, user=request.user).order_by("-created_at")
 
     if submissions.exists():
         latest_submission = submissions.first()
         context = {
-            "task": task,
+            "problem": problem,
             "submissions": submissions,
             "result": {
                 "status": latest_submission.status,
@@ -20,7 +20,7 @@ def submission_list(request, task_id):
         }
     else:
         context = {
-            "task": task,
+            "problem": problem,
             "submissions": [],
             "result": None
         }
@@ -40,19 +40,19 @@ def submission_detail(request, submission_id):
     })
 
 @login_required
-def submission_compare(request, task_id):
-    task = get_object_or_404(Task, id=task_id)
+def submission_compare(request, problem_id):
+    problem = get_object_or_404(Problem, id=problem_id)
 
     ids = request.GET.getlist("ids")
     ids = [int(i) for i in ids if i.isdigit()]
     if not ids:
         return HttpResponseBadRequest("No valid submission IDs provided.")
-    submissions = Submission.objects.filter(task=task, user=request.user, id__in=ids).order_by("created_at")
+    submissions = Submission.objects.filter(problem=problem, user=request.user, id__in=ids).order_by("created_at")
 
     labels, metrics = extract_labels_and_metrics(submissions)
 
     return render(request, "runner/submissions/compare.html", {
-        "task": task,
+        "problem": problem,
         "submissions": submissions,
         "labels": labels,
         "metrics": metrics,

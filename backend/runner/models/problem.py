@@ -2,7 +2,7 @@ from django.db import models
 from django.core.validators import MinValueValidator, MaxValueValidator
 
 
-class Task(models.Model):
+class Problem(models.Model):
     title = models.CharField("Название", max_length=255)
     statement = models.TextField("Условие", blank=True)
     created_at = models.DateField("Дата создания", blank=True)

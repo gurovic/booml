@@ -1,0 +1,23 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>{{ problem.title }}</title>
+    <link rel="stylesheet" href="{% static 'runner/style.css' %}">
+</head>
+<body>
+    <div class="problem-container">
+        <h1>{{ problem.title }}</h1>
+        <p>Сложность: {{ problem.rating }}</p>
+        <p class="description">{{ problem.statement }}</p>
+
+        {% if problem.data %}
+            <p>
+                <strong>Dataset:</strong>
+                <a href="{{ problem.data.url }}" download>Скачать файл</a>
+            </p>
+        {% endif %}
+    </div>
+</body>
+</html>

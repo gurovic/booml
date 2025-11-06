@@ -29,11 +29,11 @@
   </thead>
   <tbody>
     {% if page_obj.object_list %}
-      {% for task in page_obj.object_list %}
+      {% for problem in page_obj.object_list %}
         <tr>
-          <td><a href="{% url 'runner:task_detail' task.id %}">{{ task.title }}</a></td>
-          <td>{{ task.created_at }}</td>
-          <td>{{ task.rating }}</td>
+          <td><a href="{% url 'runner:problem_detail' problem.id %}">{{ problem.title }}</a></td>
+          <td>{{ problem.created_at }}</td>
+          <td>{{ problem.rating }}</td>
         </tr>
       {% endfor %}
     {% else %}

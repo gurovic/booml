@@ -6,7 +6,7 @@
 </head>
 <body>
     <header>
-        <a href="{% url 'runner:task_list' %}">Список задач</a> |
+        <a href="{% url 'runner:problem_list' %}">Список задач</a> |
         <a href="{% url 'runner:notebook_list' %}">Блокноты</a> |
         {% if user.is_authenticated %}
             <a href="{% url 'runner:logout' %}">Выйти</a>

@@ -1,4 +1,4 @@
-<h2>Мои посылки по задаче: {{ task.title }}</h2>
+<h2>Мои посылки по задаче: {{ problem.title }}</h2>
 
 {% if result %}
   {% if result.status == "OK" %}
@@ -16,7 +16,7 @@
     <th>Дата</th>
     <th>Статус</th>
     {% if result and result.status == "OK" %}
-      <th>Метрика ({{ task.metric_name }})</th>
+      <th>Метрика ({{ problem.metric_name }})</th>
     {% endif %}
     <th>Детали</th>
   </tr>

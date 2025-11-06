@@ -2,8 +2,8 @@ from django.urls import path
 from .views.submissions import submission_list, submission_detail, submission_compare
 from .views.main_page import main_page
 from .views.authorization import register_view, login_view, logout_view
-from .views.task_detail import task_detail
-from .views.tasks import task_list
+from .views.problem_detail import problem_detail
+from .views.problems import problem_list
 
 from .views.notebook_list import notebook_list
 from .views.create_notebook import create_notebook
@@ -30,12 +30,12 @@ urlpatterns = [
     path("", main_page, name="main_page"),
     path('register/', register_view, name='register'),
     path('login/', login_view, name='login'),
+    path('problem/<int:problem_id>/submissions/', submission_list, name="submission_list"),
     path('logout/', logout_view, name='logout'),
-    path('task/<int:task_id>/submissions/', submission_list, name="submission_list"),
     path('submission/<int:submission_id>/', submission_detail, name="submission_detail"),
-    path('task/<int:task_id>/compare/', submission_compare, name="submission_compare"),
-    path("tasks/<int:task_id>/", task_detail, name="task_detail"),
-    path("tasks/", task_list, name="task_list"),
+    path('problem/<int:problem_id>/compare/', submission_compare, name="submission_compare"),
+    path("problems/<int:problem_id>/", problem_detail, name="problem_detail"),
+    path("problems/", problem_list, name="problem_list"),
     path('contest/new/', create_contest, name='create_contest'),
     path('contest/success/', contest_success, name='contest_success'),
     path('notebook', notebook_list, name='notebook_list'),
