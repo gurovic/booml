@@ -1,6 +1,6 @@
 from django.test import TestCase
 from unittest.mock import patch, MagicMock
-from runner.tasks import enqueue_submission_for_evaluation, evaluate_submission
+from .worker import enqueue_submission_for_evaluation, evaluate_submission
 from runner.models.submission import Submission
 
 class TasksTestCase(TestCase):
