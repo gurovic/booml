@@ -1,7 +1,9 @@
-from unittest import TestCase
+from django.test import TestCase
 from unittest.mock import patch, MagicMock, mock_open
+
 from runner.services.prevalidation_service import run_prevalidation
 from runner.models import Submission, PreValidation, ProblemDescriptor
+
 
 class RunPrevalidationTestCase(TestCase):
 
@@ -18,12 +20,17 @@ class RunPrevalidationTestCase(TestCase):
         descriptor.target_type = "int"
         descriptor.check_order = False
 
+        problem_data = MagicMock()
+        problem_data.sample_submission_file = MagicMock()
+        problem_data.sample_submission_file.path = "sample.csv"
+
         problem = MagicMock()
         problem.descriptor = descriptor
-        problem.data.sample_submission_file = "sample.csv"
+        problem.data = problem_data  # Используем правильное related_name
 
         submission = MagicMock(spec=Submission)
-        submission.file_path = "submission.csv"
+        submission.file = MagicMock()
+        submission.file.path = "submission.csv"  # Используем file.path вместо file_path
         submission.problem = problem
 
         # Мокаем открытие sample submission
@@ -55,12 +62,17 @@ class RunPrevalidationTestCase(TestCase):
         descriptor.target_type = "int"
         descriptor.check_order = False
 
+        problem_data = MagicMock()
+        problem_data.sample_submission_file = MagicMock()
+        problem_data.sample_submission_file.path = "sample.csv"
+
         problem = MagicMock()
         problem.descriptor = descriptor
-        problem.data.sample_submission_file = "sample.csv"
+        problem.data = problem_data
 
         submission = MagicMock(spec=Submission)
-        submission.file_path = "submission.csv"
+        submission.file = MagicMock()
+        submission.file.path = "submission.csv"  # Используем file.path
         submission.problem = problem
 
         preval = run_prevalidation(submission)
@@ -82,26 +94,31 @@ class RunPrevalidationTestCase(TestCase):
         descriptor.target_type = "int"
         descriptor.check_order = False
 
+        problem_data = MagicMock()
+        problem_data.sample_submission_file = MagicMock()
+        problem_data.sample_submission_file.path = "sample.csv"
+
         problem = MagicMock()
         problem.descriptor = descriptor
-        problem.data.sample_submission_file = "sample.csv"
+        problem.data = problem_data
 
         submission = MagicMock(spec=Submission)
-        submission.file_path = "submission.csv"
+        submission.file = MagicMock()
+        submission.file.path = "submission.csv"
         submission.problem = problem
 
-        # Мокаем открытие файлов
+        # Мокаем открытие файлов с разным количеством строк
         submission_data = "id,value\n1,10\n2,20\n3,30\n"
         sample_data = "id,value\n1,10\n2,20\n"
-        with patch("builtins.open", mock_open(read_data=submission_data)) as m_sub, \
-             patch("builtins.open", mock_open(read_data=sample_data)) as m_sample:
-            # Здесь нужно различить открытие sample vs submission → используем side_effect
-            m_open = mock_open()
-            m_open.side_effect = [
-                mock_open(read_data=submission_data).return_value,
-                mock_open(read_data=sample_data).return_value
-            ]
-            with patch("builtins.open", m_open):
-                preval = run_prevalidation(submission)
+        
+        m_open = mock_open()
+        handles = [
+            mock_open(read_data=submission_data).return_value,
+            mock_open(read_data=sample_data).return_value
+        ]
+        m_open.side_effect = handles
+        
+        with patch("builtins.open", m_open):
+            preval = run_prevalidation(submission)
 
         self.assertIn("Row count does not match sample submission", preval.errors)
