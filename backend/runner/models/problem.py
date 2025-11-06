@@ -1,7 +1,7 @@
 from django.db import models
 from django.core.validators import MinValueValidator, MaxValueValidator
-from models.problem_data import ProblemData
-from models.problem_desriptor import ProblemDescriptor
+from ..models.problem_data import ProblemData
+from ..models.problem_desriptor import ProblemDescriptor
 
 
 class Problem(models.Model):
