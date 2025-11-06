@@ -8,7 +8,7 @@ class MainPageViewTest(TestCase):
         Task.objects.create(title="Task1", statement="Statement1", created_at="2009-03-15", rating=1200)
 
     def test_main_page_view(self):
-        url = reverse("main_page")
+        url = reverse("runner:main_page")
         response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Task1")
