@@ -1,17 +1,35 @@
 {% load static %}
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ru">
 <head>
     <meta charset="UTF-8">
     <title>{{ problem.title }}</title>
     <link rel="stylesheet" href="{% static 'runner/style.css' %}">
+
+    <script type="text/javascript">
+      MathJax = {
+        tex: {
+          inlineMath: [['$', '$'], ['\\(', '\\)']],
+          displayMath: [['$$', '$$'], ['\\[', '\\]']]
+        },git checkout -b feature/markdown-problem-v2
+        options: {
+          skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+        }
+      };
+    </script>
+    <script id="MathJax-script" async
+            src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js">
+    </script>
 </head>
 <body>
     <div class="problem-container">
         <h1>{{ problem.title }}</h1>
-        <p>Сложность: {{ problem.rating }}</p>
-        <p class="description">{{ problem.statement }}</p>
+        <p><strong>Сложность:</strong> {{ problem.rating }}</p>
 
+        <div class="problem-statement">
+            {{ problem.render_statement|safe }}
+        </div>
+      
         {% if data.train_file %}
             <p>
                 <strong>Данные для обучения:</strong>
