@@ -9,8 +9,6 @@ class Problem(models.Model):
     statement = models.TextField("Условие", blank=True)
     created_at = models.DateField("Дата создания", blank=True)
     rating = models.IntegerField("Рейтинг сложности", validators=[MinValueValidator(800), MaxValueValidator(3000)], default=800)
-    problem_data = models.ForeignKey(ProblemData, on_delete=models.CASCADE, related_name="problem")
-    problem_descriptor = models.ForeignKey(ProblemDescriptor, on_delete=models.CASCADE, related_name="problem")
 
     def __str__(self):
         return self.title
