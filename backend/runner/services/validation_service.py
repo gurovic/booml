@@ -5,7 +5,7 @@ from typing import Dict, Any, Optional
 
 from django.db import transaction
 
-from runner.models import Submission, SubmissionPreValidation
+from ..models import Submission, SubmissionPreValidation
 
 logger = logging.getLogger(__name__)
 
