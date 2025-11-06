@@ -4,12 +4,9 @@ import tempfile
 import os
 from unittest.mock import Mock, patch, MagicMock
 
-from .checker import SubmissionChecker, check_submission, CheckResult
-from ..models.submission import Submission
-from ..models.problem import Problem
-from ..models.problem_data import ProblemData
-from ..models.problem_desriptor import ProblemDescriptor
-from .report_service import ReportGenerator, Report
+from ..services.checker import SubmissionChecker, check_submission, CheckResult
+from ..models import Submission, Problem, ProblemData, ProblemDescriptor
+from ..services.report_service import ReportGenerator, Report
 
 
 class TestChecker(unittest.TestCase):
@@ -17,32 +14,33 @@ class TestChecker(unittest.TestCase):
     def setUp(self):
         """Настройка моков для моделей Django"""
         
-        # Мок для Task
-        self.mock_task = Mock(spec=Problem)
-        self.mock_task.id = 1
-        self.mock_task.title = "Test Problem"
+        # Мок для Problem
+        self.mock_problem = Mock(spec=Problem)
+        self.mock_problem.id = 1
+        self.mock_problem.title = "Test Problem"
         
         # Мок для ProblemData
         self.mock_problem_data = Mock(spec=ProblemData)
-        self.mock_problem_data.test_file = None
+        self.mock_problem_data.test_file = MagicMock()
+        self.mock_problem_data.test_file.path = "/fake/path/test.csv"
         
-        # Мок для ProblemDescriptor
+        # Мок для ProblemDescriptor - ВАЖНО: используем реальные строки!
         self.mock_problem_descriptor = Mock(spec=ProblemDescriptor)
-        self.mock_problem_descriptor.id_column = "id"
-        self.mock_problem_descriptor.target_column = "target"
-        self.mock_problem_descriptor.id_type = "int"
-        self.mock_problem_descriptor.target_type = "float"
+        self.mock_problem_descriptor.id_column = "id"  # СТРОКА, не мок!
+        self.mock_problem_descriptor.target_column = "target"  # СТРОКА, не мок!
+        self.mock_problem_descriptor.metric = "accuracy"  # СТРОКА, не мок!
         
         # Мок для Submission
         self.mock_submission = Mock(spec=Submission)
         self.mock_submission.id = 1
-        self.mock_submission.task = self.mock_task
+        self.mock_submission.problem = self.mock_problem
         self.mock_submission.metrics = {"accuracy": 0.0}
-        self.mock_submission.file = None
+        self.mock_submission.file = MagicMock()
+        self.mock_submission.file.path = "/fake/path/submission.csv"
         
-        # Связываем моки
-        self.mock_task.problemdata = self.mock_problem_data
-        self.mock_task.problemdescriptor = self.mock_problem_descriptor
+        # Связываем моки через правильные related_name
+        self.mock_problem.data = self.mock_problem_data  # related_name="data"
+        self.mock_problem.descriptor = self.mock_problem_descriptor  # related_name="descriptor"
         
         # Создаем тестовые данные
         self.test_data = {
@@ -85,6 +83,7 @@ class TestChecker(unittest.TestCase):
         test_file = self.create_temp_csv(self.test_data['ground_truth'], 'test')
         
         try:
+            # Устанавливаем пути к файлам
             self.mock_submission.file.path = submission_file
             self.mock_problem_data.test_file.path = test_file
             
@@ -108,7 +107,7 @@ class TestChecker(unittest.TestCase):
     @patch('runner.services.checker.pd.read_csv')
     def test_check_with_missing_problem_data(self, mock_read_csv):
         """Тест проверки с отсутствующими ProblemData"""
-        self.mock_task.problemdata = None
+        self.mock_problem.data = None  # Используем правильное имя поля
         
         checker = SubmissionChecker()
         result = checker.check_submission(self.mock_submission)
@@ -119,7 +118,7 @@ class TestChecker(unittest.TestCase):
     @patch('runner.services.checker.pd.read_csv')
     def test_check_with_missing_problem_descriptor(self, mock_read_csv):
         """Тест проверки с отсутствующим ProblemDescriptor"""
-        self.mock_task.problemdescriptor = None
+        self.mock_problem.descriptor = None  # Используем правильное имя поля
         
         checker = SubmissionChecker()
         result = checker.check_submission(self.mock_submission)
@@ -245,7 +244,3 @@ class TestChecker(unittest.TestCase):
                 self.assertTrue(result.ok)
                 self.assertEqual(result.outputs['metric_name'], metric_name)
                 self.assertIsInstance(result.outputs['metric_score'], float)
-
-
-if __name__ == '__main__':
-    unittest.main()
