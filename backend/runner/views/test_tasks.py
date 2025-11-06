@@ -13,10 +13,7 @@ class TaskListViewTestCase(unittest.TestCase):
 
     def _get_url(self):
         # предпочитаем reverse по имени, но оставляем fallback на /runner/tasks/ если name не настроен
-        try:
-            return reverse("runner:task_list")
-        except Exception:
-            return "/runner/tasks/"
+        return reverse("runner:task_list")
 
     def test_task_list_view(self):
         url = self._get_url()
