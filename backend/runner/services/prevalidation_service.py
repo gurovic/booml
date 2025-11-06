@@ -1,7 +1,7 @@
 import csv
 import time
 from django.db import transaction
-from runner.models import PreValidation, Submission, ProblemDescriptor
+from ..models import PreValidation, Submission, ProblemDescriptor
 
 MAX_ERRORS = 50
 MAX_WARNINGS = 50
