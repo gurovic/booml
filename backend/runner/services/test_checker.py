@@ -5,15 +5,13 @@ import os
 from unittest.mock import Mock, patch, MagicMock
 
 from runner.services.checker import SubmissionChecker, check_submission, CheckResult
-from ..models.problem import Problem
-from ..models.submission import Submission
+from runner.models import Submission, Problem
 from runner.models.problem_data import ProblemData
-from models.problem_desriptor import ProblemDescriptor
+from runner.models.problem_desriptor import ProblemDescriptor  # ИСПРАВЛЕНА ОПЕЧАТКА!
 from runner.services.report_service import ReportGenerator, Report
 
 
 class TestChecker(unittest.TestCase):
-
     def setUp(self):
         """Настройка моков для моделей Django"""
         

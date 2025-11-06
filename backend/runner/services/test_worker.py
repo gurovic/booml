@@ -2,7 +2,7 @@ from django.test import TestCase
 from unittest.mock import patch, MagicMock
 
 from runner.services.worker import enqueue_submission_for_evaluation, evaluate_submission
-from runner.models.submission import Submission
+from runner.models import Submission
 
 
 class TasksTestCase(TestCase):
@@ -33,8 +33,8 @@ class TasksTestCase(TestCase):
 
         result = evaluate_submission(submission_id)
 
-        # Проверяем вызовы
-        mock_get.assert_called_once_with(id=submission_id)
+        # ИСПРАВЛЕНО: используем pk вместо id
+        mock_get.assert_called_once_with(pk=submission_id)  # БЫЛО: id=submission_id
         mock_checker.assert_called_once_with(mock_submission)
         mock_submission.save.assert_called_once()
 
