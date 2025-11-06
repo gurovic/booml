@@ -29,11 +29,40 @@
         <div class="problem-statement">
             {{ problem.render_statement|safe }}
         </div>
-
-        {% if problem.data_file %}
+      
+        {% if data.train_file %}
             <p>
-                <strong>Dataset:</strong>
-                <a href="{{ problem.data_file.url }}" download>Скачать файл</a>
+                <strong>Данные для обучения:</strong>
+                <a href="{{ data.train_file.url }}" download="{{ data.train_file.name }}">
+                    {{ _data.train_file.name }}
+                </a>
+            </p>
+        {% endif %}
+
+        {% if pdata.test_file %}
+            <p>
+                <strong>Данные для тестирования:</strong>
+                <a href="{{ data.test_file.url }}" download="{{ data.test_file.name }}">
+                    {{ data.test_file.name }}
+                </a>
+            </p>
+        {% endif %}
+
+        {% if data.sample_submission_file %}
+            <p>
+                <strong>Пример правильного ответа:</strong>
+                <a href="{{ data.sample_submission_file.url }}" download="{{ data.sample_submission_file.name }}">
+                    {{ data.sample_submission_file.name }}
+                </a>
+            </p>
+        {% endif %}
+
+        {% if data.answer_file %}
+            <p>
+                <strong>Файл с правильным ответом:</strong>
+                <a href="{{ data.answer_file.url }}" download="{{ data.answer_file.name }}">
+                    {{ data.answer_file.name }}
+                </a>
             </p>
         {% endif %}
     </div>

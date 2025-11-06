@@ -63,7 +63,7 @@ def run_prevalidation(submission: Submission) -> PreValidation:
         else:
             seen_ids.add(row_id)
 
-        if submission.problem.desctiptor.check_order:
+        if submission.problem.descriptor.check_order:
             for i, row in enumerate(rows):
                 submission_id = row[descriptor.id_column]
                 sample_id = sample_submission_rows[i][descriptor.id_column]
