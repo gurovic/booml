@@ -1,7 +1,7 @@
 from django.urls import path
 from .views.submissions import submission_list, submission_detail, submission_compare
 from .views.main_page import main_page
-from .views.authorization import register_view, login_view
+from .views.authorization import register_view, login_view, logout_view
 from .views.problem_detail import problem_detail
 from .views.problems import problem_list
 
@@ -31,6 +31,7 @@ urlpatterns = [
     path('register/', register_view, name='register'),
     path('login/', login_view, name='login'),
     path('problem/<int:problem_id>/submissions/', submission_list, name="submission_list"),
+    path('logout/', logout_view, name='logout'),
     path('submission/<int:submission_id>/', submission_detail, name="submission_detail"),
     path('problem/<int:problem_id>/compare/', submission_compare, name="submission_compare"),
     path("problems/<int:problem_id>/", problem_detail, name="problem_detail"),
