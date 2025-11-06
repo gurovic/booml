@@ -114,21 +114,18 @@ class SubmissionChecker:
             logger.warning("Test file not available in ProblemData")
             return None
 
-    def _get_metric_name(self, submission: Submission) -> str:
-        """
-        Получаем название метрики из submission.metrics
-        """
-        if submission.metrics and isinstance(submission.metrics, dict):
-            # Если метрика указана явно в ключе 'metric'
-            if 'metric' in submission.metrics:
-                return str(submission.metrics['metric'])
-            # Или берем первый ключ, если это название метрики
-            elif submission.metrics:
-                first_key = list(submission.metrics.keys())[0]
-                return str(first_key)
+    def _get_metric_name(self, submission):
+        """Извлекает название метрики из submission.metrics"""
+        if not submission.metrics:
+            # Возвращаем дефолтную метрику вместо None
+            return 'rmse'
         
-        logger.warning(f"No valid metric found in submission {submission.id} metrics: {submission.metrics}")
-        return None 
+        if isinstance(submission.metrics, dict):
+            # Простой вариант - берем первый ключ
+            if submission.metrics:
+                return next(iter(submission.metrics.keys()))
+        
+        return 'rmse'  # Всегда возвращаем дефолт
 
 
     def _calculate_metric(self, submission_df: pd.DataFrame, 
