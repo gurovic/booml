@@ -5,24 +5,8 @@ from rest_framework.response import Response
 from ...models.submission import Submission
 from ..serializers import SubmissionCreateSerializer, SubmissionReadSerializer
 
-from ...services.validation_service import run_pre_validation
+from ...services.validation_service import run_prevalidation
 from ...problems import enqueue_submission_for_evaluation
-
-def build_descriptor_from_task(task) -> dict:
-    """
-    Собирает дескриптор для validation_service из Task.
-    Сейчас Task не хранит схему — возвращаем пустой dict (это допустимо).
-    Если добавишь поля (output_schema/target_*), расширь логику ниже.
-    """
-    descriptor = {}
-    # Пример на будущее:
-    # if hasattr(task, "output_schema"):
-    #     descriptor["output_schema"] = task.output_schema
-    # if hasattr(task, "target_column"):
-    #     descriptor["target_column"] = task.target_column
-    # if hasattr(task, "target_type"):
-    #     descriptor["target_type"] = task.target_type
-    return descriptor
 
 
 class SubmissionCreateView(generics.CreateAPIView):
@@ -49,8 +33,8 @@ class SubmissionCreateView(generics.CreateAPIView):
 
         # 2) Пре-валидация
         task = submission.task
-        descriptor = build_descriptor_from_task(task)
-        report = run_pre_validation(submission, descriptor=descriptor)
+        descriptor = submission.problem.descriptor
+        report = run_prevalidation(submission)
 
         # 3) Ветвление по результату
         data = SubmissionReadSerializer(submission, context={"request": request}).data

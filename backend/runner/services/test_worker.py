@@ -1,19 +1,19 @@
 from django.test import TestCase
 from unittest.mock import patch, MagicMock
-from runner.tasks import enqueue_submission_for_evaluation, evaluate_submission
+from runner.services.worker import enqueue_submission_for_evaluation, evaluate_submission
 from runner.models.submission import Submission
 
 class TasksTestCase(TestCase):
 
-    @patch("runner.tasks.evaluate_submission.delay")
+    @patch("runner.services.worker.evaluate_submission.delay")
     def test_enqueue_calls_worker_delay(self, mock_delay):
         submission_id = 1
         result = enqueue_submission_for_evaluation(submission_id)
         mock_delay.assert_called_once_with(submission_id)
         self.assertEqual(result, {"status": "enqueued", "submission_id": submission_id})
 
-    @patch("runner.tasks.check_submission")
-    @patch("runner.tasks.Submission.objects.get")
+    @patch("runner.services.worker.check_submission")
+    @patch("runner.services.worker.Submission.objects.get")
     def test_evaluate_submission_calls_checker_and_saves(self, mock_get, mock_checker):
         submission_id = 1
 
