@@ -2,7 +2,7 @@ from django.db import models
 from django.utils import timezone
 
 class ProblemData(models.Model):
-    problem = models.OneToOneField(
+    problem = models.ForeignKey(
         "Problem",
         on_delete=models.CASCADE,
         related_name="data"
