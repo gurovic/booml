@@ -4,7 +4,7 @@ import tempfile
 import os
 from unittest.mock import Mock, patch, MagicMock
 
-from checker import SubmissionChecker, check_submission, CheckResult
+from .checker import SubmissionChecker, check_submission, CheckResult
 from ..models.submission import Submission
 from ..models.problem import Problem
 from ..models.problem_data import ProblemData
