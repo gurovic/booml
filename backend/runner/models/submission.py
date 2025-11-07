@@ -30,17 +30,11 @@ class Submission(models.Model):
     @property
     def file_path(self) -> str:
         """Алиас для совместимости с validation_service."""
-        try:
-            return self.file.path
-        except Exception:
-            return ""
+        return self.file.path
 
     def save(self, *args, **kwargs):
         if self.file and not self.code_size:
-            try:
-                self.code_size = self.file.size
-            except Exception:
-                self.code_size = 0
+            self.code_size = self.file.size
         super().save(*args, **kwargs)
 
     def __str__(self):

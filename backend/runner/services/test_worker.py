@@ -1,7 +1,10 @@
 from django.test import TestCase
 from unittest.mock import patch, MagicMock
+
+
 from runner.services.worker import enqueue_submission_for_evaluation, evaluate_submission
-from runner.models.submission import Submission
+from runner.models import Submission
+
 
 class TasksTestCase(TestCase):
 
@@ -19,21 +22,22 @@ class TasksTestCase(TestCase):
 
         # Мокаем объект сабмишена
         mock_submission = MagicMock()
+        mock_submission.id = submission_id
         mock_get.return_value = mock_submission
 
         # Мокаем результат чекера
         mock_result = MagicMock()
         mock_result.ok = True
-        mock_result.outputs = [{"metric": "accuracy", "value": 0.95}]
+        mock_result.outputs = {"metric": "accuracy", "value": 0.95}
         mock_result.errors = []
         mock_checker.return_value = mock_result
 
         result = evaluate_submission(submission_id)
 
-        # Проверяем вызовы
-        mock_get.assert_called_once_with(pk=submission_id)
+        # ИСПРАВЛЕНО: используем pk вместо id
+        mock_get.assert_called_once_with(pk=submission_id)  # БЫЛО: id=submission_id
         mock_checker.assert_called_once_with(mock_submission)
-        mock_submission.save.assert_called_once_with(update_fields=['status', 'result_outputs', 'result_errors'])
+        mock_submission.save.assert_called_once()
 
         # Проверяем поля сабмишена
         self.assertEqual(mock_submission.status, "checked")

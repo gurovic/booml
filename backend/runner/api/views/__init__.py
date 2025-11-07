@@ -1,1 +1,1 @@
-from .submissions import build_descriptor_from_task, SubmissionCreateView, MySubmissionsListView
+from .submissions import build_descriptor_from_problem, SubmissionCreateView, MySubmissionsListView

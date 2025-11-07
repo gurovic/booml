@@ -12,7 +12,7 @@ from ...problems import enqueue_submission_for_evaluation
 class SubmissionCreateView(generics.CreateAPIView):
     """
     POST /api/submissions/
-    multipart/form-data: { task_id, file: <csv> }
+    multipart/form-data: { problem_id, file: <csv> }
     1) создаём Submission (pending)
     2) синхронно запускаем pre-validation
     3) при успехе ставим в очередь основную обработку, отвечаем 201
@@ -32,9 +32,9 @@ class SubmissionCreateView(generics.CreateAPIView):
             submission: Submission = serializer.save()
 
         # 2) Пре-валидация
-        task = submission.task
-        descriptor = submission.problem.descriptor
-        report = run_prevalidation(submission)
+        problem = submission.problem
+        descriptor = build_descriptor_from_problem(problem)
+        report = run_pre_validation(submission, descriptor=descriptor)
 
         # 3) Ветвление по результату
         data = SubmissionReadSerializer(submission, context={"request": request}).data
