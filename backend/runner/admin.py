@@ -1,6 +1,7 @@
 from django.contrib import admin
 from .models import Report
 from .models import Problem
+from .models import Submission
 
 @admin.register(Report)  # Регистрируем модель в админке
 class ReportAdmin(admin.ModelAdmin):
@@ -34,3 +35,5 @@ class ProblemAdmin(admin.ModelAdmin):
     search_fields = ("title", "condition")
     list_filter = ("created_at",)
     ordering = ("-created_at",)
+
+admin.site.register(Submission)

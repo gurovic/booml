@@ -8,27 +8,15 @@ from ..serializers import SubmissionCreateSerializer, SubmissionReadSerializer
 from ...services.validation_service import run_pre_validation
 from ...problems import enqueue_submission_for_evaluation
 
-def build_descriptor_from_task(task) -> dict:
-    """
-    Собирает дескриптор для validation_service из Task.
-    Сейчас Task не хранит схему — возвращаем пустой dict (это допустимо).
-    Если добавишь поля (output_schema/target_*), расширь логику ниже.
-    """
+def build_descriptor_from_problem(problem) -> dict:
     descriptor = {}
-    # Пример на будущее:
-    # if hasattr(task, "output_schema"):
-    #     descriptor["output_schema"] = task.output_schema
-    # if hasattr(task, "target_column"):
-    #     descriptor["target_column"] = task.target_column
-    # if hasattr(task, "target_type"):
-    #     descriptor["target_type"] = task.target_type
     return descriptor
 
 
 class SubmissionCreateView(generics.CreateAPIView):
     """
     POST /api/submissions/
-    multipart/form-data: { task_id, file: <csv> }
+    multipart/form-data: { problem_id, file: <csv> }
     1) создаём Submission (pending)
     2) синхронно запускаем pre-validation
     3) при успехе ставим в очередь основную обработку, отвечаем 201
@@ -49,7 +37,9 @@ class SubmissionCreateView(generics.CreateAPIView):
 
         # 2) Пре-валидация
         problem = submission.problem
-        descriptor = build_descriptor_from_task(problem)
+        descriptor = build_descriptor_from_problem(problem)
+
+        descriptor = bui
         report = run_pre_validation(submission, descriptor=descriptor)
 
         # 3) Ветвление по результату

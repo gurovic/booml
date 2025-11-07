@@ -3,38 +3,95 @@ from django.shortcuts import render, get_object_or_404
 from runner.models import Problem, Submission
 from django.http.response import HttpResponseBadRequest
 
+
+def _primary_metric(metrics):
+    if metrics is None:
+        return None
+    if isinstance(metrics, (int, float)):
+        return float(metrics)
+    if isinstance(metrics, dict):
+        for key in ("metric", "score", "accuracy", "f1", "auc"):
+            if key in metrics:
+                try:
+                    return float(metrics[key])
+                except:
+                    return metrics[key]
+        for v in metrics.values():
+            try:
+                return float(v)
+            except:
+                continue
+        return None
+    if isinstance(metrics, (list, tuple)):
+        for v in metrics:
+            try:
+                return float(v)
+            except:
+                continue
+        return None
+    try:
+        return float(metrics)
+    except:
+        return None
+
 @login_required
 def submission_list(request, problem_id):
     problem = get_object_or_404(Problem, id=problem_id)
-    submissions = Submission.objects.filter(problem=problem, user=request.user).order_by("-created_at")
+    submissions_qs = Submission.objects.filter(problem=problem, user=request.user).order_by("-submitted_at")
+    submissions = []
+    try:
+        for s in submissions_qs:
+            setattr(s, "created_at", s.submitted_at)
+            setattr(s, "metric", _primary_metric(s.metrics))
+            submissions.append(s)
+    except Exception:
+        submissions = []
 
-    if submissions.exists():
-        latest_submission = submissions.first()
+    has_any_exists = None
+    if hasattr(submissions_qs, "exists"):
+        try:
+            has_any_exists = bool(submissions_qs.exists())
+        except Exception:
+            has_any_exists = None
+
+    has_any = bool(submissions) or bool(has_any_exists)
+
+    if has_any and submissions:
+        latest_submission = submissions[0]
+        status_map = {"accepted": "OK", "validated": "OK", "failed": "FAILED"}
+        result_status = status_map.get(getattr(latest_submission, "status", ""), getattr(latest_submission, "status", ""))
         context = {
             "problem": problem,
             "submissions": submissions,
             "result": {
-                "status": latest_submission.status,
-                "metric": latest_submission.metric,
+                "status": result_status,
+                "metric": getattr(latest_submission, "metric", None),
             }
         }
     else:
         context = {
             "problem": problem,
-            "submissions": [],
-            "result": None
+            "submissions": submissions,
+            "result": None,
         }
 
     return render(request, "runner/submissions/list.html", context)
 
 def extract_labels_and_metrics(submissions):
-    labels = [s.created_at.strftime("%d.%m %H:%M") for s in submissions]
-    metrics = [s.metric if s.metric is not None else 0 for s in submissions]
+    labels = []
+    metrics = []
+    for s in submissions:
+        created = getattr(s, "created_at", getattr(s, "submitted_at", None))
+        metric = getattr(s, "metric", _primary_metric(getattr(s, "metrics", None)))
+        labels.append(created.strftime("%d.%m %H:%M") if created else "-")
+        metrics.append(metric if metric is not None else 0)
     return labels, metrics
 
 @login_required
 def submission_detail(request, submission_id):
     submission = get_object_or_404(Submission, id=submission_id, user=request.user)
+    setattr(submission, "created_at", submission.submitted_at)
+    setattr(submission, "metric", _primary_metric(submission.metrics))
     return render(request, "runner/submissions/detail.html", {
         "submission": submission
     })
@@ -47,7 +104,10 @@ def submission_compare(request, problem_id):
     ids = [int(i) for i in ids if i.isdigit()]
     if not ids:
         return HttpResponseBadRequest("No valid submission IDs provided.")
-    submissions = Submission.objects.filter(problem=problem, user=request.user, id__in=ids).order_by("created_at")
+    submissions = list(Submission.objects.filter(problem=problem, user=request.user, id__in=ids).order_by("submitted_at"))
+    for s in submissions:
+        setattr(s, "created_at", s.submitted_at)
+        setattr(s, "metric", _primary_metric(s.metrics))
 
     labels, metrics = extract_labels_and_metrics(submissions)
 
