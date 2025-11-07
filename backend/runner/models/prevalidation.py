@@ -38,3 +38,10 @@ class PreValidation(models.Model):
 
     def __str__(self):
         return f"PreValidation #{self.id} [{self.status}] for submission #{self.submission}"
+
+    @property
+    def is_valid(self) -> bool:
+        """Backwards-compatible flag used across the codebase/tests."""
+        if self.valid:
+            return True
+        return self.status in ("passed", "warnings")

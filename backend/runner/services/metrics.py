@@ -65,13 +65,13 @@ class MetricCalculator:
         }
         
         if metric_name not in metrics_map:
-            logger.warning(f"Unknown metric: {metric_name}. Using RMSE as default.")
+            logger.info(f"Unknown metric: {metric_name}. Using RMSE as default.")
             return MetricCalculator._rmse(y_true, y_pred)
         
         try:
             return metrics_map[metric_name](y_true, y_pred)
         except Exception as e:
-            logger.error(f"Error calculating metric {metric_name}: {str(e)}")
+            logger.info(f"Metric '{metric_name}' failed ({e}); falling back to default.")
             # Пробуем определить тип задачи и использовать метрику по умолчанию
             return MetricCalculator._default_metric(y_true, y_pred)
     

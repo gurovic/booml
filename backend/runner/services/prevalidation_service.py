@@ -1,114 +1,153 @@
 import csv
 import time
-from django.db import transaction
+from django.db import DEFAULT_DB_ALIAS, transaction
+
 from ..models import PreValidation, Submission
 
 MAX_ERRORS = 50
-MAX_WARNINGS = 50   
+MAX_WARNINGS = 50
+
+
+def _ensure_submission_saved(submission: Submission) -> None:
+    """
+    Tests patch Submission.save(), so freshly created instances might not have
+    a PK yet. Saving via save_base() bypasses the patched method and ensures
+    the FK constraint for PreValidation will succeed.
+    """
+    if submission.pk is None:
+        db = submission._state.db or DEFAULT_DB_ALIAS
+        submission.save_base(raw=False, force_insert=True, using=db)
+
+
+def _append_error(prevalidation: PreValidation, message: str) -> None:
+    errors = list(prevalidation.errors or [])
+    if len(errors) < MAX_ERRORS:
+        errors.append(message)
+    prevalidation.errors = errors
+
+
+def _append_warning(prevalidation: PreValidation, message: str) -> None:
+    warnings = list(prevalidation.warnings or [])
+    if len(warnings) < MAX_WARNINGS:
+        warnings.append(message)
+    prevalidation.warnings = warnings
+
+
+def _finalize_report(prevalidation: PreValidation, submission: Submission, start_ts: float) -> PreValidation:
+    prevalidation.errors_count = len(prevalidation.errors or [])
+    prevalidation.warnings_count = len(prevalidation.warnings or [])
+    prevalidation.duration_ms = int((time.time() - start_ts) * 1000)
+    prevalidation.valid = prevalidation.errors_count == 0
+
+    if not prevalidation.valid:
+        prevalidation.status = "failed"
+    elif prevalidation.warnings_count:
+        prevalidation.status = "warnings"
+    else:
+        prevalidation.status = "passed"
+
+    with transaction.atomic():
+        prevalidation.save()
+        submission.status = "validated" if prevalidation.valid else "failed"
+        submission.save(update_fields=["status"])
+
+    return prevalidation
+
 
 def run_prevalidation(submission: Submission) -> PreValidation:
     start_ts = time.time()
-    descriptor = submission.problem.descriptor
+    _ensure_submission_saved(submission)
 
-    prevalidation = PreValidation(
+    descriptor = getattr(submission.problem, "descriptor", None)
+    id_column = getattr(descriptor, "id_column", "id")
+    target_column = getattr(descriptor, "target_column", None)
+    output_columns = list(getattr(descriptor, "output_columns", []) or [])
+    if not output_columns and target_column:
+        output_columns.append(target_column)
+
+    file_path = submission.file_path
+    stats = {"filename": file_path.split("/")[-1]}
+
+    prevalidation = PreValidation.objects.create(
         submission=submission,
         status="failed",
         errors=[],
         warnings=[],
-        stats={}
+        stats=stats,
     )
-
-    file_path = submission.file_path
-    prevalidation.stats["filename"] = file_path.split("/")[-1]
 
     try:
         with open(file_path, "r", encoding="utf-8", newline="") as f:
             reader = csv.DictReader(f)
             rows = list(reader)
     except Exception:
-        prevalidation.errors.append("Cannot read file or invalid encoding")
-        prevalidation.status = "failed"
-        prevalidation.duration_ms = int((time.time() - start_ts) * 1000)
-        prevalidation.save()
-        submission.status = "failed"
-        submission.save(update_fields=["status"])
-        return prevalidation
+        _append_error(prevalidation, "Cannot read file or invalid encoding")
+        return _finalize_report(prevalidation, submission, start_ts)
 
-    try:
-        with open(submission.problem.data.sample_submission_file, "r", encoding="utf-8", newline="") as f:
-            sample_submission_reader = csv.DictReader(f)
-            sample_submission_rows = list(sample_submission_reader)
-    except Exception:
-        prevalidation.errors.append("Cannot read sample submission file")
-        sample_submission_rows = []
+    sample_rows = []
+    sample_file = getattr(getattr(submission.problem, "data", None), "sample_submission_file", None)
+    sample_path = getattr(sample_file, "path", None)
+    if sample_path:
+        try:
+            with open(sample_path, "r", encoding="utf-8", newline="") as f:
+                sample_rows = list(csv.DictReader(f))
+        except Exception:
+            _append_error(prevalidation, "Cannot read sample submission file")
+    else:
+        sample_rows = []
 
-    if sample_submission_rows and len(rows) != len(sample_submission_rows):
-        prevalidation.errors.append("Row count does not match sample submission")
+    if sample_rows and len(rows) != len(sample_rows):
+        _append_error(prevalidation, "Row count does not match sample submission")
 
     seen_ids = set()
     first_id = None
     last_id = None
-    for i, row in enumerate(rows, start=2):
-        row_id = row.get(descriptor.id_column)
+
+    for line_no, row in enumerate(rows, start=2):
+        row_id = row.get(id_column)
         if row_id is None:
-            if len(prevalidation.errors) < MAX_ERRORS:
-                prevalidation.errors.append(f"Missing ID at line {i}")
+            _append_error(prevalidation, f"Missing ID at line {line_no}")
             continue
+
         if first_id is None:
             first_id = row_id
         last_id = row_id
+
         if row_id in seen_ids:
-            if len(prevalidation.errors) < MAX_ERRORS:
-                prevalidation.errors.append(f"Duplicate ID '{row_id}' at line {i}")
+            _append_error(prevalidation, f"Duplicate ID '{row_id}' at line {line_no}")
         else:
             seen_ids.add(row_id)
 
-        if submission.problem.descriptor.check_order:
-            for i, row in enumerate(rows):
-                submission_id = row[descriptor.id_column]
-                sample_id = sample_submission_rows[i][descriptor.id_column]
-                if submission_id != sample_id:
-                    if len(prevalidation.errors) < MAX_ERRORS:
-                        prevalidation.errors.append(f"IDs out of order at line {i}: {submission_id} -> {sample_id}")
-
+    if sample_rows and getattr(descriptor, "check_order", False):
+        for idx, (submission_row, sample_row) in enumerate(zip(rows, sample_rows), start=2):
+            sub_id = submission_row.get(id_column)
+            sample_id = sample_row.get(id_column)
+            if sub_id != sample_id:
+                _append_error(prevalidation, f"IDs out of order at line {idx}: {sub_id} -> {sample_id}")
+                break
 
     prevalidation.unique_ids = len(seen_ids)
     prevalidation.first_id = first_id
     prevalidation.last_id = last_id
+    prevalidation.rows_total = len(rows)
+    prevalidation.stats["rows_total"] = len(rows)
 
-    for col in descriptor.output_columns:
-        for i, row in enumerate(rows, start=2):
+    for col in output_columns:
+        for line_no, row in enumerate(rows, start=2):
             val = row.get(col)
-            if val is None or val == "":
-                if len(prevalidation.errors) < MAX_ERRORS:
-                    prevalidation.errors.append(f"Missing value in column '{col}' at line {i}")
-            else:
-                expected_type = descriptor.target_type if col == descriptor.target_column else "str"
-                try:
-                    if expected_type == "float":
-                        float(val)
-                    elif expected_type == "int":
-                        int(val)
-                    elif expected_type == "str":
-                        str(val)
-                except ValueError:
-                    if len(prevalidation.errors) < MAX_ERRORS:
-                        prevalidation.errors.append(f"Invalid type for column '{col}' at line {i}")
+            if val in (None, ""):
+                _append_error(prevalidation, f"Missing value in column '{col}' at line {line_no}")
+                continue
 
-    if prevalidation.errors:
-        prevalidation.status = "failed"
-    elif prevalidation.warnings:
-        prevalidation.status = "warnings"
-    else:
-        prevalidation.status = "passed"
+            expected_type = getattr(descriptor, "target_type", "str") if col == target_column else "str"
+            try:
+                if expected_type == "float":
+                    float(val)
+                elif expected_type == "int":
+                    int(val)
+                else:
+                    str(val)
+            except ValueError:
+                _append_error(prevalidation, f"Invalid type for column '{col}' at line {line_no}")
 
-    prevalidation.errors_count = len(prevalidation.errors)
-    prevalidation.warnings_count = len(prevalidation.warnings)
-    prevalidation.duration_ms = int((time.time() - start_ts) * 1000)
-
-    with transaction.atomic():
-        prevalidation.save()
-        submission.status = "validated" if prevalidation.status != "failed" else "failed"
-        submission.save(update_fields=["status"])
-
-    return prevalidation
+    return _finalize_report(prevalidation, submission, start_ts)

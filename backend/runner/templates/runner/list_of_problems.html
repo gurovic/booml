@@ -10,7 +10,7 @@
     <tbody>
     {% for task in tasks %}
         <tr>
-            <td><a href="{% url 'runner:task_detail' task.id %}">{{ task.title }}</a></td>
+            <td><a href="{% url 'runner:problem_detail' task.id %}">{{ task.title }}</a></td>
             <td>{{ task.created_at }}</td>
             <td>{{ task.rating }}</td>
         </tr>
