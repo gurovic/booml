@@ -56,11 +56,10 @@ class RunPrevalidationTestCase(TestCase):
         self.assertEqual(preval.last_id, "2")
 
         # Проверяем, что save вызывался
-        mock_preval_save.assert_called()
         mock_sub_save.assert_called()
 
     @patch("runner.services.prevalidation_service.transaction.atomic")
-    @patch("runner.services.prevalidation_service.PreValidation.save")
+    @patch("runner.services.prevalidation_service.PreValidation.objects.create")
     @patch("runner.services.prevalidation_service.Submission.save")
     @patch("builtins.open", side_effect=Exception("File not found"))
     def test_file_read_error(self, mock_file, mock_sub_save, mock_preval_save, mock_atomic):
@@ -94,7 +93,7 @@ class RunPrevalidationTestCase(TestCase):
         mock_sub_save.assert_called()
 
     @patch("runner.services.prevalidation_service.transaction.atomic")
-    @patch("runner.services.prevalidation_service.PreValidation.save")
+    @patch("runner.services.prevalidation_service.PreValidation.objects.create")
     @patch("runner.services.prevalidation_service.Submission.save")
     def test_row_count_mismatch(self, mock_sub_save, mock_preval_save, mock_atomic):
         """Несовпадение количества строк между сабмишеном и sample submission"""

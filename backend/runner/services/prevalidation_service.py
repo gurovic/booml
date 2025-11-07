@@ -1,10 +1,10 @@
 import csv
 import time
 from django.db import transaction
-from runner.models import PreValidation, Submission, ProblemDescriptor
+from ..models import PreValidation, Submission
 
 MAX_ERRORS = 50
-MAX_WARNINGS = 50
+MAX_WARNINGS = 50   
 
 def run_prevalidation(submission: Submission) -> PreValidation:
     start_ts = time.time()

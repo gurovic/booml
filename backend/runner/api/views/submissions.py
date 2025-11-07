@@ -38,6 +38,8 @@ class SubmissionCreateView(generics.CreateAPIView):
         # 2) Пре-валидация
         problem = submission.problem
         descriptor = build_descriptor_from_problem(problem)
+
+        descriptor = bui
         report = run_pre_validation(submission, descriptor=descriptor)
 
         # 3) Ветвление по результату

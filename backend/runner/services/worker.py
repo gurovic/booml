@@ -4,7 +4,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 from runner.models.submission import Submission
-# from runner.services.table_checker import check_submission ПОКА ЧТО ЧЕКЕРА НЕТ
+from runner.services.checker import check_submission
 
 @shared_task
 def enqueue_submission_for_evaluation(submission_id: int):

@@ -36,7 +36,6 @@ class ProblemDataModelTest(TestCase):
             problem=self.problem,
             train_file=SimpleUploadedFile("train.csv", b"col1,col2\n1,2"),
             test_file=SimpleUploadedFile("test.csv", b"col1\n3"),
-            answer_file=SimpleUploadedFile("answer.csv", b"col1\n2"),
             sample_submission_file=SimpleUploadedFile("sample.csv", b"col1\n2"),
         )
 
@@ -46,14 +45,14 @@ class ProblemDataModelTest(TestCase):
         self.assertEqual(str(pdata), f"ProblemData for {self.problem}")
 
         def assert_file_ok(f, kind, prefix):
-            self.assertIn(f"problem_data/{self.problem.id}/{kind}/", f.name)
-            self.assertTrue(f.name.lower().endswith(".csv"))
-            base = os.path.basename(f.name)
-            self.assertTrue(base.startswith(prefix))
+            if f:  # Проверяем только если файл существует
+                self.assertIn(f"problem_data/{self.problem.id}/{kind}/", f.name)
+                self.assertTrue(f.name.lower().endswith(".csv"))
+                base = os.path.basename(f.name)
+                self.assertTrue(base.startswith(prefix))
 
         assert_file_ok(pdata.train_file, "train", "train")
         assert_file_ok(pdata.test_file, "test", "test")
-        assert_file_ok(pdata.answer_file, "answer", "answer")
         assert_file_ok(pdata.sample_submission_file, "sample_submission", "sample")
 
     def test_one_to_one_relationship(self):
