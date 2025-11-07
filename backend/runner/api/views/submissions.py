@@ -5,12 +5,34 @@ from rest_framework.response import Response
 from ...models.submission import Submission
 from ..serializers import SubmissionCreateSerializer, SubmissionReadSerializer
 
-from ...services.validation_service import run_pre_validation
+from ...services import validation_service
 from ...problems import enqueue_submission_for_evaluation
 
+
 def build_descriptor_from_problem(problem) -> dict:
-    descriptor = {}
-    return descriptor
+    """
+    Snapshot a descriptor object into a plain dict that can be safely passed
+    to validation services (and serialized later if needed).
+    """
+    descriptor = getattr(problem, "descriptor", None)
+    if not descriptor:
+        return {}
+
+    output_schema = list(getattr(descriptor, "output_columns", []) or [])
+    if not output_schema:
+        # Fallback to id + target columns to keep validation usable.
+        if descriptor.id_column:
+            output_schema.append(descriptor.id_column)
+        if descriptor.target_column and descriptor.target_column not in output_schema:
+            output_schema.append(descriptor.target_column)
+
+    return {
+        "id_column": descriptor.id_column,
+        "target_column": descriptor.target_column,
+        "target_type": descriptor.target_type,
+        "check_order": descriptor.check_order,
+        "output_schema": output_schema,
+    }
 
 
 class SubmissionCreateView(generics.CreateAPIView):
@@ -38,15 +60,25 @@ class SubmissionCreateView(generics.CreateAPIView):
         # 2) Пре-валидация
         problem = submission.problem
         descriptor = build_descriptor_from_problem(problem)
-        report = run_pre_validation(submission, descriptor=descriptor)
+        report = validation_service.run_pre_validation(submission, descriptor=descriptor)
 
         # 3) Ветвление по результату
         data = SubmissionReadSerializer(submission, context={"request": request}).data
-        if report.valid:
-            enqueue_submission_for_evaluation.delay(submission.id)
+        report_valid = getattr(report, "is_valid", None)
+        if report_valid is None:
+            if hasattr(report, "valid"):
+                report_valid = report.valid
+            else:
+                report_valid = getattr(report, "status", "") != "failed"
+
+        if report_valid:
+            self._enqueue_submission(submission.id)
             return Response(data, status=status.HTTP_201_CREATED)
         else:
             return Response(data, status=status.HTTP_400_BAD_REQUEST)
+
+    def _enqueue_submission(self, submission_id: int) -> None:
+        enqueue_submission_for_evaluation(submission_id)
 
 
 class MySubmissionsListView(generics.ListAPIView):
@@ -58,4 +90,3 @@ class MySubmissionsListView(generics.ListAPIView):
 
     def get_queryset(self):
         return Submission.objects.filter(user=self.request.user).order_by("-submitted_at")
-

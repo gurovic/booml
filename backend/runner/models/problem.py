@@ -1,10 +1,15 @@
-import markdown
 from django.db import models
 from django.core.validators import MinValueValidator, MaxValueValidator
+from django.utils.html import escape
+from django.utils.safestring import mark_safe
+
 from ..models.problem_data import ProblemData
 from ..models.problem_desriptor import ProblemDescriptor
 
-from django.utils.safestring import mark_safe
+try:
+    import markdown  # type: ignore
+except ModuleNotFoundError:  # pragma: no cover - optional dependency
+    markdown = None
 
 class Problem(models.Model):
     title = models.CharField("Название", max_length=255)
@@ -20,12 +25,12 @@ class Problem(models.Model):
         return self.title
 
     def render_statement(self):
-        return mark_safe(markdown.markdown(
-            self.statement,
-            extensions=[
-                "fenced_code",
-                "tables",
-                "md_in_html",
-                "toc"
-            ]
-        ))
+        if markdown:
+            html = markdown.markdown(
+                self.statement,
+                extensions=["fenced_code", "tables", "md_in_html", "toc"],
+            )
+        else:
+            # Fallback to escaped plain text if markdown package is unavailable.
+            html = escape(self.statement).replace("\n", "<br>")
+        return mark_safe(html)

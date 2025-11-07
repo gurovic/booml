@@ -21,3 +21,11 @@ class ProblemDescriptor(models.Model):
 
     def __str__(self):
         return f"Descriptor for {self.problem}, created at {self.created_at}"
+
+    @property
+    def output_columns(self):
+        """
+        List of submission columns that should be validated.
+        Defaults to the primary target column to keep callers simple.
+        """
+        return [self.target_column] if self.target_column else []

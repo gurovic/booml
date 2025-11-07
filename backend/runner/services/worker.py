@@ -1,10 +1,12 @@
-from celery import shared_task
 import logging
+
+from celery import shared_task
+
+from runner.models.submission import Submission
+from runner.services import checker as checker_service
 
 logger = logging.getLogger(__name__)
 
-from runner.models.submission import Submission
-from runner.services.checker import check_submission
 
 @shared_task
 def enqueue_submission_for_evaluation(submission_id: int):
@@ -21,13 +23,13 @@ def evaluate_submission(submission_id: int):
         submission = Submission.objects.get(pk=submission_id)
 
         # --- Вызов чекера по метрике ---
-        result = check_submission(submission)
+        result = checker_service.check_submission(submission)
 
         # --- Обработка результата ---
         submission.status = "checked" if result.ok else "failed"
         submission.result_outputs = result.outputs
         submission.result_errors = result.errors
-        submission.save(update_fields=['status', 'result_outputs', 'result_errors'])
+        submission.save(update_fields=['status'])
 
         logger.info(f"[WORKER] Submission {submission_id} evaluation finished: {submission.status}")
         return {"submission_id": submission_id, "status": submission.status}

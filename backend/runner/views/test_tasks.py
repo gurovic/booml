@@ -1,9 +1,8 @@
-import unittest
-from django.test import Client
+from django.test import Client, TestCase
 from django.urls import reverse
 from ..models.problem import Problem
 
-class ProblemListViewTestCase(unittest.TestCase):
+class ProblemListViewTestCase(TestCase):
     def setUp(self):
         self.client = Client()
         # создаём несколько задач с разными рейтингами
@@ -61,5 +60,3 @@ class ProblemListViewTestCase(unittest.TestCase):
         self.assertIn("Problem1", content)
         self.assertIn("Problem2", content)
         self.assertIn("Problem3", content)
-
-if __name__ == "__main__": unittest.main()
