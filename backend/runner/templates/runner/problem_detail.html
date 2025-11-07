@@ -34,16 +34,16 @@
             <p>
                 <strong>Данные для обучения:</strong>
                 <a href="{{ data.train_file.url }}" download="{{ data.train_file.name }}">
-                    {{ _data.train_file.name }}
+                    train_data
                 </a>
             </p>
         {% endif %}
 
-        {% if pdata.test_file %}
+        {% if data.test_file %}
             <p>
                 <strong>Данные для тестирования:</strong>
                 <a href="{{ data.test_file.url }}" download="{{ data.test_file.name }}">
-                    {{ data.test_file.name }}
+                    test_data
                 </a>
             </p>
         {% endif %}
@@ -52,7 +52,7 @@
             <p>
                 <strong>Пример правильного ответа:</strong>
                 <a href="{{ data.sample_submission_file.url }}" download="{{ data.sample_submission_file.name }}">
-                    {{ data.sample_submission_file.name }}
+                    sample_submission_data
                 </a>
             </p>
         {% endif %}
@@ -61,7 +61,7 @@
             <p>
                 <strong>Файл с правильным ответом:</strong>
                 <a href="{{ data.answer_file.url }}" download="{{ data.answer_file.name }}">
-                    {{ data.answer_file.name }}
+                    answer_data
                 </a>
             </p>
         {% endif %}

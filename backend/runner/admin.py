@@ -2,6 +2,7 @@ from django.contrib import admin
 from .models import Report
 from .models import Problem
 from .models import Submission
+from .models import ProblemData
 
 @admin.register(Report)  # Регистрируем модель в админке
 class ReportAdmin(admin.ModelAdmin):
@@ -37,3 +38,4 @@ class ProblemAdmin(admin.ModelAdmin):
     ordering = ("-created_at",)
 
 admin.site.register(Submission)
+admin.site.register(ProblemData)
