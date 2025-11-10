@@ -10,7 +10,6 @@ from runner.services.runtime import (
     create_session,
     get_session,
     reset_session,
-    run_code,
 )
 
 
@@ -26,7 +25,7 @@ class RuntimeServiceTests(SimpleTestCase):
         stored = get_session("ns", touch=False)
 
         self.assertIs(session, stored)
-        self.assertIn("__builtins__", session.namespace)
+        self.assertEqual(session.namespace, "ns")
         self.assertEqual(session.created_at, now)
 
         newer = timezone.now()
@@ -58,30 +57,3 @@ class RuntimeServiceTests(SimpleTestCase):
         self.assertNotIn("expired", _sessions)
         self.assertIn("fresh", _sessions)
         self.assertIs(get_session("fresh", touch=False), fresh)
-
-    def test_run_code_persists_namespace(self) -> None:
-        first = run_code("session", "x = 41\nprint('hello')")
-
-        self.assertIsNone(first.error)
-        self.assertEqual(first.stdout.strip(), "hello")
-        self.assertEqual(first.variables["x"], "41")
-
-        second = run_code("session", "x += 1\nprint(x)")
-
-        self.assertIsNone(second.error)
-        self.assertEqual(second.stdout.strip(), "42")
-        self.assertEqual(second.variables["x"], "42")
-
-    def test_run_code_reports_exceptions(self) -> None:
-        result = run_code("error-session", "raise ValueError('boom')")
-
-        self.assertIsNotNone(result.error)
-        self.assertIn("ValueError", result.error or "")
-        self.assertEqual(result.stdout, "")
-
-        stderr_result = run_code(
-            "stderr-session",
-            "import sys\nprint('ok')\nprint('warn', file=sys.stderr)",
-        )
-        self.assertEqual(stderr_result.stdout.strip(), "ok")
-        self.assertEqual(stderr_result.stderr.strip(), "warn")

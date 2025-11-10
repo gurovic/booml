@@ -4,6 +4,4 @@ from .sessions import (
     ResetSessionView,
     build_notebook_session_id,
     extract_notebook_id,
-    ensure_notebook_access,
 )
-from .run_cell import RunCellView

@@ -26,15 +26,13 @@ def extract_notebook_id(session_id: str) -> int | None:
 
 
 def ensure_notebook_access(user, notebook: Notebook) -> None:
-    if user is None or not getattr(user, "is_authenticated", False):
-        return
     owner_id = notebook.owner_id
     if owner_id not in (None, user.id) and not user.is_staff:
         raise PermissionDenied("Недостаточно прав для работы с этим блокнотом")
 
 
 class CreateNotebookSessionView(APIView):
-    permission_classes = [permissions.AllowAny]
+    permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
         serializer = NotebookSessionCreateSerializer(data=request.data)
@@ -53,7 +51,7 @@ class CreateNotebookSessionView(APIView):
 
 
 class ResetSessionView(APIView):
-    permission_classes = [permissions.AllowAny]
+    permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
         serializer = SessionResetSerializer(data=request.data)
