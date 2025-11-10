@@ -8,4 +8,3 @@ pandas==2.2.3
 scikit-learn==1.6.1
 coverage==7.11.0
 markdown>=3.5
-pytest-django==4.9.0

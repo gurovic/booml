@@ -1,16 +1,16 @@
 from datetime import date
 from unittest import mock
 from unittest.mock import patch
-from django.urls import reverse
-from django.core.files.uploadedfile import SimpleUploadedFile
-from rest_framework.test import APITestCase
 from django.contrib.auth import get_user_model
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import TestCase
+from django.urls import reverse
 from ...models.problem import Problem
 from ...models.submission import Submission
 
 User = get_user_model()
 
-class SubmissionAPITests(APITestCase):
+class SubmissionAPITests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(username="u1", password="pass")
         self.client.login(username="u1", password="pass")
@@ -24,7 +24,7 @@ class SubmissionAPITests(APITestCase):
         mock_enqueue.return_value = {"status": "enqueued", "submission_id": 1}
         
         f = SimpleUploadedFile("preds.csv", b"id,pred\n1,0.1\n2,0.2\n", content_type="text/csv")
-        resp = self.client.post(self.url, {"problem_id": self.problem.id, "file": f}, format="multipart")
+        resp = self.client.post(self.url, {"problem_id": self.problem.id, "file": f})
         
         # Проверяем что запрос прошел успешно
         self.assertEqual(resp.status_code, 201)
@@ -35,9 +35,9 @@ class SubmissionAPITests(APITestCase):
 
     def test_invalid_problem_id(self):
         f = SimpleUploadedFile("preds.csv", b"id,pred\n", content_type="text/csv")
-        resp = self.client.post(self.url, {"problem_id": 9999, "file": f}, format="multipart")
+        resp = self.client.post(self.url, {"problem_id": 9999, "file": f})
         self.assertEqual(resp.status_code, 400)
-        self.assertIn("problem_id", resp.data)
+        self.assertIn("problem_id", resp.json())
 
     @patch("runner.api.views.submissions.enqueue_submission_for_evaluation")
     @patch("runner.services.validation_service.run_pre_validation")
@@ -48,7 +48,7 @@ class SubmissionAPITests(APITestCase):
         mock_validate.return_value = mock_preval
         
         f = SimpleUploadedFile("preds.csv", b"id,pred\n1,0.1\n", content_type="text/csv")
-        self.client.post(self.url, {"problem_id": self.problem.id, "file": f}, format="multipart")
+        self.client.post(self.url, {"problem_id": self.problem.id, "file": f})
         self.assertTrue(mock_enqueue.called)
 
         # Мокаем неуспешную валидацию
@@ -56,5 +56,5 @@ class SubmissionAPITests(APITestCase):
         mock_enqueue.reset_mock()
         
         f2 = SimpleUploadedFile("preds2.csv", b"id,pred\n1,0.1\n1,0.2\n", content_type="text/csv")
-        self.client.post(self.url, {"problem_id": self.problem.id, "file": f2}, format="multipart")
+        self.client.post(self.url, {"problem_id": self.problem.id, "file": f2})
         self.assertFalse(mock_enqueue.called)

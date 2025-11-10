@@ -1,7 +1,9 @@
+import json
+from http import HTTPStatus
+
 from django.contrib.auth import get_user_model
+from django.test import TestCase
 from django.urls import reverse
-from rest_framework import status
-from rest_framework.test import APITestCase
 
 from runner.models import Notebook, Cell
 from runner.services.runtime import _sessions
@@ -9,7 +11,7 @@ from runner.services.runtime import _sessions
 User = get_user_model()
 
 
-class RunCellViewTests(APITestCase):
+class RunCellViewTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(username="owner", password="pass123")
         self.client.login(username="owner", password="pass123")
@@ -29,10 +31,11 @@ class RunCellViewTests(APITestCase):
                 "cell_id": self.cell.id,
             },
         )
-        self.assertEqual(resp.status_code, status.HTTP_200_OK)
-        self.assertEqual(resp.data["stdout"].strip(), "2")
-        self.assertIsNone(resp.data["error"])
-        self.assertEqual(resp.data["variables"]["x"], "2")
+        self.assertEqual(resp.status_code, HTTPStatus.OK)
+        data = resp.json()
+        self.assertEqual(data["stdout"].strip(), "2")
+        self.assertIsNone(data["error"])
+        self.assertEqual(data["variables"]["x"], "2")
 
     def test_run_cell_forbidden_for_other_user(self):
         another = User.objects.create_user(username="alien", password="pass456")
@@ -46,7 +49,7 @@ class RunCellViewTests(APITestCase):
                 "cell_id": other_cell.id,
             },
         )
-        self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(resp.status_code, HTTPStatus.FORBIDDEN)
 
     def test_run_cell_not_executable(self):
         latex_cell = Cell.objects.create(notebook=self.notebook, cell_type=Cell.LATEX, content="\\frac{1}{2}")
@@ -58,5 +61,6 @@ class RunCellViewTests(APITestCase):
                 "cell_id": latex_cell.id,
             },
         )
-        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("Cell is not executable", str(resp.data))
+        self.assertEqual(resp.status_code, HTTPStatus.BAD_REQUEST)
+        body = resp.json()
+        self.assertIn("Cell is not executable", json.dumps(body))
