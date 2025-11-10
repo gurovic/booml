@@ -6,7 +6,7 @@ from ...models.submission import Submission
 from ..serializers import SubmissionCreateSerializer, SubmissionReadSerializer
 
 from ...services import validation_service
-from ...problems import enqueue_submission_for_evaluation
+from ...services import enqueue_submission_for_evaluation
 
 
 def build_descriptor_from_problem(problem) -> dict:
