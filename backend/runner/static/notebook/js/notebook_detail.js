@@ -4,6 +4,9 @@ const notebookDetail = {
     sessionId: null,
     sessionPromise: null,
     cellStatuses: {},
+    cellQueue: [],
+    currentRun: null,
+    cellOutputSnapshots: {},
     storageEnabled: undefined,
     inactivityTimers: {
         prompt: null,
@@ -114,11 +117,18 @@ const notebookDetail = {
                     return;
                 }
                 if (typeof value === 'string') {
-                    normalized[cellId] = { state: value };
+                    const nextState = (value === 'running' || value === 'queued') ? 'idle' : value;
+                    normalized[cellId] = { state: nextState };
                 } else if (value && typeof value === 'object' && value.state) {
+                    let nextState = value.state;
+                    let nextMeta = value.meta && typeof value.meta === 'object' ? value.meta : null;
+                    if (nextState === 'running' || nextState === 'queued') {
+                        nextState = 'idle';
+                        nextMeta = null;
+                    }
                     normalized[cellId] = {
-                        state: value.state,
-                        meta: value.meta && typeof value.meta === 'object' ? value.meta : null,
+                        state: nextState,
+                        meta: nextMeta,
                     };
                 }
             });
@@ -145,8 +155,17 @@ const notebookDetail = {
                 const label = this.formatDuration(meta?.durationMs);
                 return label ? `Готово: ${label}` : 'Готово';
             }
+            case 'queued': {
+                const ahead = typeof meta?.queueAhead === 'number' ? meta.queueAhead : null;
+                if (ahead && ahead > 0) {
+                    return `Ожидает запуска (перед ней ${ahead})`;
+                }
+                return 'Ожидает запуска (следующая)';
+            }
             case 'error':
                 return 'Ошибка';
+            case 'cancelled':
+                return 'Отменено';
             case 'reset':
                 return 'Нужен повторный запуск';
             default:
@@ -192,6 +211,8 @@ const notebookDetail = {
         }
         this.persistCellStatuses();
         this.updateCellStatusElement(cellId, status, meta);
+        const requiresCancel = status === 'running' || status === 'queued';
+        this.updateRunButtonState(cellId, requiresCancel ? 'cancel' : 'run');
     },
 
     resetAllCellStatuses(status = 'reset') {
@@ -209,7 +230,10 @@ const notebookDetail = {
             if (status !== 'idle') {
                 nextStatuses[cellId] = { state: status };
             }
-            this.updateCellStatusElement(cellId, status === 'idle' ? 'idle' : status, null);
+            const finalStatus = status === 'idle' ? 'idle' : status;
+            this.updateCellStatusElement(cellId, finalStatus, null);
+            const requiresCancel = finalStatus === 'running' || finalStatus === 'queued';
+            this.updateRunButtonState(cellId, requiresCancel ? 'cancel' : 'run');
         });
         this.cellStatuses = nextStatuses;
         this.persistCellStatuses();
@@ -226,7 +250,255 @@ const notebookDetail = {
             const record = this.cellStatuses[cellId];
             const status = record?.state || 'idle';
             this.updateCellStatusElement(cellId, status, record?.meta);
+            const requiresCancel = status === 'running' || status === 'queued';
+            this.updateRunButtonState(cellId, requiresCancel ? 'cancel' : 'run');
         });
+    },
+
+    updateRunButtonState(cellId, mode) {
+        const cellElement = document.querySelector(`[data-cell-id="${cellId}"]`);
+        if (!cellElement) {
+            return;
+        }
+        const button = cellElement.querySelector('[data-action="run-cell"]');
+        if (!button) {
+            return;
+        }
+        if (mode === 'cancel') {
+            button.textContent = 'Отменить';
+            button.dataset.mode = 'cancel';
+        } else {
+            button.textContent = 'Запустить';
+            delete button.dataset.mode;
+        }
+    },
+
+    rememberOutputSnapshot(cellId, html) {
+        if (!cellId) {
+            return;
+        }
+        this.cellOutputSnapshots[cellId] = html ?? '';
+    },
+
+    getOutputSnapshot(cellId) {
+        if (!cellId) {
+            return '';
+        }
+        return this.cellOutputSnapshots[cellId] || '';
+    },
+
+    captureInitialOutputs() {
+        const outputs = document.querySelectorAll('.cell .output');
+        outputs.forEach((outputElement) => {
+            const cellElement = outputElement.closest('[data-cell-id]');
+            const cellId = cellElement?.dataset.cellId;
+            if (!cellId) {
+                return;
+            }
+            this.rememberOutputSnapshot(cellId, outputElement.innerHTML);
+        });
+    },
+
+    isCellQueued(cellId) {
+        return this.cellQueue.some((job) => job.cellId === cellId);
+    },
+
+    cancelQueuedCell(cellId) {
+        const before = this.cellQueue.length;
+        this.cellQueue = this.cellQueue.filter((job) => job.cellId !== cellId);
+        if (this.cellQueue.length === before) {
+            return false;
+        }
+        this.setCellStatus(cellId, 'idle');
+        this.updateQueueStatuses();
+        return true;
+    },
+
+    updateQueueStatuses() {
+        this.cellQueue.forEach((job, index) => {
+            this.setCellStatus(job.cellId, 'queued', {
+                queuePosition: index + 1,
+                queueAhead: index,
+            });
+        });
+        Object.entries({ ...this.cellStatuses }).forEach(([cellId, record]) => {
+            if (record?.state === 'queued') {
+                const stillQueued = this.cellQueue.some((job) => job.cellId === cellId);
+                const running = this.currentRun?.cellId === cellId;
+                if (!stillQueued && !running) {
+                    this.setCellStatus(cellId, 'idle');
+                }
+            }
+        });
+    },
+
+    enqueueCellRun(cellId) {
+        this.cellQueue.push({ cellId, enqueuedAt: Date.now() });
+        this.updateQueueStatuses();
+        this.processQueue();
+    },
+
+    processQueue() {
+        if (this.currentRun || this.cellQueue.length === 0) {
+            return;
+        }
+        const nextJob = this.cellQueue.shift();
+        if (!nextJob) {
+            return;
+        }
+        this.updateQueueStatuses();
+        this.startQueueJob(nextJob);
+    },
+
+    startQueueJob(job) {
+        const controller = typeof AbortController === 'function' ? new AbortController() : null;
+        job.controller = controller;
+        job.cancelled = false;
+        this.currentRun = job;
+        this.executeQueueJob(job).finally(() => {
+            const cellId = job.cellId;
+            if (this.currentRun && this.currentRun.cellId === cellId) {
+                this.currentRun = null;
+            }
+            this.updateRunButtonState(cellId, 'run');
+            this.updateQueueStatuses();
+            this.processQueue();
+        });
+    },
+
+    cancelCurrentRun(reason = 'user') {
+        if (!this.currentRun) {
+            return;
+        }
+        this.currentRun.cancelled = reason;
+        if (this.currentRun.controller) {
+            this.currentRun.controller.abort();
+        }
+    },
+
+    abortAllRuns(reason = 'reset') {
+        if (this.currentRun) {
+            this.cancelCurrentRun(reason);
+        }
+        if (this.cellQueue.length > 0) {
+            this.cellQueue = [];
+            this.updateQueueStatuses();
+        }
+    },
+
+    async executeQueueJob(job) {
+        const cellId = job.cellId;
+        const cellElement = document.querySelector(`[data-cell-id="${cellId}"]`);
+        if (!cellElement) {
+            return;
+        }
+        const textarea = cellElement.querySelector('textarea');
+        const outputElement = document.getElementById(`output-${cellId}`);
+        const saveOutputUrl = this.buildCellUrl(this.saveOutputUrlTemplate, cellId);
+        const runCellUrl = this.runCellUrl;
+
+        if (!textarea || !outputElement || !runCellUrl) {
+            this.setCellStatus(cellId, 'error');
+            return;
+        }
+
+        const cellNumericId = Number(cellId);
+        if (Number.isNaN(cellNumericId)) {
+            alert('Некорректный идентификатор ячейки');
+            this.setCellStatus(cellId, 'error');
+            return;
+        }
+
+        const sessionId = await this.ensureSession().catch((error) => {
+            console.error('Сессия недоступна:', error);
+            alert('Сессия недоступна. Попробуйте перезагрузить страницу.');
+            return null;
+        });
+
+        if (!sessionId) {
+            this.setCellStatus(cellId, 'error');
+            return;
+        }
+
+        const code = textarea.value;
+        this.markActivity();
+        await this.saveCellState(cellId, code, outputElement.innerHTML, saveOutputUrl);
+
+        this.renderArtifacts(cellId, []);
+        job.previousOutputHtml = outputElement.innerHTML || this.getOutputSnapshot(cellId);
+        outputElement.innerHTML = '<div class="output-loading">Выполнение...</div>';
+        outputElement.className = 'output running';
+        this.setCellStatus(cellId, 'running');
+        this.updateRunButtonState(cellId, 'cancel');
+
+        const startedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
+
+        try {
+            const response = await fetch(runCellUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': this.config.csrfToken
+                },
+                body: JSON.stringify({
+                    session_id: sessionId,
+                    cell_id: cellNumericId
+                }),
+                signal: job.controller?.signal
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                const message = data?.detail || data?.error || 'Не удалось выполнить ячейку';
+                throw new Error(message);
+            }
+
+            const formattedOutput = NotebookUtils.formatCellRunResult(data);
+            outputElement.innerHTML = formattedOutput;
+            outputElement.className = data.error ? 'output error' : 'output success';
+            this.renderArtifacts(cellId, []);
+            const finalStatus = data.error ? 'error' : 'success';
+            const durationMs = Math.max(
+                0,
+                (typeof performance !== 'undefined' ? performance.now() : Date.now()) - startedAt,
+            );
+            const meta = finalStatus === 'success' ? { durationMs } : null;
+            this.setCellStatus(cellId, finalStatus, meta);
+            this.rememberOutputSnapshot(cellId, formattedOutput);
+            await this.saveCellState(cellId, code, formattedOutput, saveOutputUrl);
+        } catch (error) {
+            if (job.cancelled) {
+                const reason = job.cancelled === 'reset'
+                    ? 'Выполнение остановлено из-за перезапуска сессии.'
+                    : 'Выполнение отменено пользователем.';
+                if (job.cancelled === 'reset') {
+                    const fallback = job.previousOutputHtml || this.getOutputSnapshot(cellId) || '<div class="output-empty">Нет вывода</div>';
+                    outputElement.innerHTML = fallback;
+                    outputElement.className = 'output';
+                    this.renderArtifacts(cellId, []);
+                    this.setCellStatus(cellId, 'reset');
+                } else {
+                    const note = `<div class="output-error"><strong>Отмена:</strong> ${NotebookUtils.escapeHtml(reason)}</div>`;
+                    outputElement.innerHTML = note;
+                    outputElement.className = 'output error';
+                    this.renderArtifacts(cellId, []);
+                    this.setCellStatus(cellId, 'cancelled');
+                    this.rememberOutputSnapshot(cellId, note);
+                    await this.saveCellState(cellId, code, note, saveOutputUrl);
+                }
+                return;
+            }
+            console.error('Ошибка выполнения ячейки:', error);
+            const message = error?.message || 'Не удалось выполнить ячейку';
+            const errorHtml = `<div class="output-error"><strong>Ошибка:</strong> ${NotebookUtils.escapeHtml(message)}</div>`;
+            outputElement.innerHTML = errorHtml;
+            outputElement.className = 'output error';
+            this.renderArtifacts(cellId, []);
+            this.setCellStatus(cellId, 'error');
+            this.rememberOutputSnapshot(cellId, errorHtml);
+            await this.saveCellState(cellId, code, errorHtml, saveOutputUrl);
+        }
     },
 
     initActivityTracking() {
@@ -344,7 +616,9 @@ const notebookDetail = {
         this.cellStatuses = this.loadCellStatuses();
         this.bindEvents();
         this.initializeCells();
+        this.captureInitialOutputs();
         this.applyStatusesToExistingCells();
+        this.updateQueueStatuses();
         this.initActivityTracking();
         this.ensureSession().catch((error) => {
             console.error('Не удалось создать сессию ноутбука:', error);
@@ -418,7 +692,7 @@ const notebookDetail = {
             this.cancelLatexEdit(cellElement);
         }
         else if (action === 'reset-session') {
-            this.resetSession();
+            this.confirmAndResetSession();
         }
     },
 
@@ -488,6 +762,7 @@ const notebookDetail = {
             if (reason !== 'ban') {
                 this.markActivity();
             }
+            this.abortAllRuns('reset');
             const sessionId = await this.ensureSession();
             if (!sessionId) {
                 throw new Error('Сессия не инициализирована');
@@ -527,20 +802,29 @@ const notebookDetail = {
         }
     },
 
+    confirmAndResetSession() {
+        const ok = window.confirm('Перезапустить сессию? Все переменные будут очищены.');
+        if (!ok) {
+            return;
+        }
+        this.resetSession();
+    },
+
     clearOutputsAfterReset() {
         const outputs = document.querySelectorAll('.cell .output');
         outputs.forEach((outputElement) => {
+            const cellElement = outputElement.closest('[data-cell-id]');
+            const cellId = cellElement?.dataset.cellId;
             const previousWrapper = outputElement.querySelector('.output-previous');
-            const previousHtml = previousWrapper?.innerHTML || outputElement.innerHTML || '<div class="output-empty">Нет вывода</div>';
+            const snapshot = cellId ? this.getOutputSnapshot(cellId) : '';
+            const previousHtml = snapshot || previousWrapper?.innerHTML || outputElement.innerHTML || '<div class="output-empty">Нет вывода</div>';
             outputElement.innerHTML = `
                 <div class="output-reset-note">Нужен повторный запуск. Ниже показан вывод предыдущей сессии.</div>
                 <div class="output-previous">${previousHtml}</div>
             `;
-            outputElement.classList.add('output');
-            outputElement.classList.add('stale');
-            const cellElement = outputElement.closest('[data-cell-id]');
-            const cellId = cellElement?.dataset.cellId;
-            if (cellId) {
+            outputElement.className = 'output reset stale';
+            const hasStatus = cellElement?.querySelector('[data-cell-status]');
+            if (cellId && hasStatus) {
                 this.setCellStatus(cellId, 'reset');
             }
         });
@@ -590,6 +874,12 @@ const notebookDetail = {
                     const record = this.cellStatuses[newCellId];
                     const status = record?.state || 'idle';
                     this.updateCellStatusElement(newCellId, status, record?.meta);
+                    const requiresCancel = status === 'running' || status === 'queued';
+                    this.updateRunButtonState(newCellId, requiresCancel ? 'cancel' : 'run');
+                    const newOutput = newCell.querySelector('.output');
+                    if (newOutput) {
+                        this.rememberOutputSnapshot(newCellId, newOutput.innerHTML);
+                    }
                 }
             }
 
@@ -599,95 +889,22 @@ const notebookDetail = {
         }
     },
 
-    async runCell(cellId) {
-        const cellElement = document.querySelector(`[data-cell-id="${cellId}"]`);
-        if (!cellElement) {
+    runCell(cellId) {
+        if (!cellId) {
             return;
         }
-
-        const textarea = cellElement.querySelector('textarea');
-        const outputElement = document.getElementById(`output-${cellId}`);
-        const saveOutputUrl = this.buildCellUrl(this.saveOutputUrlTemplate, cellId);
-        const runCellUrl = this.runCellUrl;
-
-        if (!textarea || !outputElement) {
-            return;
-        }
-
-        const cellNumericId = Number(cellId);
-        if (Number.isNaN(cellNumericId)) {
-            alert('Некорректный идентификатор ячейки');
-            return;
-        }
-
-        if (!runCellUrl) {
+        if (!this.runCellUrl) {
             alert('URL запуска ячейки недоступен');
             return;
         }
-
-        const sessionId = await this.ensureSession().catch((error) => {
-            console.error('Сессия недоступна:', error);
-            alert('Сессия недоступна. Попробуйте перезагрузить страницу.');
-            return null;
-        });
-
-        if (!sessionId) {
+        if (this.currentRun?.cellId === cellId) {
+            this.cancelCurrentRun('user');
             return;
         }
-
-        const code = textarea.value;
-        this.setCellStatus(cellId, 'running');
-        this.markActivity();
-        await this.saveCellState(cellId, code, outputElement.innerHTML, saveOutputUrl);
-
-        this.renderArtifacts(cellId, []);
-        outputElement.innerHTML = '<div class="output-loading">Выполнение...</div>';
-        outputElement.className = 'output running';
-        const startedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
-
-        try {
-            const response = await fetch(runCellUrl, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': this.config.csrfToken
-                },
-                body: JSON.stringify({
-                    session_id: sessionId,
-                    cell_id: cellNumericId
-                })
-            });
-
-            const data = await response.json();
-
-            if (!response.ok) {
-                const message = data?.detail || data?.error || 'Не удалось выполнить ячейку';
-                throw new Error(message);
-            }
-
-            const formattedOutput = NotebookUtils.formatCellRunResult(data);
-            outputElement.innerHTML = formattedOutput;
-            outputElement.className = data.error ? 'output error' : 'output success';
-            this.renderArtifacts(cellId, []);
-            const finalStatus = data.error ? 'error' : 'success';
-            const durationMs = Math.max(
-                0,
-                (typeof performance !== 'undefined' ? performance.now() : Date.now()) - startedAt,
-            );
-            const meta = finalStatus === 'success' ? { durationMs } : null;
-            this.setCellStatus(cellId, finalStatus, meta);
-
-            await this.saveCellState(cellId, code, formattedOutput, saveOutputUrl);
-        } catch (error) {
-            console.error('Ошибка выполнения ячейки:', error);
-            const message = error?.message || 'Не удалось выполнить ячейку';
-            const errorHtml = `<div class="output-error"><strong>Ошибка:</strong> ${NotebookUtils.escapeHtml(message)}</div>`;
-            outputElement.innerHTML = errorHtml;
-            outputElement.className = 'output error';
-            this.renderArtifacts(cellId, []);
-            this.setCellStatus(cellId, 'error');
-            await this.saveCellState(cellId, code, errorHtml, saveOutputUrl);
+        if (this.cancelQueuedCell(cellId)) {
+            return;
         }
+        this.enqueueCellRun(cellId);
     },
 
     async saveCellState(cellId, code, outputHtml, saveOutputUrl) {
@@ -751,10 +968,18 @@ const notebookDetail = {
 
             if (!response.ok) throw new Error('HTTP error ' + response.status);
 
+            this.cancelQueuedCell(cellId);
+            if (this.currentRun?.cellId === cellId) {
+                this.cancelCurrentRun('user');
+            }
+
             cellElement.remove();
             if (this.cellStatuses[cellId]) {
                 delete this.cellStatuses[cellId];
                 this.persistCellStatuses();
+            }
+            if (this.cellOutputSnapshots[cellId]) {
+                delete this.cellOutputSnapshots[cellId];
             }
 
         } catch (error) {
