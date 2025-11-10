@@ -25,7 +25,7 @@ class RuntimeServiceTests(SimpleTestCase):
         stored = get_session("ns", touch=False)
 
         self.assertIs(session, stored)
-        self.assertEqual(session.namespace, "ns")
+        self.assertIn("__builtins__", session.namespace)
         self.assertEqual(session.created_at, now)
 
         newer = timezone.now()

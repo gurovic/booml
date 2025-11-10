@@ -1,7 +1,8 @@
+from http import HTTPStatus
+
 from django.contrib.auth import get_user_model
+from django.test import TestCase
 from django.urls import reverse
-from rest_framework import status
-from rest_framework.test import APITestCase
 
 from runner.models import Notebook
 from runner.services.runtime import _sessions, create_session, get_session
@@ -9,7 +10,7 @@ from runner.services.runtime import _sessions, create_session, get_session
 User = get_user_model()
 
 
-class NotebookSessionAPITests(APITestCase):
+class NotebookSessionAPITests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(username="owner", password="pass123")
         self.client.login(username="owner", password="pass123")
@@ -23,10 +24,11 @@ class NotebookSessionAPITests(APITestCase):
 
     def test_create_session_success(self):
         resp = self.client.post(self.create_url, {"notebook_id": self.notebook.id})
-        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
-        session_id = resp.data["session_id"]
+        self.assertEqual(resp.status_code, HTTPStatus.CREATED)
+        data = resp.json()
+        session_id = data["session_id"]
         self.assertTrue(session_id.endswith(str(self.notebook.id)))
-        self.assertEqual(resp.data["status"], "created")
+        self.assertEqual(data["status"], "created")
         self.assertIn(session_id, _sessions)
 
     def test_create_session_forbidden_for_other_user(self):
@@ -34,7 +36,7 @@ class NotebookSessionAPITests(APITestCase):
         other_nb = Notebook.objects.create(owner=another, title="Other NB")
 
         resp = self.client.post(self.create_url, {"notebook_id": other_nb.id})
-        self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(resp.status_code, HTTPStatus.FORBIDDEN)
         self.assertNotIn(f"notebook:{other_nb.id}", _sessions)
 
     def test_reset_session_success(self):
@@ -42,9 +44,10 @@ class NotebookSessionAPITests(APITestCase):
         first_session = create_session(session_id)
 
         resp = self.client.post(self.reset_url, {"session_id": session_id})
-        self.assertEqual(resp.status_code, status.HTTP_200_OK)
-        self.assertEqual(resp.data["session_id"], session_id)
-        self.assertEqual(resp.data["status"], "reset")
+        self.assertEqual(resp.status_code, HTTPStatus.OK)
+        data = resp.json()
+        self.assertEqual(data["session_id"], session_id)
+        self.assertEqual(data["status"], "reset")
 
         second_session = get_session(session_id, touch=False)
         self.assertIsNotNone(second_session)
@@ -58,7 +61,7 @@ class NotebookSessionAPITests(APITestCase):
 
         resp = self.client.post(self.reset_url, {"session_id": session_id})
 
-        self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(resp.status_code, HTTPStatus.FORBIDDEN)
         # ensure session not reset: still same object
         original = get_session(session_id, touch=False)
         again = get_session(session_id, touch=False)
