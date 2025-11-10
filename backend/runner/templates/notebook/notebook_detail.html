@@ -33,7 +33,9 @@
          data-notebook-id="{{ notebook.id }}"
          data-create-cell-url="{% url 'runner:create_cell' notebook.id %}"
          data-create-latex-cell-url="{% url 'runner:create_latex_cell' notebook.id %}"
-         data-runner-url="{% url 'runner:run_code' %}"
+         data-run-cell-url="{% url 'run-cell' %}"
+         data-session-create-url="{% url 'notebook-session-create' %}"
+         data-session-reset-url="{% url 'session-reset' %}"
          data-delete-url-template="{% url 'runner:delete_cell' notebook.id 0 %}"
          data-save-output-url-template="{% url 'runner:save_cell_output' notebook.id 0 %}">
 
@@ -67,6 +69,7 @@
             </form>
             <button data-action="create-cell">➕ Новая ячейка кода</button>
             <button data-action="create-latex-cell">➕ Новая LaTeX-ячейка</button>
+            <button data-action="reset-session">♻️ Перезапустить сессию</button>
         </div>
 
         <div id="cells-container">
@@ -82,7 +85,10 @@
         document.addEventListener('DOMContentLoaded', function() {
             notebookDetail.init({
                 notebookId: {{ notebook.id }},
-                csrfToken: '{{ csrf_token }}'
+                csrfToken: '{{ csrf_token }}',
+                runCellUrl: '{% url "run-cell" %}',
+                sessionCreateUrl: '{% url "notebook-session-create" %}',
+                sessionResetUrl: '{% url "session-reset" %}'
             });
         });
     </script>
