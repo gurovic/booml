@@ -17,6 +17,8 @@ from .views.get_reports_list import get_reports_list
 from .views.receive_test_result import receive_test_result
 from .views.contest_draft import create_contest, contest_success
 from .views.run_code import run_code
+from .views.cells_duplicate import duplicate_cell
+from .views.cells_reorder import reorder_cells
 
 
 app_name = 'runner'
@@ -48,4 +50,6 @@ urlpatterns = [
     path('notebook/<int:notebook_id>/cell/<int:cell_id>/delete/', delete_cell, name='delete_cell'),
     path('notebook/<int:notebook_id>/cell/<int:cell_id>/save_output/', save_cell_output, name='save_cell_output'),
     path('run_code/', run_code, name='run_code'),
+    path("notebooks/<int:notebook_id>/cells/<int:cell_id>/duplicate/", duplicate_cell, name="duplicate_cell"),
+    path("notebooks/<int:notebook_id>/cells/reorder/", reorder_cells, name="reorder_cells")
 ]

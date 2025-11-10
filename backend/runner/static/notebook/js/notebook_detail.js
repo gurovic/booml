@@ -362,3 +362,72 @@ const notebookDetail = {
         }
     }
 };
+(function () {
+  if (typeof notebookDetail !== "object" || notebookDetail === null) return;
+
+
+  const __origInit = notebookDetail.init?.bind(notebookDetail);
+  if (typeof __origInit === "function") {
+    notebookDetail.init = function (config) {
+      __origInit(config);
+      try {
+        if (!this.notebookElement && config?.notebookId != null) {
+          const el = document.querySelector(`[data-notebook-id="${config.notebookId}"]`);
+          if (el) this.notebookElement = el;
+        }
+        this.duplicateUrlTemplate = this.notebookElement?.dataset?.duplicateUrlTemplate || "";
+      } catch (_) {
+        this.duplicateUrlTemplate = "";
+      }
+    };
+  }
+
+  function getCookie(name) {
+    const row = document.cookie.split("; ").find(r => r.startsWith(name + "="));
+    return row ? decodeURIComponent(row.split("=")[1]) : null;
+  }
+
+  notebookDetail.duplicateCell = async function (cellId, cellElement) {
+    try {
+      const nbId = this?.config?.notebookId;
+      const urlFromTemplate = this.buildCellUrl?.(this.duplicateUrlTemplate, cellId) || "";
+      const url = urlFromTemplate || `/notebooks/${nbId}/cells/${cellId}/duplicate/`;
+      const csrf = this?.config?.csrfToken || getCookie("csrftoken");
+
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "X-CSRFToken": csrf, "X-Requested-With": "XMLHttpRequest" }
+      });
+
+      if (!res.ok) throw new Error("HTTP error " + res.status);
+      const data = await res.json();
+      const newId = data?.cell?.id;
+      if (!newId) throw new Error("Некорректный ответ сервера");
+
+      const oldId = String(cellId);
+      const clone = cellElement.cloneNode(true);
+      clone.dataset.cellId = String(newId);
+      const out = clone.querySelector(`#output-${oldId}`);
+      if (out) out.id = `output-${newId}`;
+      const arts = clone.querySelector(`#artifacts-${oldId}`);
+      if (arts) arts.id = `artifacts-${newId}`;
+      const dupBtn = clone.querySelector('[data-action="duplicate-cell"]');
+      if (dupBtn) dupBtn.dataset.cellId = String(newId);
+      cellElement.insertAdjacentElement("afterend", clone);
+      clone.scrollIntoView({ behavior: "smooth", block: "center" });
+    } catch (err) {
+      console.error("Ошибка при дублировании:", err);
+      alert("Ошибка при дублировании: " + (err?.message || err));
+    }
+  };
+
+  document.addEventListener("click", function (e) {
+    const btn = e.target.closest("[data-action='duplicate-cell']");
+    if (!btn) return;
+    const cellEl = btn.closest("[data-cell-id]");
+    const cellId = cellEl?.dataset?.cellId;
+    if (!cellId) return;
+    e.preventDefault();
+    notebookDetail.duplicateCell(cellId, cellEl);
+  });
+})();
