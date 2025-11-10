@@ -1,2 +1,3 @@
 from .submissions import SubmissionCreateSerializer, SubmissionReadSerializer
 from .sessions import NotebookSessionCreateSerializer, SessionResetSerializer
+from .cells import CellRunSerializer

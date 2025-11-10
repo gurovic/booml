@@ -27,7 +27,7 @@ def extract_notebook_id(session_id: str) -> int | None:
 
 def ensure_notebook_access(user, notebook: Notebook) -> None:
     owner_id = notebook.owner_id
-    if owner_id not in (None, user.id) and not user.is_staff:
+    if owner_id != user.id and not user.is_staff:
         raise PermissionDenied("Недостаточно прав для работы с этим блокнотом")
 
 
