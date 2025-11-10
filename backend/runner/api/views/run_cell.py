@@ -8,7 +8,7 @@ from .sessions import ensure_notebook_access
 
 
 class RunCellView(APIView):
-    permission_classes = [permissions.AllowAny]
+    permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
         serializer = CellRunSerializer(data=request.data)
