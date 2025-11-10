@@ -9,6 +9,9 @@
             {% endif %}
             <button type="button" data-action="delete-cell">Удалить</button>
         </div>
+        {% if cell.cell_type == cell.CODE %}
+            <div class="cell-status-indicator" data-cell-status data-status="idle">Ожидание</div>
+        {% endif %}
     </div>
 
     {% if cell.cell_type == cell.LATEX %}
