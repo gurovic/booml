@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>Список моих задач</title>
+</head>
+<body>
+  <!-- html -->
+<h1>Мои задачи</h1>
+
+<table>
+  <thead>
+    <tr>
+      <th>Название</th>
+        <th>Опубликовано</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% if page_obj.object_list %}
+      {% for problem in page_obj.object_list %}
+        <tr>
+          <td><a href="{% url 'runner:polygon_edit_problem' problem.id %}">{{ problem.title }}</a></td>
+        <td><input type="checkbox" checked={{ problem.is_published}} disabled></td>
+        </tr>
+      {% endfor %}
+    {% else %}
+      <tr>
+        <td colspan="3">Нет задач</td>
+      </tr>
+    {% endif %}
+  </tbody>
+</table>
+
+{% if page_obj.has_other_pages %}
+<nav class="pagination">
+  {% if page_obj.has_previous %}
+    <a href="?page={{ page_obj.previous_page_number }}{% if querystring %}&{{ querystring }}{% endif %}">Предыдущая</a>
+  {% endif %}
+
+  <span>Страница {{ page_obj.number }} из {{ page_obj.paginator.num_pages }}</span>
+
+  {% if page_obj.has_next %}
+    <a href="?page={{ page_obj.next_page_number }}{% if querystring %}&{{ querystring }}{% endif %}">Следующая</a>
+  {% endif %}
+</nav>
+{% endif %}
+
+</body>
+</html>
