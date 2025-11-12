@@ -17,6 +17,7 @@ from .views.get_reports_list import get_reports_list
 from .views.receive_test_result import receive_test_result
 from .views.contest_draft import create_contest, contest_success
 from .views.run_code import run_code
+from .views.list_of_problems_polygon import problem_list_polygon
 
 
 app_name = 'runner'
@@ -48,4 +49,5 @@ urlpatterns = [
     path('notebook/<int:notebook_id>/cell/<int:cell_id>/delete/', delete_cell, name='delete_cell'),
     path('notebook/<int:notebook_id>/cell/<int:cell_id>/save_output/', save_cell_output, name='save_cell_output'),
     path('run_code/', run_code, name='run_code'),
+    path('polygon/', problem_list_polygon, name='polygon'),
 ]

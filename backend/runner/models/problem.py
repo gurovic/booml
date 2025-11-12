@@ -2,6 +2,7 @@ from django.db import models
 from django.core.validators import MinValueValidator, MaxValueValidator
 from django.utils.html import escape
 from django.utils.safestring import mark_safe
+from django.conf import settings
 
 from ..models.problem_data import ProblemData
 from ..models.problem_desriptor import ProblemDescriptor
@@ -18,7 +19,16 @@ class Problem(models.Model):
     rating = models.IntegerField(
         "Рейтинг сложности",
         validators=[MinValueValidator(800), MaxValueValidator(3000)],
-        default=800
+        default=800,
+    )
+    is_published = models.BooleanField("Опубликована", default=True)
+    author = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        verbose_name="Автор",
+        on_delete=models.SET_NULL,
+        related_name="problems",
+        default=None,
+        null=True,
     )
 
     def __str__(self):
