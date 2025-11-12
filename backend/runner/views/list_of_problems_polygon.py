@@ -4,7 +4,7 @@ from django.core.paginator import Paginator
 from ..models import Problem
 
 def problem_list_polygon(request):
-    Problems = Problem.objects.filter(author=request.user.id).only('title','rating','is_published')
+    Problems = Problem.objects.filter(author=request.user.id).order_by("id").only('title','rating','is_published')
     paginator = Paginator(Problems, 50)
     page_number = request.GET.get("page")
     page_obj = paginator.get_page(page_number)
