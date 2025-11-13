@@ -1,5 +1,6 @@
 from datetime import timedelta
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
 from django.test import SimpleTestCase, override_settings
 from django.utils import timezone
@@ -106,9 +107,87 @@ class RuntimeServiceTests(SimpleTestCase):
         self.assertIsNotNone(result.error)
         self.assertIn("PermissionError", result.error or "")
 
-    def test_network_access_blocked(self) -> None:
+    def test_network_access_blocked_outside_helper(self) -> None:
         session_id = "sess5"
         create_session(session_id)
-        result = run_code(session_id, "import socket\nsocket.socket()")
+        code = "import socket\nsocket.create_connection(('example.com', 80))"
+        result = run_code(session_id, code)
+        self.assertIsNotNone(result.error)
+        self.assertIn("PermissionError", result.error or "")
+
+    def test_blocked_imports(self) -> None:
+        session_id = "sess6"
+        create_session(session_id)
+        result = run_code(session_id, "import ctypes")
+        self.assertIsNotNone(result.error)
+        self.assertIn("PermissionError", result.error or "")
+
+    def test_os_open_blocked_outside(self) -> None:
+        session_id = "sess7"
+        create_session(session_id)
+        result = run_code(session_id, "import os\nos.open('/etc/passwd', os.O_RDONLY)")
+        self.assertIsNotNone(result.error)
+        self.assertIn("PermissionError", result.error or "")
+
+    @patch("runner.services.runtime.urlopen")
+    def test_download_helper_saves_file(self, mock_urlopen) -> None:
+        session_id = "sess8"
+        create_session(session_id)
+        chunks = [b"foo", b"bar", b""]
+
+        class DummyResponse:
+            def __enter__(self_inner):
+                return self_inner
+
+            def __exit__(self_inner, exc_type, exc_val, exc_tb):
+                return False
+
+            def read(self_inner, *_args, **_kwargs):
+                return chunks.pop(0)
+
+        mock_urlopen.return_value = DummyResponse()
+        url = "https://storage.googleapis.com/models/test.bin"
+        code = (
+            f"path = download_file('{url}', filename='weights.bin')\n"
+            "payload = open(path, 'rb').read()\n"
+        )
+        result = run_code(session_id, code)
+        session = get_session(session_id, touch=False)
+        self.assertIsNotNone(session)
+        target = session.workdir / "weights.bin"
+        self.assertTrue(target.exists())
+        self.assertEqual(target.read_bytes(), b"foobar")
+        self.assertEqual(result.variables["payload"], "b'foobar'")
+
+    def test_download_helper_blocks_disallowed_extension(self) -> None:
+        session_id = "sess9"
+        create_session(session_id)
+        result = run_code(session_id, "download_file('https://example.com/malware.exe')")
+        self.assertIsNotNone(result.error)
+        self.assertIn("PermissionError", result.error or "")
+
+    def test_allowed_download_types_exposed(self) -> None:
+        session_id = "sess10"
+        create_session(session_id)
+        result = run_code(session_id, "extensions = allowed_download_types")
+        self.assertIn("extensions", result.variables)
+        self.assertIn("csv", result.variables["extensions"])
+
+    def test_open_write_disallowed_extension(self) -> None:
+        session_id = "sess11"
+        create_session(session_id)
+        result = run_code(session_id, "open('payload.exe','w').write('oops')")
+        self.assertIsNotNone(result.error)
+        self.assertIn("PermissionError", result.error or "")
+
+    def test_rename_to_disallowed_extension_blocked(self) -> None:
+        session_id = "sess12"
+        create_session(session_id)
+        code = (
+            "open('model.bin','w').write('ok')\n"
+            "import os\n"
+            "os.rename('model.bin', 'model.exe')\n"
+        )
+        result = run_code(session_id, code)
         self.assertIsNotNone(result.error)
         self.assertIn("PermissionError", result.error or "")

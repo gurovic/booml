@@ -1,14 +1,23 @@
 from __future__ import annotations
 
+from django.http import FileResponse, Http404
 from django.shortcuts import get_object_or_404
+from django.conf import settings
 from rest_framework import permissions, status
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from ...models.notebook import Notebook
-from ...services.runtime import create_session, reset_session
-from ..serializers import NotebookSessionCreateSerializer, SessionResetSerializer
+from ...services.runtime import create_session, reset_session, get_session
+from ..serializers import (
+    NotebookSessionCreateSerializer,
+    SessionResetSerializer,
+    SessionFilesQuerySerializer,
+    SessionFileDownloadSerializer,
+)
+from pathlib import Path
+import re
 
 NOTEBOOK_SESSION_PREFIX = "notebook:"
 
@@ -67,3 +76,55 @@ class ResetSessionView(APIView):
 
         reset_session(session_id)
         return Response({"session_id": session_id, "status": "reset"}, status=status.HTTP_200_OK)
+
+
+class SessionFilesView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request):
+        serializer = SessionFilesQuerySerializer(data=request.query_params)
+        serializer.is_valid(raise_exception=True)
+        session_id = serializer.validated_data["session_id"]
+
+        session = get_session(session_id, touch=False)
+        if session is None:
+            session = create_session(session_id)
+
+        files: list[dict[str, str | int]] = []
+        for path in sorted(session.workdir.rglob("*")):
+            if not path.is_file():
+                continue
+            rel = path.relative_to(session.workdir)
+            stat = path.stat()
+            files.append({
+                "path": str(rel),
+                "size": stat.st_size,
+                "modified": stat.st_mtime,
+            })
+
+        return Response({"session_id": session_id, "files": files}, status=status.HTTP_200_OK)
+
+
+class SessionFileDownloadView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request):
+        serializer = SessionFileDownloadSerializer(data=request.query_params)
+        serializer.is_valid(raise_exception=True)
+        session_id = serializer.validated_data["session_id"]
+        relative_path = serializer.validated_data["path"]
+
+        session = get_session(session_id, touch=False)
+        if session is None:
+            raise Http404("Session not found")
+
+        candidate = (session.workdir / relative_path).resolve()
+        try:
+            candidate.relative_to(session.workdir.resolve())
+        except ValueError:
+            raise Http404("File outside sandbox")
+
+        if not candidate.exists() or not candidate.is_file():
+            raise Http404("File not found")
+
+        return FileResponse(candidate.open("rb"), as_attachment=True, filename=candidate.name)

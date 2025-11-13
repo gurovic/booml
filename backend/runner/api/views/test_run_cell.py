@@ -1,8 +1,10 @@
 import json
 from http import HTTPStatus
 
+from tempfile import TemporaryDirectory
+
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from runner.models import Notebook, Cell
@@ -13,6 +15,9 @@ User = get_user_model()
 
 class RunCellViewTests(TestCase):
     def setUp(self):
+        self.tmp_dir = TemporaryDirectory()
+        self.override = override_settings(RUNTIME_SANDBOX_ROOT=self.tmp_dir.name)
+        self.override.enable()
         self.user = User.objects.create_user(username="owner", password="pass123")
         self.client.login(username="owner", password="pass123")
         self.notebook = Notebook.objects.create(owner=self.user, title="My Notebook")
@@ -22,6 +27,8 @@ class RunCellViewTests(TestCase):
 
     def tearDown(self):
         _sessions.clear()
+        self.override.disable()
+        self.tmp_dir.cleanup()
 
     def test_run_cell_success(self):
         resp = self.client.post(

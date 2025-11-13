@@ -14,6 +14,7 @@ const notebookDetail = {
     },
     inactivityOverlay: null,
     lastActivityTs: null,
+    filesRequestId: 0,
 
     sanitizeUrl(value) {
         if (typeof value !== 'string') {
@@ -99,6 +100,9 @@ const notebookDetail = {
 
     clearStoredSessionId() {
         this.removeStorage(this.getSessionStorageKey());
+        this.filesLoadedFor = null;
+        this.filesRequestId += 1;
+        this.resetFilesPanelMarkup();
     },
 
     loadCellStatuses() {
@@ -363,6 +367,7 @@ const notebookDetail = {
             this.updateRunButtonState(cellId, 'run');
             this.updateQueueStatuses();
             this.processQueue();
+            this.refreshSessionFiles();
         });
     },
 
@@ -613,6 +618,13 @@ const notebookDetail = {
         this.runCellUrl = this.sanitizeUrl(config.runCellUrl) || this.sanitizeUrl(this.notebookElement?.dataset.runCellUrl);
         this.sessionCreateUrl = this.sanitizeUrl(config.sessionCreateUrl) || this.sanitizeUrl(this.notebookElement?.dataset.sessionCreateUrl);
         this.sessionResetUrl = this.sanitizeUrl(config.sessionResetUrl) || this.sanitizeUrl(this.notebookElement?.dataset.sessionResetUrl);
+        this.sessionFilesUrl = this.sanitizeUrl(config.sessionFilesUrl) || this.sanitizeUrl(this.notebookElement?.dataset.sessionFilesUrl);
+        this.sessionFileDownloadUrl = this.sanitizeUrl(config.sessionFileDownloadUrl) || this.sanitizeUrl(this.notebookElement?.dataset.sessionFileDownloadUrl);
+        this.filesPanel = document.querySelector('[data-files-panel]');
+        this.filesList = this.filesPanel?.querySelector('[data-files-list]');
+        this.filesLoadedFor = null;
+        this.filesRequestId = 0;
+        this.initialFilesLoaded = false;
         this.cellStatuses = this.loadCellStatuses();
         this.bindEvents();
         this.initializeCells();
@@ -694,6 +706,9 @@ const notebookDetail = {
         else if (action === 'reset-session') {
             this.confirmAndResetSession();
         }
+        else if (action === 'refresh-files') {
+            this.refreshSessionFiles();
+        }
     },
 
     async ensureSession(options = {}) {
@@ -712,6 +727,9 @@ const notebookDetail = {
             const stored = this.getStoredSessionId();
             if (stored) {
                 this.sessionId = stored;
+                if (this.filesLoadedFor !== stored) {
+                    this.refreshSessionFiles();
+                }
                 return stored;
             }
         }
@@ -747,6 +765,7 @@ const notebookDetail = {
 
             this.sessionId = data.session_id;
             this.storeSessionId(this.sessionId);
+            this.refreshSessionFiles();
             return this.sessionId;
         } catch (error) {
             this.sessionId = null;
@@ -788,9 +807,13 @@ const notebookDetail = {
 
             this.clearStoredSessionId();
             this.sessionId = null;
+            this.resetFilesPanelMarkup();
             await this.ensureSession({ force: true });
             this.clearOutputsAfterReset();
             this.resetAllCellStatuses('reset');
+            this.filesRequestId += 1;
+            this.renderSessionFiles([]);
+            this.refreshSessionFiles();
             if (!silent && reason !== 'ban') {
                 alert('Сессия перезапущена. Все переменные очищены.');
             }
@@ -922,6 +945,95 @@ const notebookDetail = {
         }
     },
 
+    async refreshSessionFiles() {
+        if (!this.sessionFilesUrl) {
+            return;
+        }
+        if (!this.sessionId) {
+            return;
+        }
+        const requestId = ++this.filesRequestId;
+        try {
+            const url = `${this.sessionFilesUrl}?session_id=${encodeURIComponent(this.sessionId)}`;
+            const response = await fetch(url, {
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            });
+            if (!response.ok) {
+                throw new Error(`HTTP error ${response.status}`);
+            }
+            const data = await response.json();
+            const files = Array.isArray(data?.files) ? data.files : [];
+            if (requestId !== this.filesRequestId) {
+                return;
+            }
+            this.renderSessionFiles(files);
+        } catch (error) {
+            console.error('Не удалось получить список файлов сессии:', error);
+            if (this.filesList) {
+                this.filesList.innerHTML = '<div class="files-error">Не удалось загрузить список файлов</div>';
+            }
+        }
+    },
+
+    renderSessionFiles(files) {
+        if (!this.filesList) {
+            return;
+        }
+        if (!Array.isArray(files) || files.length === 0) {
+            this.filesList.innerHTML = '<div class="files-empty">Файлы ещё не созданы</div>';
+            this.filesLoadedFor = this.sessionId || null;
+            return;
+        }
+        const sessionId = this.sessionId ? encodeURIComponent(this.sessionId) : '';
+        const downloadBase = this.sessionFileDownloadUrl;
+        const items = files.slice(0, 200).map((file) => {
+            const safePath = NotebookUtils.escapeHtml(file.path || 'file');
+            const sizeLabel = this.formatFileSize(file.size);
+            const href = downloadBase && sessionId
+                ? `${downloadBase}?session_id=${sessionId}&path=${encodeURIComponent(file.path)}`
+                : '';
+            const link = href
+                ? `<a href="${href}" target="_blank" rel="noopener noreferrer">${safePath}</a>`
+                : `<span>${safePath}</span>`;
+            return `<div class="file-entry">
+                ${link}
+                <span class="file-meta">${sizeLabel}</span>
+            </div>`;
+        }).join('');
+        this.filesList.innerHTML = items;
+        this.filesLoadedFor = this.sessionId || null;
+    },
+
+    resetFilesPanelMarkup() {
+        if (!this.filesPanel) {
+            return;
+        }
+        this.filesPanel.innerHTML = `
+            <div class="files-panel-header">
+                <span>Файлы сессии</span>
+                <button type="button" data-action="refresh-files">Обновить</button>
+            </div>
+            <div class="files-panel-body" data-files-list>
+                <div class="files-empty">Файлы ещё не созданы</div>
+            </div>
+        `;
+        this.filesList = this.filesPanel.querySelector('[data-files-list]');
+    },
+
+    formatFileSize(bytes) {
+        const value = Number(bytes);
+        if (!Number.isFinite(value) || value < 0) {
+            return '';
+        }
+        if (value >= 1024 * 1024) {
+            return `${(value / (1024 * 1024)).toFixed(1)} МБ`;
+        }
+        if (value >= 1024) {
+            return `${(value / 1024).toFixed(1)} КБ`;
+        }
+        return `${value} Б`;
+    },
+
     renderArtifacts(cellId, artifacts) {
         const container = document.getElementById(`artifacts-${cellId}`);
 
@@ -981,6 +1093,7 @@ const notebookDetail = {
             if (this.cellOutputSnapshots[cellId]) {
                 delete this.cellOutputSnapshots[cellId];
             }
+            this.refreshSessionFiles();
 
         } catch (error) {
             console.error('Ошибка:', error);
