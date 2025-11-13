@@ -65,6 +65,49 @@
                 </a>
             </p>
         {% endif %}
+
+        <div class="submission-section">
+            <h2>Отправить решение</h2>
+
+            {% if submission_feedback %}
+                <div class="submission-feedback submission-feedback-{{ submission_feedback.level }}">
+                    <p>{{ submission_feedback.message }}</p>
+                    {% if submission_feedback.details %}
+                        <pre>{{ submission_feedback.details }}</pre>
+                    {% endif %}
+                </div>
+            {% endif %}
+
+            {% if request.user.is_authenticated %}
+                <form method="post" enctype="multipart/form-data" class="submission-form">
+                    {% csrf_token %}
+                    <label for="{{ form.file.id_for_label }}">Файл в формате CSV</label>
+                    {{ form.file }}
+
+                    {% if form.file.errors %}
+                        <div class="field-error">
+                            {% for error in form.file.errors %}
+                                <p>{{ error }}</p>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+
+                    {% if form.non_field_errors %}
+                        <div class="field-error">
+                            {% for error in form.non_field_errors %}
+                                <p>{{ error }}</p>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+
+                    <button type="submit">Отправить в тестирующую систему</button>
+                </form>
+            {% else %}
+                <p>
+                    Чтобы отправить решение, <a href="{% url 'runner:login' %}?next={{ request.path }}">войдите в аккаунт</a>.
+                </p>
+            {% endif %}
+        </div>
     </div>
 </body>
 </html>

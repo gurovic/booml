@@ -1,3 +1,5 @@
+from typing import Optional
+
 from rest_framework import serializers
 
 from ...models.notebook import Notebook
@@ -15,7 +17,7 @@ class NotebookSessionCreateSerializer(serializers.Serializer):
         return value
 
     @property
-    def notebook(self) -> Notebook | None:
+    def notebook(self) -> Optional[Notebook]:
         return getattr(self, "_notebook", None)
 
 

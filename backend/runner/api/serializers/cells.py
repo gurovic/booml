@@ -1,3 +1,5 @@
+from typing import Optional
+
 from rest_framework import serializers
 
 from ...models.cell import Cell
@@ -20,5 +22,5 @@ class CellRunSerializer(serializers.Serializer):
         return value
 
     @property
-    def cell(self) -> Cell | None:
+    def cell(self) -> Optional[Cell]:
         return getattr(self, "_cell", None)
