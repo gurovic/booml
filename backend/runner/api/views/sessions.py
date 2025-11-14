@@ -1,10 +1,9 @@
-from __future__ import annotations
-
 from django.shortcuts import get_object_or_404
 from rest_framework import permissions, status
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from typing import Optional
 
 from ...models.notebook import Notebook
 from ...services.runtime import create_session, reset_session
@@ -17,7 +16,7 @@ def build_notebook_session_id(notebook_id: int) -> str:
     return f"{NOTEBOOK_SESSION_PREFIX}{notebook_id}"
 
 
-def extract_notebook_id(session_id: str) -> int | None:
+def extract_notebook_id(session_id: str) -> Optional[int]:
     if session_id.startswith(NOTEBOOK_SESSION_PREFIX):
         suffix = session_id[len(NOTEBOOK_SESSION_PREFIX):]
         if suffix.isdigit():

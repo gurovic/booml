@@ -142,7 +142,7 @@ def collect_artifacts(run_dir: Path) -> List[Path]:
     return artifacts
 
 
-def run_python(code: str, media_root: Path, run_id: str | None = None, timeout_s: int = cfg.TIMEOUT_S) -> RunResult:
+def run_python(code: str, media_root: Path, run_id: Optional[str] = None, timeout_s: int = cfg.TIMEOUT_S) -> RunResult:
     started_at = time.time()
     rid = run_id or uuid.uuid4().hex
     run_root = media_root / cfg.RUNS_SUBDIR if cfg.RUNS_SUBDIR else media_root
