@@ -3,9 +3,18 @@ from django.views.decorators.http import require_http_methods
 
 from ..models.problem import Problem
 from ..models.problem_desriptor import ProblemDescriptor
+from ..models.problem_data import ProblemData
 
-MIN_RATING = 800
-MAX_RATING = 3000
+MIN_RATING = None
+MAX_RATING = None
+rating_field = Problem._meta.get_field("rating")
+for v in getattr(rating_field, "validators", []):
+    limit = getattr(v, "limit_value", None)
+    name = v.__class__.__name__.lower()
+    if "min" in name:
+        MIN_RATING = limit
+    if "max" in name:
+        MAX_RATING = limit
 
 
 @require_http_methods(["GET", "POST"])
@@ -15,6 +24,7 @@ def edit_problem_polygon(request, problem_id):
 
     problem = get_object_or_404(Problem, pk=problem_id, author=request.user)
     descriptor = ProblemDescriptor.objects.filter(problem=problem).first()
+    problem_data = ProblemData.objects.filter(problem=problem).first()
 
     def _descriptor_default(field_name):
         field = ProblemDescriptor._meta.get_field(field_name)
@@ -73,6 +83,12 @@ def edit_problem_polygon(request, problem_id):
         if descriptor_form_data["target_type"] not in target_type_choices:
             descriptor_errors["target_type"] = "Неверный тип ответа"
 
+        uploaded_files = {}
+        for field_name in ("train_file", "test_file", "sample_submission_file", "answer_file"):
+            file_obj = request.FILES.get(field_name)
+            if file_obj:
+                uploaded_files[field_name] = file_obj
+
         if not errors and not descriptor_errors:
             problem.title = form_data["title"]
             problem.rating = rating_value
@@ -89,6 +105,13 @@ def edit_problem_polygon(request, problem_id):
                     "check_order": descriptor_form_data["check_order"],
                 },
             )
+
+            if uploaded_files:
+                problem_data, _ = ProblemData.objects.get_or_create(problem=problem)
+                for field_name, file_obj in uploaded_files.items():
+                    setattr(problem_data, field_name, file_obj)
+                problem_data.save()
+
             return redirect("runner:polygon_edit_problem", problem_id=problem.id)
 
     return render(
@@ -102,5 +125,6 @@ def edit_problem_polygon(request, problem_id):
             "descriptor_errors": descriptor_errors,
             "id_type_choices": ProblemDescriptor._meta.get_field("id_type").choices,
             "target_type_choices": ProblemDescriptor._meta.get_field("target_type").choices,
+            "problem_data": problem_data,
         },
     )

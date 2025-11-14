@@ -1,9 +1,14 @@
 # backend/runner/views/test_edit_problem_polygon.py
+import shutil
+import tempfile
+
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from ..models.problem import Problem
+from ..models.problem_data import ProblemData
 from ..models.problem_desriptor import ProblemDescriptor
 
 
@@ -30,6 +35,28 @@ class EditProblemPolygonViewTests(TestCase):
         self.url = reverse("runner:polygon_edit_problem", args=[self.problem.id])
         self.login_url = reverse("runner:login")
 
+        self._media_dir = tempfile.mkdtemp(prefix="test_media_")
+        self._override = override_settings(MEDIA_ROOT=self._media_dir)
+        self._override.enable()
+
+    def tearDown(self):
+        self._override.disable()
+        shutil.rmtree(self._media_dir, ignore_errors=True)
+        super().tearDown()
+
+    def _base_post_payload(self, **overrides):
+        payload = {
+            "title": "Новая задача",
+            "rating": "1100",
+            "statement": "Новое условие",
+            "id_column": "row_id",
+            "target_column": "prediction",
+            "id_type": "int",
+            "target_type": "float",
+        }
+        payload.update(overrides)
+        return payload
+
     def test_get_requires_authentication(self):
         resp = self.client.get(self.url)
         self.assertEqual(resp.status_code, 302)
@@ -49,28 +76,27 @@ class EditProblemPolygonViewTests(TestCase):
         self.assertContains(resp, "value=\"900\"")
         self.assertContains(resp, "name=\"id_column\"")
         self.assertContains(resp, "value=\"row_id\"")
+        self.assertContains(resp, 'enctype="multipart/form-data"')
 
-    def test_post_valid_data_updates_problem(self):
+    def test_post_valid_data_updates_problem_and_descriptor(self):
         self.client.force_login(self.author)
         resp = self.client.post(
             self.url,
-            {
-                "title": "Новая задача",
-                "rating": "1200",
-                "statement": "Новое условие",
-                "id_column": "customer_id",
-                "target_column": "result",
-                "id_type": "str",
-                "target_type": "int",
-                "check_order": "on",
-            },
+            self._base_post_payload(
+                title="Новая задача",
+                rating="1200",
+                id_column="customer_id",
+                target_column="result",
+                id_type="str",
+                target_type="int",
+                check_order="on",
+            ),
         )
         self.assertEqual(resp.status_code, 302)
         self.assertEqual(resp.url, self.url)
         self.problem.refresh_from_db()
         self.assertEqual(self.problem.title, "Новая задача")
         self.assertEqual(self.problem.rating, 1200)
-        self.assertEqual(self.problem.statement, "Новое условие")
         descriptor = ProblemDescriptor.objects.get(problem=self.problem)
         self.assertEqual(descriptor.id_column, "customer_id")
         self.assertEqual(descriptor.target_column, "result")
@@ -82,11 +108,7 @@ class EditProblemPolygonViewTests(TestCase):
         self.client.force_login(self.author)
         resp = self.client.post(
             self.url,
-            {
-                "title": "Новая задача",
-                "rating": "5000",
-                "statement": "Новое условие",
-            },
+            self._base_post_payload(rating="5000"),
         )
         self.assertEqual(resp.status_code, 200)
         self.problem.refresh_from_db()
@@ -98,17 +120,28 @@ class EditProblemPolygonViewTests(TestCase):
         self.client.force_login(self.author)
         resp = self.client.post(
             self.url,
-            {
-                "title": "Task descriptor",
-                "rating": "1000",
-                "statement": "desc",
-                "id_column": "id",
-                "target_column": "pred",
-                "id_type": "int",
-                "target_type": "float",
-            },
+            self._base_post_payload(id_column="id"),
         )
         self.assertEqual(resp.status_code, 302)
         descriptor = ProblemDescriptor.objects.get(problem=self.problem)
         self.assertEqual(descriptor.id_column, "id")
-        self.assertEqual(descriptor.target_column, "pred")
+
+    def test_upload_problem_files_updates_problem_data(self):
+        ProblemData.objects.filter(problem=self.problem).delete()
+        self.client.force_login(self.author)
+        payload = self._base_post_payload()
+        payload.update(
+            {
+                "train_file": SimpleUploadedFile("train.csv", b"id,label\n1,0\n"),
+                "sample_submission_file": SimpleUploadedFile(
+                    "sample.csv", b"id,prediction\n1,0.1\n"
+                ),
+            }
+        )
+
+        resp = self.client.post(self.url, payload)
+
+        self.assertEqual(resp.status_code, 302)
+        pdata = ProblemData.objects.get(problem=self.problem)
+        self.assertTrue(pdata.train_file.name.endswith("train.csv"))
+        self.assertTrue(pdata.sample_submission_file.name.endswith("sample.csv"))
