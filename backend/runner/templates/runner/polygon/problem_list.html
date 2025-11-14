@@ -11,7 +11,7 @@
   <thead>
     <tr>
       <th>Название</th>
-        <th>Опубликовано</th>
+        <th>Статус</th>
     </tr>
   </thead>
   <tbody>
@@ -19,7 +19,7 @@
       {% for problem in page_obj.object_list %}
         <tr>
           <td><a href="{% url 'runner:polygon_edit_problem' problem.id %}">{{ problem.title }}</a></td>
-        <td><input type="checkbox" checked={{ problem.is_published}} disabled></td>
+        <td>{% if problem.is_published  %} Опубликова{% else %}Не опубликована{% endif %}</td>
         </tr>
       {% endfor %}
     {% else %}
