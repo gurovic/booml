@@ -5,8 +5,16 @@ from ..models.problem import Problem
 from ..models.problem_desriptor import ProblemDescriptor
 from ..models.problem_data import ProblemData
 
-MIN_RATING = 800
-MAX_RATING = 3000
+MIN_RATING = None
+MAX_RATING = None
+rating_field = Problem._meta.get_field("rating")
+for v in getattr(rating_field, "validators", []):
+    limit = getattr(v, "limit_value", None)
+    name = v.__class__.__name__.lower()
+    if "min" in name:
+        MIN_RATING = limit
+    if "max" in name:
+        MAX_RATING = limit
 
 
 @require_http_methods(["GET", "POST"])
