@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 import builtins
-import io
 import os
 import re
 import shutil
-import traceback
-from contextlib import contextmanager, redirect_stderr, redirect_stdout
+import atexit
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -18,9 +17,18 @@ from urllib.request import urlopen
 from django.conf import settings
 from django.utils import timezone
 
+from .vm_agent import dispose_vm_agent, get_vm_agent
+from .vm_exceptions import VmError
+from .vm_manager import get_vm_manager
+from .vm_models import VirtualMachine
+
+
+class SessionNotFoundError(Exception):
+    """Raised when runtime operations reference a missing session."""
+
 DEFAULT_SESSION_TTL_SECONDS = 3600
 DEFAULT_RUNTIME_ROOT = Path(
-    getattr(settings, "RUNTIME_SANDBOX_ROOT", Path(settings.BASE_DIR) / "runtime_sessions")
+    getattr(settings, "RUNTIME_SANDBOX_ROOT", Path(settings.BASE_DIR) / "notebook_sessions")
 )
 DEFAULT_RUNTIME_ROOT.mkdir(parents=True, exist_ok=True)
 
@@ -32,6 +40,7 @@ class RuntimeSession:
     updated_at: datetime
     workdir: Path
     python_exec: Path | None = None
+    vm: VirtualMachine | None = None
 
 
 @dataclass
@@ -43,6 +52,7 @@ class RuntimeExecutionResult:
 
 
 _sessions: Dict[str, RuntimeSession] = {}
+_shutdown_hooks_registered = False
 
 
 def _resolve_now(value: datetime | None = None) -> datetime:
@@ -50,17 +60,6 @@ def _resolve_now(value: datetime | None = None) -> datetime:
     if timezone.is_naive(resolved):
         resolved = timezone.make_aware(resolved, timezone.get_current_timezone())
     return resolved
-
-
-def _sanitize_session_id(session_id: str) -> str:
-    return re.sub(r"[^A-Za-z0-9_.-]", "_", session_id)
-
-
-def _ensure_session_dir(session_id: str) -> Path:
-    safe_name = _sanitize_session_id(session_id)
-    session_dir = DEFAULT_RUNTIME_ROOT / safe_name
-    session_dir.mkdir(parents=True, exist_ok=True)
-    return session_dir
 
 
 def _clear_directory(path: Path) -> None:
@@ -112,21 +111,32 @@ def _session_cwd(path: Path):
 
 def create_session(session_id: str, *, now: datetime | None = None) -> RuntimeSession:
     current = _resolve_now(now)
-    workdir = _ensure_session_dir(session_id)
-    namespace = _new_namespace()
-    venv_path = workdir / ".venv"
-    python_exec: Path | None = None
-    try:
-        if not venv_path.exists():
-            builder = venv.EnvBuilder(with_pip=False, symlinks=os.name != "nt")
-            builder.create(venv_path)
-        if os.name == "nt":
-            candidate = venv_path / "Scripts" / "python.exe"
-        else:
-            candidate = venv_path / "bin" / "python"
-        if candidate.exists():
-            python_exec = candidate
-    except Exception:
+    existing = _sessions.get(session_id)
+    if existing is not None:
+        existing.updated_at = current
+        return existing
+
+    vm = _ensure_session_vm(session_id, now=current)
+    workdir = vm.workspace_path
+    workdir.mkdir(parents=True, exist_ok=True)
+    if vm.backend == "local":
+        namespace = _new_namespace()
+        python_exec: Path | None = None
+        venv_path = workdir / ".venv"
+        try:
+            if not venv_path.exists():
+                builder = venv.EnvBuilder(with_pip=False, symlinks=os.name != "nt")
+                builder.create(venv_path)
+            if os.name == "nt":
+                candidate = venv_path / "Scripts" / "python.exe"
+            else:
+                candidate = venv_path / "bin" / "python"
+            if candidate.exists():
+                python_exec = candidate
+        except Exception:
+            python_exec = None
+    else:
+        namespace = {}
         python_exec = None
 
     session = RuntimeSession(
@@ -135,9 +145,11 @@ def create_session(session_id: str, *, now: datetime | None = None) -> RuntimeSe
         updated_at=current,
         workdir=workdir,
         python_exec=python_exec,
+        vm=vm,
     )
-    session.namespace["download_file"] = _build_download_helper(session)
-    session.namespace.setdefault("__name__", "__main__")
+    if vm.backend == "local":
+        session.namespace["download_file"] = _build_download_helper(session)
+        session.namespace.setdefault("__name__", "__main__")
     _sessions[session_id] = session
     return session
 
@@ -150,10 +162,22 @@ def get_session(session_id: str, *, touch: bool = True, now: datetime | None = N
 
 
 def reset_session(session_id: str, *, now: datetime | None = None) -> RuntimeSession:
-    old = _sessions.pop(session_id, None)
-    if old:
-        _clear_directory(old.workdir)
+    removed = stop_session(session_id)
+    if not removed:
+        raise SessionNotFoundError(f"Session '{session_id}' not found")
     return create_session(session_id, now=now)
+
+
+def stop_session(session_id: str) -> bool:
+    session = _sessions.pop(session_id, None)
+    dispose_vm_agent(session_id)
+    _destroy_session_vm(session_id)
+    removed = False
+    if session:
+        removed = True
+        if session.workdir.exists():
+            _clear_directory(session.workdir)
+    return removed
 
 
 def cleanup_expired(
@@ -169,53 +193,90 @@ def cleanup_expired(
     for session_id, session in list(_sessions.items()):
         if session.updated_at < cutoff:
             expired.append(session_id)
-            _sessions.pop(session_id, None)
-            _clear_directory(session.workdir)
+            stop_session(session_id)
     return expired
 
 
-def _get_or_create_session(session_id: str) -> RuntimeSession:
+def cleanup_all_sessions() -> None:
+    """Terminate all known sessions and purge leftover directories."""
+    for session_id in list(_sessions.keys()):
+        stop_session(session_id)
+    _purge_runtime_root()
+
+
+def _purge_runtime_root() -> None:
+    for root in _iter_runtime_roots():
+        for path in root.glob("runner-*"):
+            _clear_directory(path)
+
+
+def _iter_runtime_roots() -> List[Path]:
+    roots: List[Path] = []
+    sandbox_root = getattr(settings, "RUNTIME_SANDBOX_ROOT", None)
+    vm_root = getattr(settings, "RUNTIME_VM_ROOT", None)
+    candidates = [
+        sandbox_root or DEFAULT_RUNTIME_ROOT,
+        vm_root or DEFAULT_RUNTIME_ROOT,
+    ]
+    seen: set[Path] = set()
+    resolved: List[Path] = []
+    for candidate in candidates:
+        if candidate is None:
+            continue
+        path = Path(candidate).resolve()
+        if path in seen:
+            continue
+        path.mkdir(parents=True, exist_ok=True)
+        seen.add(path)
+        resolved.append(path)
+    return resolved
+
+
+def register_runtime_shutdown_hooks() -> None:
+    global _shutdown_hooks_registered
+    if _shutdown_hooks_registered:
+        return
+    atexit.register(cleanup_all_sessions)
+    _shutdown_hooks_registered = True
+
+
+register_runtime_shutdown_hooks()
+
+
+def _require_session(session_id: str) -> RuntimeSession:
     session = get_session(session_id, touch=False)
     if session is None:
-        session = create_session(session_id)
+        raise SessionNotFoundError(f"Session '{session_id}' not found")
     return session
 
 
-def _snapshot_variables(namespace: Dict[str, Any]) -> Dict[str, str]:
-    snapshot: Dict[str, str] = {}
-    for key, value in namespace.items():
-        if key == "__builtins__":
-            continue
-        if key.startswith("__") and key.endswith("__"):
-            continue
-        try:
-            snapshot[key] = repr(value)
-        except Exception:
-            snapshot[key] = f"<unrepresentable {type(value).__name__}>"
-    return snapshot
+def _ensure_session_vm(session_id: str, *, now: datetime | None = None) -> VirtualMachine:
+    manager = get_vm_manager()
+    return manager.ensure_session_vm(session_id, now=now)
+
+
+def _destroy_session_vm(session_id: str) -> None:
+    try:
+        manager = get_vm_manager()
+    except Exception:
+        return
+    try:
+        manager.destroy_session_vm(session_id)
+    except VmError:
+        return
 
 
 def run_code(session_id: str, code: str) -> RuntimeExecutionResult:
-    session = _get_or_create_session(session_id)
-    namespace = session.namespace
-
-    stdout_buffer = io.StringIO()
-    stderr_buffer = io.StringIO()
-    error: str | None = None
-
-    with _session_cwd(session.workdir), redirect_stdout(stdout_buffer), redirect_stderr(stderr_buffer):
-        try:
-            exec(code, namespace, namespace)
-        except Exception:
-            error = traceback.format_exc()
-
+    session = _require_session(session_id)
+    agent = get_vm_agent(session_id, session)
+    result_payload = agent.exec_code(code)
     session.updated_at = _resolve_now()
 
     return RuntimeExecutionResult(
-        stdout=stdout_buffer.getvalue(),
-        stderr=stderr_buffer.getvalue(),
-        error=error,
-        variables=_snapshot_variables(namespace),
+        stdout=result_payload.get("stdout", ""),
+        stderr=result_payload.get("stderr", ""),
+        error=result_payload.get("error"),
+        variables=result_payload.get("variables", {}),
     )
 
 
@@ -226,6 +287,10 @@ __all__ = [
     "create_session",
     "get_session",
     "reset_session",
+    "stop_session",
     "cleanup_expired",
+    "cleanup_all_sessions",
     "run_code",
+    "SessionNotFoundError",
+    "register_runtime_shutdown_hooks",
 ]

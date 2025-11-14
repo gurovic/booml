@@ -2,6 +2,7 @@ from .submissions import build_descriptor_from_problem, SubmissionCreateView, My
 from .sessions import (
     CreateNotebookSessionView,
     ResetSessionView,
+    StopSessionView,
     SessionFilesView,
     SessionFileDownloadView,
     build_notebook_session_id,

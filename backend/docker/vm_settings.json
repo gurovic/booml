@@ -1,0 +1,12 @@
+{
+  "backend": "auto",
+  "image": "runner-vm:latest",
+  "root": "notebook_sessions",
+  "cpu": 2,
+  "ram_mb": 4096,
+  "disk_gb": 32,
+  "ttl_sec": 3600,
+  "net_outbound": "allow",
+  "net_allowlist": [],
+  "dockerfile": "docker/Dockerfile"
+}

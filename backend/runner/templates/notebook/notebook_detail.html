@@ -38,6 +38,7 @@
          data-session-reset-url="{% url 'session-reset' %}"
          data-session-files-url="{% url 'session-files' %}"
          data-session-file-download-url="{% url 'session-file-download' %}"
+         data-session-stop-url="{% url 'session-stop' %}"
          data-delete-url-template="{% url 'runner:delete_cell' notebook.id 0 %}"
          data-save-output-url-template="{% url 'runner:save_cell_output' notebook.id 0 %}">
 
@@ -61,17 +62,16 @@
             </form>
         </div>
 
-        <div class="notebook-actions">
-            <form id="delete-notebook-form"
-                  class="delete-notebook-form"
-                  method="post"
-                  action="{% url 'runner:delete_notebook' notebook.id %}">
-                {% csrf_token %}
-                <button type="submit" data-action="delete-notebook">🗑 Удалить блокнот</button>
-            </form>
-            <button data-action="create-cell">➕ Новая ячейка кода</button>
-            <button data-action="create-latex-cell">➕ Новая LaTeX-ячейка</button>
-            <button data-action="reset-session">♻️ Перезапустить сессию</button>
+        <div class="session-controls" data-session-controls>
+            <div class="session-status-row">
+                <span>Состояние сессии:</span>
+                <span data-session-status>Сессия не создана</span>
+            </div>
+            <div class="session-actions">
+                <button type="button" data-action="create-session">🚀 Создать сессию</button>
+                <button type="button" data-action="reset-session">♻️ Перезапустить сессию</button>
+                <button type="button" data-action="stop-session">⏹ Остановить сессию</button>
+            </div>
         </div>
 
         <aside class="notebook-files-panel" data-files-panel>
@@ -83,6 +83,18 @@
                 <div class="files-empty">Файлы ещё не созданы</div>
             </div>
         </aside>
+
+        <div class="notebook-actions">
+            <form id="delete-notebook-form"
+                  class="delete-notebook-form"
+                  method="post"
+                  action="{% url 'runner:delete_notebook' notebook.id %}">
+                {% csrf_token %}
+                <button type="submit" data-action="delete-notebook">🗑 Удалить блокнот</button>
+            </form>
+            <button data-action="create-cell">➕ Новая ячейка кода</button>
+            <button data-action="create-latex-cell">➕ Новая LaTeX-ячейка</button>
+        </div>
 
         <div id="cells-container">
             {% for cell in cells %}
@@ -102,7 +114,8 @@
                 sessionCreateUrl: '{% url "notebook-session-create" %}',
                 sessionResetUrl: '{% url "session-reset" %}',
                 sessionFilesUrl: '{% url "session-files" %}',
-                sessionFileDownloadUrl: '{% url "session-file-download" %}'
+                sessionFileDownloadUrl: '{% url "session-file-download" %}',
+                sessionStopUrl: '{% url "session-stop" %}'
             });
         });
     </script>

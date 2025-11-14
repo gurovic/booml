@@ -1,33 +1,48 @@
 from datetime import timedelta
+from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from django.test import SimpleTestCase, override_settings
 from django.utils import timezone
 
+from runner.services import vm_agent, vm_manager
 from runner.services.runtime import (
     DEFAULT_SESSION_TTL_SECONDS,
     _sessions,
     cleanup_expired,
+    cleanup_all_sessions,
     create_session,
     get_session,
     reset_session,
+    stop_session,
     run_code,
+    SessionNotFoundError,
 )
 
 
 class RuntimeServiceTests(SimpleTestCase):
     def setUp(self) -> None:
         super().setUp()
-        self._tmp_dir = TemporaryDirectory()
-        self.override = override_settings(RUNTIME_SANDBOX_ROOT=self._tmp_dir.name)
+        self._sandbox_tmp = TemporaryDirectory()
+        self._vm_tmp = TemporaryDirectory()
+        self.override = override_settings(
+            RUNTIME_SANDBOX_ROOT=self._sandbox_tmp.name,
+            RUNTIME_VM_ROOT=self._vm_tmp.name,
+            RUNTIME_VM_BACKEND="local",
+        )
         self.override.enable()
+        vm_manager.reset_vm_manager()
+        vm_agent.reset_vm_agents()
         _sessions.clear()
 
     def tearDown(self) -> None:
         _sessions.clear()
+        vm_agent.reset_vm_agents()
+        vm_manager.reset_vm_manager()
         self.override.disable()
-        self._tmp_dir.cleanup()
+        self._sandbox_tmp.cleanup()
+        self._vm_tmp.cleanup()
         super().tearDown()
 
     def test_create_and_get_session(self) -> None:
@@ -43,6 +58,9 @@ class RuntimeServiceTests(SimpleTestCase):
         if session.python_exec:
             self.assertTrue(session.python_exec.exists())
         self.assertEqual(session.created_at, now)
+        self.assertIsNotNone(session.vm)
+        if session.vm:
+            self.assertTrue(session.vm.workspace_path.exists())
 
         newer = timezone.now()
         touched = get_session("ns", now=newer)
@@ -65,6 +83,11 @@ class RuntimeServiceTests(SimpleTestCase):
         self.assertFalse(old_path.exists())
         if second.python_exec:
             self.assertTrue(second.python_exec.exists())
+        self.assertIsNotNone(second.vm)
+
+    def test_reset_session_requires_existing(self) -> None:
+        with self.assertRaises(SessionNotFoundError):
+            reset_session("missing")
 
     def test_cleanup_expired_removes_old_sessions(self) -> None:
         current = timezone.now()
@@ -72,6 +95,9 @@ class RuntimeServiceTests(SimpleTestCase):
 
         fresh = create_session("fresh", now=current - timedelta(seconds=10))
         expired = create_session("expired", now=stale_time)
+        vm_root = Path(self._vm_tmp.name)
+        expired_vm_dir = vm_root / "runner-expired"
+        self.assertTrue(expired_vm_dir.exists())
 
         removed = cleanup_expired(now=current)
 
@@ -79,6 +105,7 @@ class RuntimeServiceTests(SimpleTestCase):
         self.assertNotIn("expired", _sessions)
         self.assertIn("fresh", _sessions)
         self.assertIs(get_session("fresh", touch=False), fresh)
+        self.assertFalse(expired_vm_dir.exists())
 
     def test_run_code_operates_inside_workdir(self) -> None:
         create_session("sess")
@@ -87,6 +114,32 @@ class RuntimeServiceTests(SimpleTestCase):
         assert session is not None
         self.assertTrue((session.workdir / "result.txt").exists())
         self.assertEqual(result.variables["value"], "7")
+
+    def test_run_code_requires_existing_session(self) -> None:
+        with self.assertRaises(SessionNotFoundError):
+            run_code("missing", "print('hi')")
+
+    def test_stop_session_removes_workspace(self) -> None:
+        session = create_session("stop-me")
+        workspace = session.workdir
+        self.assertTrue(workspace.exists())
+        removed = stop_session("stop-me")
+        self.assertTrue(removed)
+        self.assertFalse(workspace.exists())
+        self.assertNotIn("stop-me", _sessions)
+
+    def test_cleanup_all_sessions_purges_everything(self) -> None:
+        first = create_session("keep1")
+        second = create_session("keep2")
+        (first.workdir / "a.txt").write_text("data")
+        (second.workdir / "b.txt").write_text("data")
+        self.assertGreater(len(_sessions), 0)
+
+        cleanup_all_sessions()
+
+        self.assertEqual(_sessions, {})
+        self.assertFalse(first.workdir.exists())
+        self.assertFalse(second.workdir.exists())
 
     def test_run_code_reports_session_cwd(self) -> None:
         session_id = "sess2"

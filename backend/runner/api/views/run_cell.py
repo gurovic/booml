@@ -2,7 +2,7 @@ from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from ...services.runtime import run_code
+from ...services.runtime import SessionNotFoundError, run_code
 from ..serializers import CellRunSerializer
 from .sessions import ensure_notebook_access
 
@@ -20,7 +20,13 @@ class RunCellView(APIView):
         ensure_notebook_access(request.user, cell.notebook)
 
         session_id = serializer.validated_data["session_id"]
-        result = run_code(session_id, cell.content or "")
+        try:
+            result = run_code(session_id, cell.content or "")
+        except SessionNotFoundError:
+            return Response(
+                {"detail": "Сессия не создана. Сначала создайте новую сессию."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         return Response(
             {
