@@ -1,5 +1,5 @@
 from django.urls import path
-from .views.submissions import submission_list, submission_detail, submission_compare
+from .views.submissions import submission_list, submission_detail, submission_compare, recent_submissions
 from .views.main_page import main_page
 from .views.authorization import register_view, login_view, logout_view
 from .views.problem_detail import problem_detail
@@ -35,6 +35,7 @@ urlpatterns = [
     path('problem/<int:problem_id>/submissions/', submission_list, name="submission_list"),
     path('logout/', logout_view, name='logout'),
     path('submission/<int:submission_id>/', submission_detail, name="submission_detail"),
+    path('submissions/recent', recent_submissions, name='recent_submissions'),
     path('problem/<int:problem_id>/compare/', submission_compare, name="submission_compare"),
     path("problems/<int:problem_id>/", problem_detail, name="problem_detail"),
     path("problems/", problem_list, name="problem_list"),

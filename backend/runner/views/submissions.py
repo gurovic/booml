@@ -77,6 +77,46 @@ def submission_list(request, problem_id):
 
     return render(request, "runner/submissions/list.html", context)
 
+@login_required
+def recent_submissions(request):
+    submissions_qs = Submission.objects.filter(user=request.user).order_by("-submitted_at")[:20]
+    submissions = []
+    try:
+        for s in submissions_qs:
+            setattr(s, "created_at", s.submitted_at)
+            setattr(s, "metric", _primary_metric(s.metrics))
+            submissions.append(s)
+    except Exception:
+        submissions = []
+
+    has_any_exists = None
+    if hasattr(submissions_qs, "exists"):
+        try:
+            has_any_exists = bool(submissions_qs.exists())
+        except Exception:
+            has_any_exists = None
+
+    has_any = bool(submissions) or bool(has_any_exists)
+
+    if has_any and submissions:
+        latest_submission = submissions[0]
+        status_map = {"accepted": "OK", "validated": "OK", "failed": "FAILED"}
+        result_status = status_map.get(getattr(latest_submission, "status", ""), getattr(latest_submission, "status", ""))
+        context = {
+            "submissions": submissions,
+            "result": {
+                "status": result_status,
+                "metric": getattr(latest_submission, "metric", None),
+            }
+        }
+    else:
+        context = {
+            "submissions": submissions,
+            "result": None,
+        }
+
+    return render(request, "runner/submissions/recent.html", context)
+
 def extract_labels_and_metrics(submissions):
     labels = []
     metrics = []
