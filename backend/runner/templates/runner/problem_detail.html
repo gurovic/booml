@@ -11,7 +11,7 @@
         tex: {
           inlineMath: [['$', '$'], ['\\(', '\\)']],
           displayMath: [['$$', '$$'], ['\\[', '\\]']]
-        },git checkout -b feature/markdown-problem-v2
+        },
         options: {
           skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
         }
@@ -108,6 +108,13 @@
                 </p>
             {% endif %}
         </div>
+        {% if request.user.is_authenticated %}
+            <p>
+                <a href="{% url 'runner:submission_list' problem.id %}">
+                    Посылки по задаче
+                </a>
+            </p>
+        {% endif %}
     </div>
 </body>
 </html>
