@@ -289,6 +289,13 @@ class DockerVmBackend(VmBackend):
         raise RuntimeError("VM agent did not become ready in time")
 
     def _run_docker(self, args: tuple[str, ...], *, check: bool = True) -> subprocess.CompletedProcess[str]:
+        """Run a docker command composed from trusted arguments."""
+        suspicious_chars = {";", "&", "|", "$", ">", "<", "`"}
+        for arg in args:
+            if not isinstance(arg, str):
+                raise ValueError(f"docker arguments must be str, got {type(arg)}: {arg!r}")
+            if any(char in arg for char in suspicious_chars):
+                raise ValueError(f"suspicious shell metacharacter detected in docker argument: {arg!r}")
         cmd = ["docker", *args]
         return subprocess.run(cmd, check=check, capture_output=False, text=True)
 

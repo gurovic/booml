@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Union, List, Any
+from typing import Union, List
 
 import numpy as np
 import pandas as pd
@@ -20,7 +20,7 @@ try:
         log_loss,
     )
     _SKLEARN_AVAILABLE = True
-except Exception:  # pragma: no cover - optional dependency
+except (ImportError, ModuleNotFoundError):  # pragma: no cover - optional dependency
     _SKLEARN_AVAILABLE = False
 
     def _ensure_array(values):

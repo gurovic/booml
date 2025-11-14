@@ -40,7 +40,7 @@ def build_download_helper(workspace: Path):
     import urllib.request
     from urllib.parse import urlparse
 
-    def download_file(url, *, filename=None, chunk_size=1024 * 1024):
+    def download_file(url, *, filename=None, chunk_size=1024 * 1024, timeout=30):
         if not isinstance(url, str) or not url.strip():
             raise ValueError("URL must be a non-empty string")
         parsed = urlparse(url)
@@ -51,7 +51,7 @@ def build_download_helper(workspace: Path):
         size = int(chunk_size or 0)
         if size <= 0:
             size = 1024 * 1024
-        with urllib.request.urlopen(url) as response, target_path.open("wb") as destination:
+        with urllib.request.urlopen(url, timeout=timeout) as response, target_path.open("wb") as destination:
             while True:
                 data = response.read(size)
                 if not data:

@@ -75,7 +75,13 @@ def _new_namespace() -> Dict[str, Any]:
 
 
 def _build_download_helper(session: RuntimeSession):
-    def download_file(url: str, *, filename: str | None = None, chunk_size: int = 1024 * 1024) -> str:
+    def download_file(
+        url: str,
+        *,
+        filename: str | None = None,
+        chunk_size: int = 1024 * 1024,
+        timeout: float = 30.0,
+    ) -> str:
         if not isinstance(url, str) or not url.strip():
             raise ValueError("URL must be a non-empty string")
         parsed = urlparse(url)
@@ -86,7 +92,7 @@ def _build_download_helper(session: RuntimeSession):
         size = int(chunk_size or 0)
         if size <= 0:
             size = 1024 * 1024
-        with urlopen(url) as response, target_path.open("wb") as destination:
+        with urlopen(url, timeout=timeout) as response, target_path.open("wb") as destination:
             while True:
                 data = response.read(size)
                 if not data:

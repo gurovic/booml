@@ -10,10 +10,12 @@ from abc import ABC, abstractmethod
 from contextlib import contextmanager, redirect_stderr, redirect_stdout
 from pathlib import Path
 from typing import Dict
+import logging
 
 from .vm_models import VirtualMachine
 
 _AGENT_CACHE: Dict[str, VmAgent] = {}
+logger = logging.getLogger(__name__)
 
 
 class VmAgent(ABC):
@@ -103,8 +105,8 @@ def dispose_vm_agent(session_id: str) -> None:
     if agent:
         try:
             agent.shutdown()
-        except Exception:
-            pass
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.debug("Failed to shutdown VM agent %s: %s", session_id, exc)
 
 
 def reset_vm_agents() -> None:

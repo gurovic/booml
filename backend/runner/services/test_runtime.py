@@ -154,13 +154,13 @@ class RuntimeServiceTests(SimpleTestCase):
         chunks = [b"foo", b"bar", b""]
 
         class DummyResponse:
-            def __enter__(self_inner):
-                return self_inner
+            def __enter__(self):
+                return self
 
-            def __exit__(self_inner, exc_type, exc_val, exc_tb):
+            def __exit__(self, exc_type, exc_val, exc_tb):
                 return False
 
-            def read(self_inner, *_args, **_kwargs):
+            def read(self, *_args, **_kwargs):
                 return chunks.pop(0)
 
         mock_urlopen.return_value = DummyResponse()

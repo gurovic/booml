@@ -1,3 +1,5 @@
+const MAX_FILES_DISPLAY = 200;
+
 const notebookDetail = {
     config: null,
     notebookElement: null,
@@ -1127,7 +1129,7 @@ const notebookDetail = {
         }
         const sessionId = this.sessionId ? encodeURIComponent(this.sessionId) : '';
         const downloadBase = this.sessionFileDownloadUrl;
-        const items = files.slice(0, 200).map((file) => {
+        const items = files.slice(0, MAX_FILES_DISPLAY).map((file) => {
             const safePath = NotebookUtils.escapeHtml(file.path || 'file');
             const sizeLabel = this.formatFileSize(file.size);
             const href = downloadBase && sessionId
