@@ -11,7 +11,7 @@
         tex: {
           inlineMath: [['$', '$'], ['\\(', '\\)']],
           displayMath: [['$$', '$$'], ['\\[', '\\]']]
-        },git checkout -b feature/markdown-problem-v2
+        },
         options: {
           skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
         }
@@ -62,6 +62,14 @@
                 <strong>Файл с правильным ответом:</strong>
                 <a href="{{ data.answer_file.url }}" download="{{ data.answer_file.name }}">
                     answer_data
+                </a>
+            </p>
+        {% endif %}
+
+        {% if request.user.is_authenticated %}
+            <p>
+                <a href="{% url 'runner:submission_list' problem.id %}">
+                    Посылки по задаче
                 </a>
             </p>
         {% endif %}
