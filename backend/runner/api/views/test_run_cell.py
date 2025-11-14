@@ -1,18 +1,31 @@
 import json
 from http import HTTPStatus
 
+from tempfile import TemporaryDirectory
+
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from runner.models import Notebook, Cell
-from runner.services.runtime import _sessions
+from runner.services import vm_agent, vm_manager
+from runner.services.runtime import _sessions, create_session
 
 User = get_user_model()
 
 
 class RunCellViewTests(TestCase):
     def setUp(self):
+        self.sandbox_tmp = TemporaryDirectory()
+        self.vm_tmp = TemporaryDirectory()
+        self.override = override_settings(
+            RUNTIME_SANDBOX_ROOT=self.sandbox_tmp.name,
+            RUNTIME_VM_ROOT=self.vm_tmp.name,
+            RUNTIME_VM_BACKEND="local",
+        )
+        self.override.enable()
+        vm_manager.reset_vm_manager()
+        vm_agent.reset_vm_agents()
         self.user = User.objects.create_user(username="owner", password="pass123")
         self.client.login(username="owner", password="pass123")
         self.notebook = Notebook.objects.create(owner=self.user, title="My Notebook")
@@ -21,13 +34,20 @@ class RunCellViewTests(TestCase):
         _sessions.clear()
 
     def tearDown(self):
+        vm_manager.reset_vm_manager()
+        vm_agent.reset_vm_agents()
         _sessions.clear()
+        self.override.disable()
+        self.sandbox_tmp.cleanup()
+        self.vm_tmp.cleanup()
 
     def test_run_cell_success(self):
+        session_id = f"notebook:{self.notebook.id}"
+        create_session(session_id)
         resp = self.client.post(
             self.url,
             {
-                "session_id": f"notebook:{self.notebook.id}",
+                "session_id": session_id,
                 "cell_id": self.cell.id,
             },
         )
@@ -64,3 +84,14 @@ class RunCellViewTests(TestCase):
         self.assertEqual(resp.status_code, HTTPStatus.BAD_REQUEST)
         body = resp.json()
         self.assertIn("Cell is not executable", json.dumps(body))
+
+    def test_run_cell_without_session_returns_error(self):
+        resp = self.client.post(
+            self.url,
+            {
+                "session_id": f"notebook:{self.notebook.id}",
+                "cell_id": self.cell.id,
+            },
+        )
+        self.assertEqual(resp.status_code, HTTPStatus.BAD_REQUEST)
+        self.assertIn("Сессия не создана", resp.json().get("detail", ""))

@@ -23,3 +23,12 @@ class NotebookSessionCreateSerializer(serializers.Serializer):
 
 class SessionResetSerializer(serializers.Serializer):
     session_id = serializers.CharField(max_length=255, allow_blank=False)
+
+
+class SessionFilesQuerySerializer(serializers.Serializer):
+    session_id = serializers.CharField(max_length=255, allow_blank=False)
+
+
+class SessionFileDownloadSerializer(serializers.Serializer):
+    session_id = serializers.CharField(max_length=255, allow_blank=False)
+    path = serializers.CharField(max_length=1000, allow_blank=False)
