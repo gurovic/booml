@@ -9,6 +9,7 @@
         <a href="{% url 'runner:problem_list' %}">Список задач</a> |
         <a href="{% url 'runner:notebook_list' %}">Блокноты</a> |
         {% if user.is_authenticated %}
+            <a href="{% url 'runner:recent_submissions' %}">Посылки</a> |
             <a href="{% url 'runner:logout' %}">Выйти</a>
         {% else %}
             <a href="{% url 'runner:login' %}">Войти</a>
