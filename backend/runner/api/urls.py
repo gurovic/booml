@@ -5,6 +5,9 @@ from .views import (
     CreateNotebookSessionView,
     ResetSessionView,
     RunCellView,
+    SessionFilesView,
+    SessionFileDownloadView,
+    StopSessionView,
 )
 
 urlpatterns = [
@@ -12,5 +15,8 @@ urlpatterns = [
     path("submissions/mine/", MySubmissionsListView.as_view(), name="submission-list-mine"),
     path("sessions/notebook/", CreateNotebookSessionView.as_view(), name="notebook-session-create"),
     path("sessions/reset/", ResetSessionView.as_view(), name="session-reset"),
+    path("sessions/stop/", StopSessionView.as_view(), name="session-stop"),
+    path("sessions/files/", SessionFilesView.as_view(), name="session-files"),
+    path("sessions/file/", SessionFileDownloadView.as_view(), name="session-file-download"),
     path("cells/run/", RunCellView.as_view(), name="run-cell"),
 ]

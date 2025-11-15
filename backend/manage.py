@@ -5,6 +5,12 @@ import site
 import sys
 from pathlib import Path
 
+DOCKER_DIR = Path(__file__).resolve().parent / "docker"
+if str(DOCKER_DIR) not in sys.path:
+    sys.path.insert(0, str(DOCKER_DIR))
+
+from vm_bootstrap import ensure_vm_environment
+
 
 def _bootstrap_local_venv():
     """
@@ -32,7 +38,14 @@ def _bootstrap_local_venv():
 def main():
     """Run administrative tasks."""
     _bootstrap_local_venv()
+    ensure_vm_environment()
     os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'core.settings')
+    try:
+        from runner.services.runtime import register_runtime_shutdown_hooks
+        register_runtime_shutdown_hooks()
+    except Exception:
+        # runtime may rely on Django settings; ignore if import fails during collectstatic, etc.
+        pass
     try:
         from django.core.management import execute_from_command_line
     except ImportError as exc:

@@ -1,3 +1,5 @@
+const MAX_FILES_DISPLAY = 200;
+
 const notebookDetail = {
     config: null,
     notebookElement: null,
@@ -14,6 +16,18 @@ const notebookDetail = {
     },
     inactivityOverlay: null,
     lastActivityTs: null,
+    filesRequestId: 0,
+    sessionState: 'idle',
+    sessionStatusLabels: {
+        idle: 'Сессия не создана',
+        creating: 'Создание сессии...',
+        ready: 'Сессия создана',
+        restarting: 'Перезапуск сессии...',
+        stopping: 'Остановка сессии...',
+        error: 'Ошибка сессии. Создайте новую.',
+    },
+    sessionStatusElement: null,
+    sessionButtons: {},
 
     sanitizeUrl(value) {
         if (typeof value !== 'string') {
@@ -99,6 +113,9 @@ const notebookDetail = {
 
     clearStoredSessionId() {
         this.removeStorage(this.getSessionStorageKey());
+        this.filesLoadedFor = null;
+        this.filesRequestId += 1;
+        this.resetFilesPanelMarkup();
     },
 
     loadCellStatuses() {
@@ -363,6 +380,7 @@ const notebookDetail = {
             this.updateRunButtonState(cellId, 'run');
             this.updateQueueStatuses();
             this.processQueue();
+            this.refreshSessionFiles();
         });
     },
 
@@ -409,13 +427,11 @@ const notebookDetail = {
             return;
         }
 
-        const sessionId = await this.ensureSession().catch((error) => {
-            console.error('Сессия недоступна:', error);
-            alert('Сессия недоступна. Попробуйте перезагрузить страницу.');
-            return null;
-        });
+        const sessionId = await this.ensureSession();
 
         if (!sessionId) {
+            alert('Сначала создайте сессию.');
+            this.updateSessionStatus('idle', 'Сессия не создана. Создайте новую.');
             this.setCellStatus(cellId, 'error');
             return;
         }
@@ -451,7 +467,9 @@ const notebookDetail = {
 
             if (!response.ok) {
                 const message = data?.detail || data?.error || 'Не удалось выполнить ячейку';
-                throw new Error(message);
+                const error = new Error(message);
+                error.status = response.status;
+                throw error;
             }
 
             const formattedOutput = NotebookUtils.formatCellRunResult(data);
@@ -468,6 +486,9 @@ const notebookDetail = {
             this.rememberOutputSnapshot(cellId, formattedOutput);
             await this.saveCellState(cellId, code, formattedOutput, saveOutputUrl);
         } catch (error) {
+            if (error?.status === 400 && /Сессия не создана/i.test(error.message || '')) {
+                this.handleSessionLost('Сессия не создана. Создайте новую.');
+            }
             if (job.cancelled) {
                 const reason = job.cancelled === 'reset'
                     ? 'Выполнение остановлено из-за перезапуска сессии.'
@@ -613,6 +634,20 @@ const notebookDetail = {
         this.runCellUrl = this.sanitizeUrl(config.runCellUrl) || this.sanitizeUrl(this.notebookElement?.dataset.runCellUrl);
         this.sessionCreateUrl = this.sanitizeUrl(config.sessionCreateUrl) || this.sanitizeUrl(this.notebookElement?.dataset.sessionCreateUrl);
         this.sessionResetUrl = this.sanitizeUrl(config.sessionResetUrl) || this.sanitizeUrl(this.notebookElement?.dataset.sessionResetUrl);
+        this.sessionFilesUrl = this.sanitizeUrl(config.sessionFilesUrl) || this.sanitizeUrl(this.notebookElement?.dataset.sessionFilesUrl);
+        this.sessionFileDownloadUrl = this.sanitizeUrl(config.sessionFileDownloadUrl) || this.sanitizeUrl(this.notebookElement?.dataset.sessionFileDownloadUrl);
+        this.sessionStopUrl = this.sanitizeUrl(config.sessionStopUrl) || this.sanitizeUrl(this.notebookElement?.dataset.sessionStopUrl);
+        this.sessionStatusElement = this.notebookElement?.querySelector('[data-session-status]') || null;
+        this.sessionButtons = {
+            create: this.notebookElement?.querySelector('[data-action="create-session"]') || null,
+            reset: this.notebookElement?.querySelector('[data-action="reset-session"]') || null,
+            stop: this.notebookElement?.querySelector('[data-action="stop-session"]') || null,
+        };
+        this.filesPanel = document.querySelector('[data-files-panel]');
+        this.filesList = this.filesPanel?.querySelector('[data-files-list]');
+        this.filesLoadedFor = null;
+        this.filesRequestId = 0;
+        this.initialFilesLoaded = false;
         this.cellStatuses = this.loadCellStatuses();
         this.bindEvents();
         this.initializeCells();
@@ -620,10 +655,14 @@ const notebookDetail = {
         this.applyStatusesToExistingCells();
         this.updateQueueStatuses();
         this.initActivityTracking();
-        this.ensureSession().catch((error) => {
-            console.error('Не удалось создать сессию ноутбука:', error);
-            alert('Не удалось создать сессию ноутбука. Попробуйте перезагрузить страницу.');
-        });
+        const restored = this.getStoredSessionId();
+        if (restored) {
+            this.sessionId = restored;
+            this.updateSessionStatus('ready');
+            this.refreshSessionFiles();
+        } else {
+            this.updateSessionStatus('idle');
+        }
     },
 
     buildCellUrl(template, cellId) {
@@ -691,44 +730,45 @@ const notebookDetail = {
         else if (action === 'cancel-latex' && cellId) {
             this.cancelLatexEdit(cellElement);
         }
+        else if (action === 'create-session') {
+            this.requestSessionCreation();
+        }
         else if (action === 'reset-session') {
             this.confirmAndResetSession();
         }
+        else if (action === 'stop-session') {
+            this.confirmAndStopSession();
+        }
+        else if (action === 'refresh-files') {
+            this.refreshSessionFiles();
+        }
     },
 
-    async ensureSession(options = {}) {
-        const { force = false } = options;
-
-        if (force) {
-            this.clearStoredSessionId();
-            this.sessionId = null;
-        }
-
-        if (this.sessionId && !force) {
+    async ensureSession() {
+        if (this.sessionId) {
             return this.sessionId;
         }
-
-        if (!force) {
-            const stored = this.getStoredSessionId();
-            if (stored) {
-                this.sessionId = stored;
-                return stored;
+        const stored = this.getStoredSessionId();
+        if (stored) {
+            this.sessionId = stored;
+            this.updateSessionStatus('ready');
+            if (this.filesLoadedFor !== stored) {
+                this.refreshSessionFiles();
             }
+            return stored;
         }
-
-        if (!this.sessionPromise) {
-            this.sessionPromise = this.createSession();
-        }
-
-        return this.sessionPromise;
+        return null;
     },
 
     async createSession() {
-        if (!this.sessionCreateUrl) {
-            throw new Error('URL создания сессии недоступен');
+        if (this.sessionPromise) {
+            return this.sessionPromise;
         }
-
-        try {
+        const promise = (async () => {
+            if (!this.sessionCreateUrl) {
+                throw new Error('URL создания сессии недоступен');
+            }
+            this.updateSessionStatus('creating');
             const response = await fetch(this.sessionCreateUrl, {
                 method: 'POST',
                 headers: {
@@ -737,40 +777,88 @@ const notebookDetail = {
                 },
                 body: JSON.stringify({ notebook_id: this.config.notebookId })
             });
-
             const data = await response.json();
-
             if (!response.ok) {
                 const message = data?.detail || data?.message || 'Не удалось создать сессию';
+                this.updateSessionStatus('error', message);
                 throw new Error(message);
             }
-
             this.sessionId = data.session_id;
             this.storeSessionId(this.sessionId);
+            this.updateSessionStatus('ready');
+            this.refreshSessionFiles();
             return this.sessionId;
-        } catch (error) {
-            this.sessionId = null;
-            throw error;
+        })();
+        this.sessionPromise = promise;
+        try {
+            return await promise;
         } finally {
-            this.sessionPromise = null;
+            if (this.sessionPromise === promise) {
+                this.sessionPromise = null;
+            }
         }
+    },
+
+    async requestSessionCreation() {
+        if (this.sessionId) {
+            alert('Сессия уже создана.');
+            return;
+        }
+        try {
+            await this.createSession();
+        } catch (error) {
+            console.error('Не удалось создать сессию:', error);
+            const message = error?.message || 'Не удалось создать сессию';
+            alert(message);
+        }
+    },
+
+    updateSessionStatus(state, customMessage) {
+        this.sessionState = state;
+        const label = customMessage || this.sessionStatusLabels[state] || this.sessionStatusLabels.idle;
+        if (this.sessionStatusElement) {
+            this.sessionStatusElement.textContent = label;
+            this.sessionStatusElement.dataset.state = state;
+        }
+        const hasSession = state === 'ready';
+        const busy = state === 'creating' || state === 'restarting' || state === 'stopping';
+        const disableCreate = busy || hasSession;
+        const disableManage = busy || !hasSession;
+        if (this.sessionButtons?.create) {
+            this.sessionButtons.create.disabled = disableCreate;
+        }
+        if (this.sessionButtons?.reset) {
+            this.sessionButtons.reset.disabled = disableManage;
+        }
+        if (this.sessionButtons?.stop) {
+            this.sessionButtons.stop.disabled = disableManage;
+        }
+    },
+
+    handleSessionLost(message) {
+        this.sessionId = null;
+        this.clearStoredSessionId();
+        this.updateSessionStatus('idle', message);
+        this.resetAllCellStatuses('reset');
     },
 
     async resetSession(options = {}) {
         const { silent = false, reason = 'user' } = options;
+        const sessionId = await this.ensureSession();
+        if (!sessionId) {
+            alert('Сначала создайте сессию.');
+            return;
+        }
+        if (!this.sessionResetUrl) {
+            alert('URL сброса сессии недоступен');
+            return;
+        }
         try {
             if (reason !== 'ban') {
                 this.markActivity();
             }
             this.abortAllRuns('reset');
-            const sessionId = await this.ensureSession();
-            if (!sessionId) {
-                throw new Error('Сессия не инициализирована');
-            }
-            if (!this.sessionResetUrl) {
-                throw new Error('URL сброса сессии недоступен');
-            }
-
+            this.updateSessionStatus('restarting');
             const response = await fetch(this.sessionResetUrl, {
                 method: 'POST',
                 headers: {
@@ -779,23 +867,33 @@ const notebookDetail = {
                 },
                 body: JSON.stringify({ session_id: sessionId })
             });
-
             const data = await response.json();
             if (!response.ok) {
-                const message = data?.detail || data?.message || 'Не удалось сбросить сессию';
-                throw new Error(message);
+                const message = data?.detail || data?.message || 'Не удалось перезапустить сессию';
+                const error = new Error(message);
+                error.status = response.status;
+                throw error;
             }
-
             this.clearStoredSessionId();
-            this.sessionId = null;
-            await this.ensureSession({ force: true });
+            this.sessionId = data.session_id;
+            this.storeSessionId(this.sessionId);
+            this.resetFilesPanelMarkup();
+            this.refreshSessionFiles();
             this.clearOutputsAfterReset();
             this.resetAllCellStatuses('reset');
+            this.updateSessionStatus('ready');
             if (!silent && reason !== 'ban') {
                 alert('Сессия перезапущена. Все переменные очищены.');
             }
         } catch (error) {
             console.error('Ошибка сброса сессии:', error);
+            if (error?.status === 404) {
+                this.handleSessionLost('Сессия не найдена. Создайте новую.');
+            } else if (this.sessionId) {
+                this.updateSessionStatus('ready');
+            } else {
+                this.updateSessionStatus('idle');
+            }
             if (!silent) {
                 alert('Не удалось перезапустить сессию: ' + (error?.message || error));
             }
@@ -808,6 +906,62 @@ const notebookDetail = {
             return;
         }
         this.resetSession();
+    },
+
+    async stopSession() {
+        const sessionId = await this.ensureSession();
+        if (!sessionId) {
+            alert('Сессия не создана.');
+            return;
+        }
+        if (!this.sessionStopUrl) {
+            alert('URL остановки сессии недоступен');
+            return;
+        }
+        try {
+            this.updateSessionStatus('stopping');
+            const response = await fetch(this.sessionStopUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': this.config.csrfToken,
+                },
+                body: JSON.stringify({ session_id: sessionId }),
+            });
+            const data = await response.json();
+            if (!response.ok) {
+                const message = data?.detail || data?.message || 'Не удалось остановить сессию';
+                const error = new Error(message);
+                error.status = response.status;
+                throw error;
+            }
+            this.handleSessionLost('Сессия остановлена. Создайте новую для продолжения работы.');
+        } catch (error) {
+            console.error('Не удалось остановить сессию:', error);
+            if (error?.status === 404) {
+                this.handleSessionLost('Сессия не найдена. Создайте новую.');
+            } else {
+                if (this.sessionId) {
+                    this.updateSessionStatus('ready');
+                } else {
+                    this.updateSessionStatus('idle');
+                }
+                alert('Не удалось остановить сессию: ' + (error?.message || error));
+            }
+        }
+    },
+
+    confirmAndStopSession() {
+        const hasSession = Boolean(this.sessionId || this.getStoredSessionId());
+        if (!hasSession) {
+            alert('Сессия не создана.');
+            return;
+        }
+        const ok = window.confirm('Остановить текущую сессию? Все переменные и файлы будут удалены.');
+        if (!ok) {
+            return;
+        }
+        this.stopSession();
     },
 
     clearOutputsAfterReset() {
@@ -922,6 +1076,107 @@ const notebookDetail = {
         }
     },
 
+    async refreshSessionFiles() {
+        if (!this.sessionFilesUrl) {
+            return;
+        }
+        if (!this.sessionId) {
+            if (this.filesList) {
+                this.filesList.innerHTML = '<div class="files-empty">Создайте сессию, чтобы увидеть файлы.</div>';
+            }
+            return;
+        }
+        const requestId = ++this.filesRequestId;
+        try {
+            const url = `${this.sessionFilesUrl}?session_id=${encodeURIComponent(this.sessionId)}`;
+            const response = await fetch(url, {
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            });
+            if (response.status === 404) {
+                const error = new Error('SESSION_NOT_FOUND');
+                error.code = 'SESSION_NOT_FOUND';
+                throw error;
+            }
+            if (!response.ok) {
+                throw new Error(`HTTP error ${response.status}`);
+            }
+            const data = await response.json();
+            const files = Array.isArray(data?.files) ? data.files : [];
+            if (requestId !== this.filesRequestId) {
+                return;
+            }
+            this.renderSessionFiles(files);
+        } catch (error) {
+            if (error?.code === 'SESSION_NOT_FOUND') {
+                this.handleSessionLost('Сессия не найдена. Создайте новую.');
+                return;
+            }
+            console.error('Не удалось получить список файлов сессии:', error);
+            if (this.filesList) {
+                this.filesList.innerHTML = '<div class="files-error">Не удалось загрузить список файлов</div>';
+            }
+        }
+    },
+
+    renderSessionFiles(files) {
+        if (!this.filesList) {
+            return;
+        }
+        if (!Array.isArray(files) || files.length === 0) {
+            this.filesList.innerHTML = '<div class="files-empty">Файлы ещё не созданы</div>';
+            this.filesLoadedFor = this.sessionId || null;
+            return;
+        }
+        const sessionId = this.sessionId ? encodeURIComponent(this.sessionId) : '';
+        const downloadBase = this.sessionFileDownloadUrl;
+        const items = files.slice(0, MAX_FILES_DISPLAY).map((file) => {
+            const safePath = NotebookUtils.escapeHtml(file.path || 'file');
+            const sizeLabel = this.formatFileSize(file.size);
+            const href = downloadBase && sessionId
+                ? `${downloadBase}?session_id=${sessionId}&path=${encodeURIComponent(file.path)}`
+                : '';
+            const link = href
+                ? `<a href="${href}" target="_blank" rel="noopener noreferrer">${safePath}</a>`
+                : `<span>${safePath}</span>`;
+            return `<div class="file-entry">
+                ${link}
+                <span class="file-meta">${sizeLabel}</span>
+            </div>`;
+        }).join('');
+        this.filesList.innerHTML = items;
+        this.filesLoadedFor = this.sessionId || null;
+    },
+
+    resetFilesPanelMarkup() {
+        if (!this.filesPanel) {
+            return;
+        }
+        this.filesPanel.innerHTML = `
+            <div class="files-panel-header">
+                <span>Файлы сессии</span>
+                <button type="button" data-action="refresh-files">Обновить</button>
+            </div>
+            <div class="files-panel-body" data-files-list>
+                <div class="files-empty">Файлы ещё не созданы</div>
+            </div>
+        `;
+        this.filesList = this.filesPanel.querySelector('[data-files-list]');
+    },
+
+    formatFileSize(bytes) {
+        const value = Number(bytes);
+        if (!Number.isFinite(value) || value < 0) {
+            return '';
+        }
+        if (value >= 1024 * 1024) {
+            return `${(value / (1024 * 1024)).toFixed(1)} МБ`;
+        }
+        if (value >= 1024) {
+            return `${(value / 1024).toFixed(1)} КБ`;
+        }
+        return `${value} Б`;
+    },
+
     renderArtifacts(cellId, artifacts) {
         const container = document.getElementById(`artifacts-${cellId}`);
 
@@ -981,6 +1236,7 @@ const notebookDetail = {
             if (this.cellOutputSnapshots[cellId]) {
                 delete this.cellOutputSnapshots[cellId];
             }
+            this.refreshSessionFiles();
 
         } catch (error) {
             console.error('Ошибка:', error);

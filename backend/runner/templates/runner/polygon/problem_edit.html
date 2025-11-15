@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>Редактирование задачи {{ problem.id }}</title>
+</head>
+<body>
+  <p><a href="{% url 'runner:polygon' %}">← Назад к списку задач</a></p>
+  <h1>Редактирование задачи №{{ problem.id }}</h1>
+
+  <form method="post" enctype="multipart/form-data">
+    {% csrf_token %}
+    <div class="top-fields">
+      <div class="form-group">
+        <label for="title-input">Название</label>
+        <input id="title-input" type="text" name="title" value="{{ form_data.title }}" required>
+        {% if errors.title %}
+          <div class="errors">{{ errors.title }}</div>
+        {% endif %}
+      </div>
+      <div class="form-group">
+        <label for="rating-input">Рейтинг</label>
+        <input id="rating-input" type="number" name="rating" min="{{ min_rating }}" max="{{ max_rating }}" value="{{ form_data.rating }}" required>
+        {% if errors.rating %}
+          <div class="errors">{{ errors.rating }}</div>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label for="statement-input">Условие задачи</label>
+      <textarea id="statement-input" name="statement" placeholder="Опишите условие задачи...">{{ form_data.statement }}</textarea>
+    </div>
+
+    <h2>Descriptor</h2>
+    <div class="top-fields">
+      <div class="form-group">
+        <label for="id-column-input">Колонка идентификатора</label>
+        <input id="id-column-input" type="text" name="id_column" value="{{ descriptor_form_data.id_column }}" required>
+        {% if descriptor_errors.id_column %}
+          <div class="errors">{{ descriptor_errors.id_column }}</div>
+        {% endif %}
+      </div>
+      <div class="form-group">
+        <label for="id-type-select">Тип идентификатора</label>
+        <select id="id-type-select" name="id_type" required>
+          {% for value,label in id_type_choices %}
+            <option value="{{ value }}" {% if descriptor_form_data.id_type == value %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+        {% if descriptor_errors.id_type %}
+          <div class="errors">{{ descriptor_errors.id_type }}</div>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="top-fields">
+      <div class="form-group">
+        <label for="target-column-input">Колонка ответа</label>
+        <input id="target-column-input" type="text" name="target_column" value="{{ descriptor_form_data.target_column }}" required>
+        {% if descriptor_errors.target_column %}
+          <div class="errors">{{ descriptor_errors.target_column }}</div>
+        {% endif %}
+      </div>
+      <div class="form-group">
+        <label for="target-type-select">Тип ответа</label>
+        <select id="target-type-select" name="target_type" required>
+          {% for value,label in target_type_choices %}
+            <option value="{{ value }}" {% if descriptor_form_data.target_type == value %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+        {% if descriptor_errors.target_type %}
+          <div class="errors">{{ descriptor_errors.target_type }}</div>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="form-group" style="flex-direction: row; align-items: center; gap: 8px;">
+      <input id="check-order-checkbox" type="checkbox" name="check_order" {% if descriptor_form_data.check_order %}checked{% endif %}>
+      <label for="check-order-checkbox" style="font-weight: normal;">Проверять порядок строк в ответе</label>
+    </div>
+
+    <h2>Данные задачи</h2>
+    <div class="form-group">
+      <label for="train-file-input">Изменить train CSV</label>
+      <input id="train-file-input" type="file" name="train_file" accept=".csv">
+      {% if problem_data and problem_data.train_file %}
+        <br>Текущий: <a href="{{ problem_data.train_file.url }}" target="_blank">{{ problem_data.train_file.name }}</a>
+      {% endif %}
+    </div><br>
+    <div class="form-group">
+      <label for="test-file-input">Изменить test CSV</label>
+      <input id="test-file-input" type="file" name="test_file" accept=".csv">
+      {% if problem_data and problem_data.test_file %}
+        <br>Текущий: <a href="{{ problem_data.test_file.url }}" target="_blank">{{ problem_data.test_file.name }}</a>
+      {% endif %}
+    </div><br>
+    <div class="form-group">
+      <label for="sample-file-input">Изменить sample submission CSV</label>
+      <input id="sample-file-input" type="file" name="sample_submission_file" accept=".csv">
+      {% if problem_data and problem_data.sample_submission_file %}
+        <br>Текущий: <a href="{{ problem_data.sample_submission_file.url }}" target="_blank">{{ problem_data.sample_submission_file.name }}</a>
+      {% endif %}
+    </div><br>
+    <div class="form-group">
+      <label for="answer-file-input">Изменить answer CSV</label>
+      <input id="answer-file-input" type="file" name="answer_file" accept=".csv">
+      {% if problem_data and problem_data.answer_file %}
+        <br>Текущий: <a href="{{ problem_data.answer_file.url }}" target="_blank">{{ problem_data.answer_file.name }}</a>
+      {% endif %}
+    </div><br>
+
+    <div class="actions">
+      <button type="submit">Сохранить изменения</button>
+    </div>
+  </form>
+</body>
+</html>

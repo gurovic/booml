@@ -214,3 +214,4 @@ backend/runner/migrations/
 backend/data/
 
 backend/media/
+backend/notebook_sessions/
