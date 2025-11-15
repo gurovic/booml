@@ -4,7 +4,11 @@ from ..models import Problem
 
 
 def main_page(request):
-    problems = Problem.objects.only("title", "statement", "created_at", "rating").order_by("?")[:15]
+    problems = (
+        Problem.objects.filter(is_published=True)
+        .only("title", "statement", "created_at", "rating")
+        .order_by("?")[:15]
+    )
     context = {
         "problems": problems,
         "tasks": problems,  # include alias expected by the shared template fragment
