@@ -1,14 +1,29 @@
+from django.contrib.auth import get_user_model
 from django.test import Client, TestCase
 from django.urls import reverse
 from ..models.problem import Problem
 
+
 class ProblemListViewTestCase(TestCase):
     def setUp(self):
         self.client = Client()
+        User = get_user_model()
+        self.user = User.objects.create_user(
+            username="problem_author", email="pa@example.com", password="pass"
+        )
         # создаём несколько задач с разными рейтингами
         Problem.objects.create(title="Problem1", created_at="2009-03-14", statement="...", rating=100)
-        Problem.objects.create(title="Problem2", created_at="2009-03-15", statement="...", rating=200)
+        Problem.objects.create(
+            title="Problem2",
+            created_at="2009-03-15",
+            statement="...",
+            rating=200,
+            author=self.user,
+        )
         Problem.objects.create(title="Problem3", created_at="2009-03-16", statement="...", rating=300)
+        Problem.objects.create(
+            title="Hidden", created_at="2009-03-17", statement="...", rating=400, is_published=False
+        )
 
     def _get_url(self):
         # предпочитаем reverse по имени, но оставляем fallback на /runner/problems/ если name не настроен
@@ -60,3 +75,14 @@ class ProblemListViewTestCase(TestCase):
         self.assertIn("Problem1", content)
         self.assertIn("Problem2", content)
         self.assertIn("Problem3", content)
+
+    def test_unpublished_not_shown(self):
+        url = self._get_url()
+        response = self.client.get(url)
+        self.assertNotIn("Hidden", response.content.decode())
+
+    def test_author_column_shows_username_and_placeholder(self):
+        url = self._get_url()
+        response = self.client.get(url)
+        self.assertContains(response, self.user.username)
+        self.assertContains(response, "<td>-</td>", html=True)

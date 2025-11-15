@@ -3,6 +3,7 @@
     <thead>
         <tr>
             <th>Название</th>
+            <th>Автор</th>
             <th>Дата создания</th>
             <th>Рейтинг</th>
         </tr>
@@ -11,6 +12,7 @@
     {% for task in tasks %}
         <tr>
             <td><a href="{% url 'runner:problem_detail' task.id %}">{{ task.title }}</a></td>
+            <td>{% if task.author %}{{ task.author.username }}{% else %}-{% endif %}</td>
             <td>{{ task.created_at }}</td>
             <td>{{ task.rating }}</td>
         </tr>

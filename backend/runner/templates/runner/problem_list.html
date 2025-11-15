@@ -23,6 +23,7 @@
   <thead>
     <tr>
       <th>Название</th>
+      <th>Автор</th>
       <th>Дата создания</th>
       <th>Рейтинг</th>
     </tr>
@@ -32,13 +33,14 @@
       {% for problem in page_obj.object_list %}
         <tr>
           <td><a href="{% url 'runner:problem_detail' problem.id %}">{{ problem.title }}</a></td>
+          <td>{% if problem.author %}{{ problem.author.username }}{% else %}-{% endif %}</td>
           <td>{{ problem.created_at }}</td>
           <td>{{ problem.rating }}</td>
         </tr>
       {% endfor %}
     {% else %}
       <tr>
-        <td colspan="3">Нет задач</td>
+        <td colspan="4">Нет задач</td>
       </tr>
     {% endif %}
   </tbody>
