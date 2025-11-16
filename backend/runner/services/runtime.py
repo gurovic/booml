@@ -131,7 +131,7 @@ def create_session(session_id: str, *, now: datetime | None = None) -> RuntimeSe
         venv_path = workdir / ".venv"
         try:
             if not venv_path.exists():
-                builder = venv.EnvBuilder(with_pip=False, symlinks=os.name != "nt")
+                builder = venv.EnvBuilder(with_pip=True, symlinks=os.name != "nt")
                 builder.create(venv_path)
             if os.name == "nt":
                 candidate = venv_path / "Scripts" / "python.exe"
