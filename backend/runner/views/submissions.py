@@ -34,8 +34,8 @@ def _primary_metric(metrics):
     except:
         return None
 
-@login_required
-def submission_list(request, problem_id, limit=None):
+
+def submission_list_data(request, problem_id, limit=None):
     problem = get_object_or_404(Problem, id=problem_id)
     submissions_qs = Submission.objects.filter(problem=problem, user=request.user).order_by("-submitted_at")
     submissions = []
@@ -77,6 +77,11 @@ def submission_list(request, problem_id, limit=None):
             "limit": limit
         }
 
+    return context
+
+@login_required
+def submission_list(request, problem_id, limit=None):
+    context = submission_list_data(request, problem_id, limit)
     return render(request, "runner/submissions/list.html", context)
 
 def extract_labels_and_metrics(submissions):
