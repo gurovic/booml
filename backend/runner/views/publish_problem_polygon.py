@@ -43,7 +43,7 @@ def publish_problem_polygon(request, problem_id):
     if not data or not data.answer_file:
         errors.append("Добавьте файл ответов answer.csv")
     elif not data.answer_file.name.lower().endswith(".csv"):
-        errors.append("Файл ответов должен быть в формате CSV (answer.csv)")
+        errors.append("Файл ответов должен быть в формате CSV")
 
     if errors:
         for error in errors:
