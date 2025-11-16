@@ -3,6 +3,28 @@
 <head>
     <title>{{ notebook.title }}</title>
     {% load static %}
+    <script>
+        window.MathJax = {
+            tex: {
+                inlineMath: [['$', '$'], ['\\(', '\\)']],
+                displayMath: [['$$', '$$'], ['\\[', '\\]']]
+            },
+            svg: {
+                fontCache: 'global'
+            },
+            startup: {
+                typeset: false,
+                ready: () => {
+                    MathJax.startup.defaultReady();
+                    if (window.NotebookUtils?.flushLatexQueue) {
+                        window.NotebookUtils.flushLatexQueue();
+                    }
+                }
+            }
+        };
+    </script>
+    <script defer src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/markdown-it@13.0.1/dist/markdown-it.min.js"></script>
     <script src="{% static 'notebook/js/utils.js' %}"></script>
     <script src="{% static 'notebook/js/notebook_detail.js' %}"></script>
 </head>
@@ -10,14 +32,68 @@
     <div id="notebook-{{ notebook.id }}"
          data-notebook-id="{{ notebook.id }}"
          data-create-cell-url="{% url 'runner:create_cell' notebook.id %}"
-         data-runner-url="{% url 'runner:run_code' %}"
-         data-delete-url="{% url 'runner:delete_cell' %}"
-         data-save-output-url="{% url 'runner:save_cell_output' %}">
+         data-create-latex-cell-url="{% url 'runner:create_latex_cell' notebook.id %}"
+         data-run-cell-url="{% url 'run-cell' %}"
+         data-session-create-url="{% url 'notebook-session-create' %}"
+         data-session-reset-url="{% url 'session-reset' %}"
+         data-session-files-url="{% url 'session-files' %}"
+         data-session-file-download-url="{% url 'session-file-download' %}"
+         data-session-stop-url="{% url 'session-stop' %}"
+         data-delete-url-template="{% url 'runner:delete_cell' notebook.id 0 %}"
+         data-save-output-url-template="{% url 'runner:save_cell_output' notebook.id 0 %}">
 
-        <h1>{{ notebook.title }}</h1>
+        <div class="notebook-header">
+            <div class="notebook-header-title">
+                <a class="notebook-back-link" href="{% url 'runner:notebook_list' %}">← К списку блокнотов</a>
+                <h1 id="notebook-title">{{ notebook.title }}</h1>
+            </div>
+            <form id="rename-notebook-form"
+                  class="notebook-rename-form"
+                  method="post"
+                  action="{% url 'runner:rename_notebook' notebook.id %}">
+                {% csrf_token %}
+                <label for="notebook-rename-input">Новое название:</label>
+                <input type="text"
+                       id="notebook-rename-input"
+                       name="title"
+                       value="{{ notebook.title }}"
+                       placeholder="Введите новое название блокнота">
+                <button type="submit">Сохранить</button>
+            </form>
+        </div>
+
+        <div class="session-controls" data-session-controls>
+            <div class="session-status-row">
+                <span>Состояние сессии:</span>
+                <span data-session-status>Сессия не создана</span>
+            </div>
+            <div class="session-actions">
+                <button type="button" data-action="create-session">🚀 Создать сессию</button>
+                <button type="button" data-action="reset-session">♻️ Перезапустить сессию</button>
+                <button type="button" data-action="stop-session">⏹ Остановить сессию</button>
+            </div>
+        </div>
+
+        <aside class="notebook-files-panel" data-files-panel>
+            <div class="files-panel-header">
+                <span>Файлы сессии</span>
+                <button type="button" data-action="refresh-files">Обновить</button>
+            </div>
+            <div class="files-panel-body" data-files-list>
+                <div class="files-empty">Файлы ещё не созданы</div>
+            </div>
+        </aside>
 
         <div class="notebook-actions">
-            <button data-action="create-cell">➕ Новая ячейка</button>
+            <form id="delete-notebook-form"
+                  class="delete-notebook-form"
+                  method="post"
+                  action="{% url 'runner:delete_notebook' notebook.id %}">
+                {% csrf_token %}
+                <button type="submit" data-action="delete-notebook">🗑 Удалить блокнот</button>
+            </form>
+            <button data-action="create-cell">➕ Новая ячейка кода</button>
+            <button data-action="create-latex-cell">➕ Новая LaTeX-ячейка</button>
         </div>
 
         <div id="cells-container">
@@ -33,7 +109,13 @@
         document.addEventListener('DOMContentLoaded', function() {
             notebookDetail.init({
                 notebookId: {{ notebook.id }},
-                csrfToken: '{{ csrf_token }}'
+                csrfToken: '{{ csrf_token }}',
+                runCellUrl: '{% url "run-cell" %}',
+                sessionCreateUrl: '{% url "notebook-session-create" %}',
+                sessionResetUrl: '{% url "session-reset" %}',
+                sessionFilesUrl: '{% url "session-files" %}',
+                sessionFileDownloadUrl: '{% url "session-file-download" %}',
+                sessionStopUrl: '{% url "session-stop" %}'
             });
         });
     </script>

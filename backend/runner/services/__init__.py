@@ -1,4 +1,10 @@
-from .report_parser import ReportSchema, ReportParser
-from .validation_service import run_pre_validation, _validate_schema, _validate_ids, _validate_target_column
+try:
+    from .report_parser import ReportSchema, ReportParser
+except ModuleNotFoundError:
+    ReportSchema = None
+    ReportParser = None
+
+from .validation_service import run_pre_validation
 from .report_service import ReportGenerator
 from .serializers import ReportSerializer
+from .worker import enqueue_submission_for_evaluation

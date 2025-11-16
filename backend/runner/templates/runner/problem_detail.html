@@ -1,0 +1,122 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>{{ problem.title }}</title>
+    <link rel="stylesheet" href="{% static 'runner/style.css' %}">
+
+    <script type="text/javascript">
+      MathJax = {
+        tex: {
+          inlineMath: [['$', '$'], ['\\(', '\\)']],
+          displayMath: [['$$', '$$'], ['\\[', '\\]']]
+        },
+        options: {
+          skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+        }
+      };
+    </script>
+    <script id="MathJax-script" async
+            src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js">
+    </script>
+</head>
+<body>
+    <div class="problem-container">
+        <h1>{{ problem.title }}</h1>
+        <p><strong>Сложность:</strong> {{ problem.rating }}</p>
+
+        <div class="problem-statement">
+            {{ problem.render_statement|safe }}
+        </div>
+      
+        {% if data.train_file %}
+            <p>
+                <strong>Данные для обучения:</strong>
+                <a href="{{ data.train_file.url }}" download="{{ data.train_file.name }}">
+                    train_data
+                </a>
+            </p>
+        {% endif %}
+
+        {% if data.test_file %}
+            <p>
+                <strong>Данные для тестирования:</strong>
+                <a href="{{ data.test_file.url }}" download="{{ data.test_file.name }}">
+                    test_data
+                </a>
+            </p>
+        {% endif %}
+
+        {% if data.sample_submission_file %}
+            <p>
+                <strong>Пример правильного ответа:</strong>
+                <a href="{{ data.sample_submission_file.url }}" download="{{ data.sample_submission_file.name }}">
+                    sample_submission_data
+                </a>
+            </p>
+        {% endif %}
+
+        {% if data.answer_file %}
+            <p>
+                <strong>Файл с правильным ответом:</strong>
+                <a href="{{ data.answer_file.url }}" download="{{ data.answer_file.name }}">
+                    answer_data
+                </a>
+            </p>
+        {% endif %}
+
+        <div class="submission-section">
+            <h2>Отправить решение</h2>
+
+            {% if submission_feedback %}
+                <div class="submission-feedback submission-feedback-{{ submission_feedback.level }}">
+                    <p>{{ submission_feedback.message }}</p>
+                    {% if submission_feedback.details %}
+                        <pre>{{ submission_feedback.details }}</pre>
+                    {% endif %}
+                </div>
+            {% endif %}
+
+            {% if request.user.is_authenticated %}
+                <form method="post" enctype="multipart/form-data" class="submission-form">
+                    {% csrf_token %}
+                    <label for="{{ form.file.id_for_label }}">Файл в формате CSV</label>
+                    {{ form.file }}
+
+                    {% if form.file.errors %}
+                        <div class="field-error">
+                            {% for error in form.file.errors %}
+                                <p>{{ error }}</p>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+
+                    {% if form.non_field_errors %}
+                        <div class="field-error">
+                            {% for error in form.non_field_errors %}
+                                <p>{{ error }}</p>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+
+                    <button type="submit">Отправить в тестирующую систему</button>
+                </form>
+            {% else %}
+                <p>
+                    Чтобы отправить решение, <a href="{% url 'runner:login' %}?next={{ request.path }}">войдите в аккаунт</a>.
+                </p>
+            {% endif %}
+        </div>
+        {% if request.user.is_authenticated %}
+            <p>
+                <a href="{% url 'runner:submission_list' problem.id %}">
+                    Посылки по задаче
+                </a>
+            </p>
+        {% endif %}
+
+        {% include "runner/submissions/list.html" with limit=5 %}
+    </div>
+</body>
+</html>

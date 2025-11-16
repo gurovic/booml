@@ -3,12 +3,12 @@ import shutil
 import tempfile
 from datetime import date
 
-from django.test import TestCase, override_settings  # ВАЖНО: брать TestCase из django.test
+from django.test import TestCase, override_settings
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.contrib.auth import get_user_model
 
-from .task import Task
-from .submission import Submission
+from ..models.problem import Problem
+from ..models.submission import Submission
 
 User = get_user_model()
 
@@ -21,8 +21,8 @@ class SubmissionModelTests(TestCase):
         self._override.enable()
 
         self.user = User.objects.create_user(username="u1", password="pass")
-        self.task = Task.objects.create(
-            title="Demo Task",
+        self.problem = Problem.objects.create(
+            title="Demo Problem",
             statement="predict something",
             created_at=date.today(),
         )
@@ -37,10 +37,11 @@ class SubmissionModelTests(TestCase):
         content = b"id,pred\n1,0.1\n"
         f = SimpleUploadedFile("preds.csv", content, content_type="text/csv")
 
-        sub = Submission.objects.create(user=self.user, task=self.task, file=f)
+        sub = Submission.objects.create(user=self.user, problem=self.problem, file=f)
 
         self.assertGreater(sub.code_size, 0)
-        self.assertTrue(sub.file_path.endswith("preds.csv"))
+        # Используем sub.file.name вместо sub.file_path
+        self.assertTrue(sub.file.name.endswith("preds.csv"))
         s = str(sub)
         self.assertIn(self.user.username, s)
-        self.assertIn(str(self.task), s)
+        self.assertIn(str(self.problem), s)

@@ -5,30 +5,40 @@ from rest_framework.response import Response
 from ...models.submission import Submission
 from ..serializers import SubmissionCreateSerializer, SubmissionReadSerializer
 
-from ...services.validation_service import run_pre_validation
-from ...problems import enqueue_submission_for_evaluation
+from ...services import validation_service
+from ...services import enqueue_submission_for_evaluation
 
-def build_descriptor_from_task(task) -> dict:
+
+def build_descriptor_from_problem(problem) -> dict:
     """
-    Собирает дескриптор для validation_service из Task.
-    Сейчас Task не хранит схему — возвращаем пустой dict (это допустимо).
-    Если добавишь поля (output_schema/target_*), расширь логику ниже.
+    Snapshot a descriptor object into a plain dict that can be safely passed
+    to validation services (and serialized later if needed).
     """
-    descriptor = {}
-    # Пример на будущее:
-    # if hasattr(task, "output_schema"):
-    #     descriptor["output_schema"] = task.output_schema
-    # if hasattr(task, "target_column"):
-    #     descriptor["target_column"] = task.target_column
-    # if hasattr(task, "target_type"):
-    #     descriptor["target_type"] = task.target_type
-    return descriptor
+    descriptor = getattr(problem, "descriptor", None)
+    if not descriptor:
+        return {}
+
+    output_schema = list(getattr(descriptor, "output_columns", []) or [])
+    if not output_schema:
+        # Fallback to id + target columns to keep validation usable.
+        if descriptor.id_column:
+            output_schema.append(descriptor.id_column)
+        if descriptor.target_column and descriptor.target_column not in output_schema:
+            output_schema.append(descriptor.target_column)
+
+    return {
+        "id_column": descriptor.id_column,
+        "target_column": descriptor.target_column,
+        "target_type": descriptor.target_type,
+        "check_order": descriptor.check_order,
+        "output_schema": output_schema,
+    }
 
 
 class SubmissionCreateView(generics.CreateAPIView):
     """
     POST /api/submissions/
-    multipart/form-data: { task_id, file: <csv> }
+    multipart/form-data: { problem_id, file: <csv> }
     1) создаём Submission (pending)
     2) синхронно запускаем pre-validation
     3) при успехе ставим в очередь основную обработку, отвечаем 201
@@ -48,17 +58,27 @@ class SubmissionCreateView(generics.CreateAPIView):
             submission: Submission = serializer.save()
 
         # 2) Пре-валидация
-        task = submission.task
-        descriptor = build_descriptor_from_task(task)
-        report = run_pre_validation(submission, descriptor=descriptor)
+        problem = submission.problem
+        descriptor = build_descriptor_from_problem(problem)
+        report = validation_service.run_pre_validation(submission, descriptor=descriptor)
 
         # 3) Ветвление по результату
         data = SubmissionReadSerializer(submission, context={"request": request}).data
-        if report.valid:
-            enqueue_submission_for_evaluation.delay(submission.id)
+        report_valid = getattr(report, "is_valid", None)
+        if report_valid is None:
+            if hasattr(report, "valid"):
+                report_valid = report.valid
+            else:
+                report_valid = getattr(report, "status", "") != "failed"
+
+        if report_valid:
+            self._enqueue_submission(submission.id)
             return Response(data, status=status.HTTP_201_CREATED)
         else:
             return Response(data, status=status.HTTP_400_BAD_REQUEST)
+
+    def _enqueue_submission(self, submission_id: int) -> None:
+        enqueue_submission_for_evaluation(submission_id)
 
 
 class MySubmissionsListView(generics.ListAPIView):
@@ -70,4 +90,3 @@ class MySubmissionsListView(generics.ListAPIView):
 
     def get_queryset(self):
         return Submission.objects.filter(user=self.request.user).order_by("-submitted_at")
-
