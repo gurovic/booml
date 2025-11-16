@@ -4,7 +4,7 @@ from runner.models import Task, Submission
 from django.http.response import HttpResponseBadRequest
 
 @login_required
-def submission_list(request, task_id):
+def submission_list(request, task_id, limit=None):
     task = get_object_or_404(Task, id=task_id)
     submissions = Submission.objects.filter(task=task, user=request.user).order_by("-created_at")
 
@@ -16,13 +16,15 @@ def submission_list(request, task_id):
             "result": {
                 "status": latest_submission.status,
                 "metric": latest_submission.metric,
-            }
+            },
+            "limit": limit
         }
     else:
         context = {
             "task": task,
             "submissions": [],
-            "result": None
+            "result": None,
+            "limit": limit
         }
 
     return render(request, "runner/submissions/list.html", context)

@@ -1,4 +1,8 @@
-<h2>Мои посылки по задаче: {{ task.title }}</h2>
+{% if limit is not None %}
+  <h2>Мои {{ limit }} посылок по задаче: {{ task.title }}</h2>
+{% else %}
+  <h2>Мои посылки по задаче: {{ task.title }}</h2>
+{% endif %}
 
 {% if result %}
   {% if result.status == "OK" %}
@@ -21,15 +25,17 @@
     <th>Детали</th>
   </tr>
   {% for submission in submissions %}
-  <tr>
-    <td>{{ submission.id }}</td>
-    <td>{{ submission.created_at|date:"d.m.Y H:i" }}</td>
-    <td>{{ submission.get_status_display }}</td>
-    {% if result and result.status == "OK" %}
-      <td>{% if submission.metric %}{{ submission.metric }}{% else %}-{% endif %}</td>
+    {% if not limit or forloop.counter <= limit %}
+    <tr>
+      <td>{{ submission.id }}</td>
+      <td>{{ submission.created_at|date:"d.m.Y H:i" }}</td>
+      <td>{{ submission.get_status_display }}</td>
+      {% if result and result.status == "OK" %}
+        <td>{% if submission.metric %}{{ submission.metric }}{% else %}-{% endif %}</td>
+      {% endif %}
+      <td><a href="{% url 'submission_detail' submission.id %}">Открыть</a></td>
+    </tr>
     {% endif %}
-    <td><a href="{% url 'submission_detail' submission.id %}">Открыть</a></td>
-  </tr>
   {% empty %}
   <tr><td colspan="5">Нет посылок</td></tr>
   {% endfor %}
