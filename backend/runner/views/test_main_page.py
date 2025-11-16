@@ -22,6 +22,7 @@ class MainPageViewTest(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Problem1")
         self.assertContains(response, "1200")
+
     def test_unpublished_tasks_not_listed(self):
         url = reverse("runner:main_page")
         response = self.client.get(url)
