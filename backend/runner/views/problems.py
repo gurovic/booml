@@ -4,7 +4,11 @@ from django.core.paginator import Paginator
 from ..models import Problem
 
 def problem_list(request):
-    problems = Problem.objects.only("title", "created_at", "rating").order_by("-created_at")
+    problems = (
+        Problem.objects.filter(is_published=True)
+        .only("title", "created_at", "rating")
+        .order_by("-created_at")
+    )
 
     min_r = request.GET.get("min_rating")
     max_r = request.GET.get("max_rating")
