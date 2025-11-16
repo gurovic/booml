@@ -3,6 +3,8 @@ from __future__ import annotations
 import io
 import json
 import os
+import subprocess
+import sys
 import time
 import traceback
 import uuid
@@ -16,6 +18,36 @@ from .vm_models import VirtualMachine
 
 _AGENT_CACHE: Dict[str, VmAgent] = {}
 logger = logging.getLogger(__name__)
+
+
+def _handle_shell_commands(code: str, workdir: Path, stdout_buffer: io.StringIO, stderr_buffer: io.StringIO, python_exec: Path | None = None) -> str:
+    lines = code.split('\n')
+    filtered_lines = []
+    
+    for line in lines:
+        stripped = line.lstrip()
+        if stripped.startswith('!pip install '):
+            pip_cmd = stripped[1:]
+            try:
+                parts = pip_cmd.split()[2:]
+                cmd = [str(python_exec or 'python'), '-m', 'pip', 'install'] + parts + ['--disable-pip-version-check']
+                result = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    cwd=str(workdir),
+                    timeout=300,
+                    env={**os.environ, 'PIP_ROOT_USER_ACTION': 'ignore'}
+                )
+                stdout_buffer.write(result.stdout)
+                stdout_buffer.write(result.stderr)
+            except Exception as e:
+                stdout_buffer.write(f"Error executing {pip_cmd}: {str(e)}\n")
+        else:
+            filtered_lines.append(line)
+    
+    return '\n'.join(filtered_lines)
+
 
 
 class VmAgent(ABC):
@@ -43,7 +75,9 @@ class LocalVmAgent(VmAgent):
         error = None
         with _workspace_cwd(self.session.workdir), redirect_stdout(stdout_buffer), redirect_stderr(stderr_buffer):
             try:
-                exec(code, namespace, namespace)
+                code = _handle_shell_commands(code, self.session.workdir, stdout_buffer, stderr_buffer, self.session.python_exec)
+                if code.strip():
+                    exec(code, namespace, namespace)
             except Exception:
                 error = traceback.format_exc()
         return {
