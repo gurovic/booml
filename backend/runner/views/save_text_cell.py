@@ -11,14 +11,12 @@ def save_text_cell(request, notebook_id, cell_id):
     cell = get_object_or_404(Cell, id=cell_id, notebook=notebook)
     
     try:
-        # Получаем данные из JSON body
         if request.content_type and 'application/json' in request.content_type:
             data = json.loads(request.body or '{}')
             content = data.get('content', '')
         else:
             content = request.POST.get('content', '')
         
-        # Сохраняем содержимое ячейки
         cell.content = content
         cell.save()
         
