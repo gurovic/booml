@@ -95,3 +95,24 @@ class RunCellViewTests(TestCase):
         )
         self.assertEqual(resp.status_code, HTTPStatus.BAD_REQUEST)
         self.assertIn("Сессия не создана", resp.json().get("detail", ""))
+
+    def test_run_cell_with_pip_install(self):
+        session_id = f"notebook:{self.notebook.id}"
+        create_session(session_id)
+        cell = Cell.objects.create(
+            notebook=self.notebook,
+            cell_type=Cell.CODE,
+            content="!pip install requests\nimport sys\nprint('success')"
+        )
+        resp = self.client.post(
+            self.url,
+            {
+                "session_id": session_id,
+                "cell_id": cell.id,
+            },
+        )
+        self.assertEqual(resp.status_code, HTTPStatus.OK)
+        data = resp.json()
+        self.assertIsNone(data["error"])
+        self.assertIn("success", data["stdout"])
+

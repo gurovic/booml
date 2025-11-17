@@ -7,6 +7,7 @@ from ..models.problem import Problem
 from ..models.problem_data import ProblemData
 from ..models.submission import Submission
 from ..services import enqueue_submission_for_evaluation, validation_service
+from .submissions import submission_list_data
 
 
 def _report_is_valid(report) -> bool:
@@ -84,10 +85,20 @@ def problem_detail(request, problem_id):
                     "message": "Исправьте ошибки формы и попробуйте снова.",
                 }
 
+    if request.user.is_authenticated:
+        context_submissions_list = submission_list_data(request, problem_id, limit=5)
+    else:
+        context_submissions_list = {
+            "submissions": [],
+            "result": None
+        }
+
     context = {
         "problem": problem,
         "data": problem_data,
         "form": form,
         "submission_feedback": submission_feedback,
+        "submissions": context_submissions_list["submissions"],
+        "result": context_submissions_list["result"]
     }
     return render(request, "runner/problem_detail.html", context)
