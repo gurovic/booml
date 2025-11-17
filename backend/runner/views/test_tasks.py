@@ -9,6 +9,9 @@ class ProblemListViewTestCase(TestCase):
         Problem.objects.create(title="Problem1", created_at="2009-03-14", statement="...", rating=100)
         Problem.objects.create(title="Problem2", created_at="2009-03-15", statement="...", rating=200)
         Problem.objects.create(title="Problem3", created_at="2009-03-16", statement="...", rating=300)
+        Problem.objects.create(
+            title="Hidden", created_at="2009-03-17", statement="...", rating=400, is_published=False
+        )
 
     def _get_url(self):
         # предпочитаем reverse по имени, но оставляем fallback на /runner/problems/ если name не настроен
@@ -60,3 +63,9 @@ class ProblemListViewTestCase(TestCase):
         self.assertIn("Problem1", content)
         self.assertIn("Problem2", content)
         self.assertIn("Problem3", content)
+
+    def test_unpublished_not_shown(self):
+        url = self._get_url()
+        response = self.client.get(url)
+        content = response.content.decode()
+        self.assertNotIn("Hidden", content)

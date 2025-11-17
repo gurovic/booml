@@ -8,6 +8,14 @@
   <p><a href="{% url 'runner:polygon' %}">← Назад к списку задач</a></p>
   <h1>Редактирование задачи №{{ problem.id }}</h1>
 
+  {% if messages %}
+    <div class="messages">
+      {% for message in messages %}
+        <div class="message {{ message.tags }}">{{ message }}</div>
+      {% endfor %}
+    </div>
+  {% endif %}
+
   <form method="post" enctype="multipart/form-data">
     {% csrf_token %}
     <div class="top-fields">
@@ -114,5 +122,17 @@
       <button type="submit">Сохранить изменения</button>
     </div>
   </form>
+
+  <section class="publish">
+    <h2>Публикация</h2>
+    {% if problem.is_published %}
+      <p>Эта задача уже опубликована.</p>
+    {% else %}
+      <form method="post" action="{% url 'runner:polygon_publish_problem' problem.id %}">
+        {% csrf_token %}
+        <button type="submit">Опубликовать задачу</button>
+      </form>
+    {% endif %}
+  </section>
 </body>
 </html>

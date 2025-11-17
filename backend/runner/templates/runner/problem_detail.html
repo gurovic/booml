@@ -57,15 +57,6 @@
             </p>
         {% endif %}
 
-        {% if data.answer_file %}
-            <p>
-                <strong>Файл с правильным ответом:</strong>
-                <a href="{{ data.answer_file.url }}" download="{{ data.answer_file.name }}">
-                    answer_data
-                </a>
-            </p>
-        {% endif %}
-
         <div class="submission-section">
             <h2>Отправить решение</h2>
 
@@ -115,6 +106,8 @@
                 </a>
             </p>
         {% endif %}
+
+        {% include "runner/submissions/list.html" with limit=5 %}
     </div>
 </body>
 </html>

@@ -3,6 +3,7 @@ import io
 import json
 import os
 import sys
+import subprocess
 import time
 import traceback
 from contextlib import redirect_stdout, redirect_stderr
@@ -63,6 +64,35 @@ def build_download_helper(workspace: Path):
     return download_file
 
 
+def handle_shell_commands(code: str, workspace: Path, stdout_buffer: io.StringIO, stderr_buffer: io.StringIO) -> str:
+    lines = code.split('\n')
+    filtered_lines = []
+    
+    for line in lines:
+        stripped = line.lstrip()
+        if stripped.startswith('!pip install '):
+            pip_cmd = stripped[1:]
+            try:
+                parts = pip_cmd.split()[2:]
+                cmd = [sys.executable, '-m', 'pip', 'install'] + parts + ['--disable-pip-version-check']
+                result = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    cwd=str(workspace),
+                    timeout=300,
+                    env={**os.environ, 'PIP_ROOT_USER_ACTION': 'ignore'}
+                )
+                stdout_buffer.write(result.stdout)
+                stdout_buffer.write(result.stderr)
+            except Exception as e:
+                stdout_buffer.write(f"Error executing {pip_cmd}: {str(e)}\n")
+        else:
+            filtered_lines.append(line)
+    
+    return '\n'.join(filtered_lines)
+
+
 def process_command(command_path: Path, namespace, workspace: Path) -> None:
     try:
         payload = json.loads(command_path.read_text(encoding="utf-8"))
@@ -87,7 +117,9 @@ def execute_code(code: str, namespace, workspace: Path) -> dict:
 
     with redirect_stdout(stdout_buffer), redirect_stderr(stderr_buffer):
         try:
-            exec(code, namespace, namespace)
+            code = handle_shell_commands(code, workspace, stdout_buffer, stderr_buffer)
+            if code.strip():
+                exec(code, namespace, namespace)
         except Exception:
             error = traceback.format_exc()
 

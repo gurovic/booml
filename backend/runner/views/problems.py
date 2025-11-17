@@ -4,20 +4,24 @@ from django.core.paginator import Paginator
 from ..models import Problem
 
 def problem_list(request):
-    Problems = Problem.objects.only("title", "created_at", "rating").order_by("-created_at")
+    problems = (
+        Problem.objects.filter(is_published=True)
+        .only("title", "created_at", "rating")
+        .order_by("-created_at")
+    )
 
     min_r = request.GET.get("min_rating")
     max_r = request.GET.get("max_rating")
     try:
         if min_r is not None and min_r != "":
-            Problems = Problems.filter(rating__gte=int(min_r))
+            problems = problems.filter(rating__gte=int(min_r))
         if max_r is not None and max_r != "":
-            Problems = Problems.filter(rating__lte=int(max_r))
+            problems = problems.filter(rating__lte=int(max_r))
     except (ValueError, TypeError):
         # некорректные значения — игнорируем фильтр
         pass
 
-    paginator = Paginator(Problems, 50)
+    paginator = Paginator(problems, 50)
     page_number = request.GET.get("page")
     page_obj = paginator.get_page(page_number)
 

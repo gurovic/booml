@@ -22,6 +22,7 @@ from .views.run_code import run_code
 from .views.list_of_problems_polygon import problem_list_polygon
 from .views.create_problem_polygon import create_problem_polygon
 from .views.edit_problem_polygon import edit_problem_polygon
+from .views.publish_problem_polygon import publish_problem_polygon
 
 
 app_name = 'runner'
@@ -58,4 +59,5 @@ urlpatterns = [
     path('polygon/', problem_list_polygon, name='polygon'),
     path('polygon/new/', create_problem_polygon, name='polygon_create_problem'),
     path('polygon/problem/<int:problem_id>/', edit_problem_polygon, name='polygon_edit_problem'),
+    path('polygon/problem/<int:problem_id>/publish/', publish_problem_polygon, name='polygon_publish_problem'),
 ]
