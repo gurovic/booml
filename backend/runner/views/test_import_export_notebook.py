@@ -9,7 +9,6 @@ from ..models import Notebook, Cell
 
 
 class ImportExportNotebookTests(TestCase):
-    """Тесты для экспорта и импорта ноутбуков"""
 
     def setUp(self) -> None:
         self.client = Client()
@@ -17,7 +16,6 @@ class ImportExportNotebookTests(TestCase):
         self.notebook = Notebook.objects.create(owner=self.user, title="Test Notebook")
 
     def test_export_and_import_notebook_full_cycle(self):
-        """Тест полного цикла: экспорт ноутбука с ячейками и его импорт"""
 
         code_cell = Cell.objects.create(
             notebook=self.notebook,
@@ -93,7 +91,6 @@ class ImportExportNotebookTests(TestCase):
         self.assertEqual(imported_cells[2].execution_order, 2)
 
     def test_export_and_import_empty_notebook(self):
-        """Тест экспорта и импорта пустого ноутбука"""
         export_url = reverse("runner:export_notebook", args=[self.notebook.id])
         export_response = self.client.get(export_url)
 
@@ -123,7 +120,6 @@ class ImportExportNotebookTests(TestCase):
         self.assertEqual(imported_notebook.cells.count(), 0)
 
     def test_export_post_returns_json(self):
-        """Тест что POST запрос на экспорт возвращает JSON в ответе"""
         Cell.objects.create(
             notebook=self.notebook,
             cell_type=Cell.CODE,
