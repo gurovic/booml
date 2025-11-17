@@ -1,6 +1,17 @@
 <!DOCTYPE html>
 <html>
 <head>
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/easymde/dist/easymde.min.css"
+    />
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
+      integrity="sha512-iecdLmaskl7CVkqkXNQ/ZH/XLlvWZOJyj7Yy7tcenmpD1ypASozpmT/E0iPtmFIB46ZmdtAc9eNBvH0H/ZpiBw=="
+      crossorigin="anonymous"
+      referrerpolicy="no-referrer"
+    />
     <title>{{ notebook.title }}</title>
     {% load static %}
     <script>
@@ -27,6 +38,7 @@
     <script src="https://cdn.jsdelivr.net/npm/markdown-it@13.0.1/dist/markdown-it.min.js"></script>
     <script src="{% static 'notebook/js/utils.js' %}"></script>
     <script src="{% static 'notebook/js/notebook_detail.js' %}"></script>
+    <script src="https://cdn.jsdelivr.net/npm/easymde/dist/easymde.min.js"></script>
 </head>
 <body>
     <div id="notebook-{{ notebook.id }}"
@@ -40,7 +52,9 @@
          data-session-file-download-url="{% url 'session-file-download' %}"
          data-session-stop-url="{% url 'session-stop' %}"
          data-delete-url-template="{% url 'runner:delete_cell' notebook.id 0 %}"
-         data-save-output-url-template="{% url 'runner:save_cell_output' notebook.id 0 %}">
+         data-save-output-url-template="{% url 'runner:save_cell_output' notebook.id 0 %}"
+         data-create-text-cell-url="{% url 'runner:create_text_cell' notebook.id %}"
+         data-save-text-cell-url-template="{% url 'runner:save_text_cell' notebook.id 0 %}">
 
         <div class="notebook-header">
             <div class="notebook-header-title">
@@ -94,6 +108,7 @@
             </form>
             <button data-action="create-cell">➕ Новая ячейка кода</button>
             <button data-action="create-latex-cell">➕ Новая LaTeX-ячейка</button>
+            <button data-action="create-text-cell">➕ Новая ячейка текста</button>
         </div>
 
         <div id="cells-container">

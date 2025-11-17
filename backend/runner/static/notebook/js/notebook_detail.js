@@ -649,8 +649,10 @@ const notebookDetail = {
         this.filesRequestId = 0;
         this.initialFilesLoaded = false;
         this.cellStatuses = this.loadCellStatuses();
+        this.saveTextCellUrlTemplate = this.notebookElement?.dataset.saveTextCellUrlTemplate || '';
         this.bindEvents();
         this.initializeCells();
+        this.initTextCells();
         this.captureInitialOutputs();
         this.applyStatusesToExistingCells();
         this.updateQueueStatuses();
@@ -714,6 +716,9 @@ const notebookDetail = {
         }
         else if (action === 'create-latex-cell') {
             this.createCell({ payload: { type: 'latex' } });
+        }
+        else if (action === 'create-text-cell') {
+            this.createTextCell();
         }
         else if (action === 'run-cell' && cellId) {
             this.runCell(cellId);
@@ -1043,6 +1048,46 @@ const notebookDetail = {
         }
     },
 
+    async createTextCell() {
+        try {
+            const createTextCellUrl = this.notebookElement?.dataset.createTextCellUrl;
+
+            if (!createTextCellUrl) {
+                throw new Error('URL создания текстовой ячейки недоступен');
+            }
+
+            const response = await fetch(createTextCellUrl, {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': this.config.csrfToken
+                }
+            });
+
+            if (!response.ok) {
+                throw new Error('HTTP error ' + response.status);
+            }
+
+            const html = await response.text();
+            const container = document.getElementById('cells-container');
+
+            if (!container) {
+                throw new Error('Контейнер для ячеек не найден');
+            }
+
+            container.insertAdjacentHTML('beforeend', html);
+            const newCell = container.lastElementChild;
+            if (newCell) {
+                this.initializeCell(newCell);
+                this.initTextCell(newCell);
+            }
+
+        } catch (error) {
+            console.error('Ошибка:', error);
+            alert('Ошибка при создании текстовой ячейки: ' + error.message);
+        }
+    },
+
+
     runCell(cellId) {
         if (!cellId) {
             return;
@@ -1273,6 +1318,8 @@ const notebookDetail = {
         if (cellElement.dataset.cellType === 'latex') {
             this.refreshLatexDisplay(cellElement);
             this.setLatexEditingState(cellElement, false);
+        } else if (cellElement.dataset.cellType === 'text') {
+            this.initTextCell(cellElement);
         }
     },
 
@@ -1379,5 +1426,111 @@ const notebookDetail = {
             display.hidden = false;
             editButton.hidden = false;
         }
+    },
+
+    initTextCells() {
+        if (!this.notebookElement) {
+            return;
+        }
+        const containers = this.notebookElement.querySelectorAll('[data-text-container]');
+        containers.forEach(container => this.initTextCell(container.closest('[data-cell-id]')));
+    },
+
+    initTextCell(cellElement) {
+        if (!cellElement) {
+            return;
+        }
+        const container = cellElement.querySelector('[data-text-container]');
+        if (!container) {
+            return;
+        }
+
+        const display = container.querySelector('[data-text-display]');
+        const editor = container.querySelector('[data-text-editor]');
+        const textarea = container.querySelector('[data-text-textarea]');
+        const editBtn = container.querySelector('[data-action="edit-text"]');
+        const saveBtn = container.querySelector('[data-action="save-text"]');
+        const cancelBtn = container.querySelector('[data-action="cancel-text"]');
+
+        if (!display || !editor || !textarea || !editBtn || !saveBtn || !cancelBtn) {
+            return;
+        }
+
+        // Рендерим markdown для отображения, если содержимое есть
+        const rawContent = textarea.value || '';
+        if (rawContent && display.innerHTML === rawContent) {
+            const renderer = NotebookUtils.getMarkdownRenderer();
+            display.innerHTML = renderer.render(rawContent);
+        }
+
+        let mde = null;
+
+        // Удаляем старые обработчики, если они есть
+        const newEditBtn = editBtn.cloneNode(true);
+        const newSaveBtn = saveBtn.cloneNode(true);
+        const newCancelBtn = cancelBtn.cloneNode(true);
+        editBtn.parentNode.replaceChild(newEditBtn, editBtn);
+        saveBtn.parentNode.replaceChild(newSaveBtn, saveBtn);
+        cancelBtn.parentNode.replaceChild(newCancelBtn, cancelBtn);
+
+        newEditBtn.addEventListener('click', () => {
+            display.hidden = true;
+            editor.hidden = false;
+
+            // Инициализируем EasyMDE
+            if (!mde) {
+                mde = new EasyMDE({
+                    element: textarea,
+                    autoDownloadFontAwesome: false,
+                    spellChecker: false
+                });
+            }
+            mde.codemirror.refresh();
+        });
+
+        newSaveBtn.addEventListener('click', async () => {
+            const markdown = mde ? mde.value() : textarea.value;
+            const cellId = cellElement.dataset.cellId;
+            const saveUrl = this.buildCellUrl(this.saveTextCellUrlTemplate, cellId);
+
+            if (!saveUrl) {
+                alert('URL сохранения недоступен');
+                return;
+            }
+
+            try {
+                const response = await fetch(saveUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': this.config.csrfToken
+                    },
+                    body: JSON.stringify({ content: markdown })
+                });
+
+                if (!response.ok) {
+                    throw new Error('HTTP error ' + response.status);
+                }
+
+                const renderer = NotebookUtils.getMarkdownRenderer();
+                display.innerHTML = renderer.render(markdown);
+                editor.hidden = true;
+                display.hidden = false;
+            } catch (error) {
+                console.error('Ошибка сохранения текстовой ячейки:', error);
+                alert('Ошибка при сохранении: ' + error.message);
+            }
+        });
+
+        newCancelBtn.addEventListener('click', () => {
+            if (mde) {
+                // Восстанавливаем оригинальное содержимое из textarea
+                const originalContent = textarea.value || '';
+                mde.value(originalContent);
+            }
+            editor.hidden = true;
+            display.hidden = false;
+        });
     }
+
 };
