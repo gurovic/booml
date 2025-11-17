@@ -40,6 +40,8 @@
          data-session-file-download-url="{% url 'session-file-download' %}"
          data-session-stop-url="{% url 'session-stop' %}"
          data-delete-url-template="{% url 'runner:delete_cell' notebook.id 0 %}"
+         data-copy-cell-url-template="{% url 'runner:copy_cell' notebook.id 0 %}"
+         data-move-cell-url-template="{% url 'runner:move_cell' notebook.id 0 %}"
          data-save-output-url-template="{% url 'runner:save_cell_output' notebook.id 0 %}">
 
         <div class="notebook-header">
