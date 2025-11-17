@@ -7,11 +7,9 @@ from ..models import Notebook, Cell
 def create_text_cell(request, notebook_id):
     notebook = get_object_or_404(Notebook, id=notebook_id)
     
-    # Получаем последний порядковый номер ячейки
     last_cell = notebook.cells.order_by('-execution_order').first()
     new_order = last_cell.execution_order + 1 if last_cell else 0
     
-    # Создаем новую текстовую ячейку
     cell = Cell.objects.create(
         notebook=notebook,
         cell_type=Cell.TEXT,
