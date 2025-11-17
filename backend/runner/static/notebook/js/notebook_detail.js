@@ -1456,7 +1456,7 @@ const notebookDetail = {
             return;
         }
 
-        // Рендерим markdown для отображения, если содержимое есть
+    
         const rawContent = textarea.value || '';
         if (rawContent && display.innerHTML === rawContent) {
             const renderer = NotebookUtils.getMarkdownRenderer();
@@ -1465,7 +1465,7 @@ const notebookDetail = {
 
         let mde = null;
 
-        // Удаляем старые обработчики, если они есть
+    
         const newEditBtn = editBtn.cloneNode(true);
         const newSaveBtn = saveBtn.cloneNode(true);
         const newCancelBtn = cancelBtn.cloneNode(true);
@@ -1477,7 +1477,7 @@ const notebookDetail = {
             display.hidden = true;
             editor.hidden = false;
 
-            // Инициализируем EasyMDE
+        
             if (!mde) {
                 mde = new EasyMDE({
                     element: textarea,
@@ -1524,7 +1524,7 @@ const notebookDetail = {
 
         newCancelBtn.addEventListener('click', () => {
             if (mde) {
-                // Восстанавливаем оригинальное содержимое из textarea
+            
                 const originalContent = textarea.value || '';
                 mde.value(originalContent);
             }
