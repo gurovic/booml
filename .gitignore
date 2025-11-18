@@ -207,10 +207,8 @@ marimo/_lsp/
 __marimo__/
 
 .DS_Store
-backend/runner/migrations/
-*.sqlite
-*.db
 
 backend/data/
 
 backend/media/
+backend/notebook_sessions/

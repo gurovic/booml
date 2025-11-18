@@ -10,12 +10,14 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.1/ref/settings/
 """
 
+import os
 from pathlib import Path
 from dotenv import load_dotenv
 import os
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env")
+LOGIN_URL = '/login/'
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.1/howto/deployment/checklist/
@@ -47,6 +49,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'channels',
     'django_reverse_js',
     'runner',
     'rest_framework'
@@ -81,6 +84,7 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'core.wsgi.application'
+ASGI_APPLICATION = 'core.asgi.application'
 
 
 # Database
@@ -90,6 +94,10 @@ DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
         'NAME': BASE_DIR / 'db.sqlite3',
+        'TEST': {
+            'NAME': BASE_DIR / 'test_db.sqlite3',
+            'SERIALIZE': False,
+        },
     }
 }
 
@@ -131,6 +139,19 @@ USE_TZ = True
 STATIC_URL = 'static/'
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
+RUNTIME_SANDBOX_ROOT = BASE_DIR / 'notebook_sessions'
+RUNTIME_VM_BACKEND = os.environ.get("RUNTIME_VM_BACKEND", "auto")
+RUNTIME_VM_IMAGE = os.environ.get("RUNTIME_VM_IMAGE", "runner-vm:latest")
+RUNTIME_VM_CPU = int(os.environ.get("RUNTIME_VM_CPU", "2"))
+RUNTIME_VM_RAM_MB = int(os.environ.get("RUNTIME_VM_RAM_MB", "4096"))
+RUNTIME_VM_DISK_GB = int(os.environ.get("RUNTIME_VM_DISK_GB", "32"))
+RUNTIME_VM_TTL_SEC = int(os.environ.get("RUNTIME_VM_TTL_SEC", "3600"))
+RUNTIME_VM_NET_OUTBOUND = os.environ.get("RUNTIME_VM_NET_OUTBOUND", "deny")
+_runtime_vm_allowlist = os.environ.get("RUNTIME_VM_NET_ALLOWLIST", "")
+RUNTIME_VM_NET_ALLOWLIST = tuple(
+    item.strip() for item in _runtime_vm_allowlist.split(",") if item.strip()
+)
+RUNTIME_VM_ROOT = Path(os.environ.get("RUNTIME_VM_ROOT", str(BASE_DIR / "notebook_sessions")))
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field
@@ -141,3 +162,12 @@ CELERY_BROKER_URL = "redis://localhost:6379/0"
 CELERY_RESULT_BACKEND = "redis://localhost:6379/1"
 
 STATIC_ROOT = BASE_DIR / "staticfiles"
+
+CELERY_TASK_ALWAYS_EAGER = False  # для реального async
+CELERY_TASK_EAGER_PROPAGATES = True
+
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels.layers.InMemoryChannelLayer",
+    }
+}

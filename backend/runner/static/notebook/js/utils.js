@@ -15,97 +15,25 @@ const NotebookUtils = {
             .replace(/\t/g, '&nbsp;&nbsp;&nbsp;&nbsp;');
     },
 
-    formatRunnerOutput(data) {
-        let output = '';
+    formatCellRunResult(data) {
+        const blocks = [];
 
-        if (data.outputs && data.outputs.length > 0) {
-            data.outputs.forEach(item => {
-                if (item.type === 'text' && item.data.text) {
-                    const escapedText = this.escapeHtml(item.data.text);
-                    output += `<div class="output-text"><pre>${escapedText}</pre></div>`;
-                }
-            });
-        } else if (data.output) {
-            const escapedText = this.escapeHtml(data.output);
-            output += `<div class="output-text"><pre>${escapedText}</pre></div>`;
+        if (data.stdout) {
+            const escapedStdout = this.escapeHtml(data.stdout);
+            blocks.push(`<div class="output-text"><pre>${escapedStdout}</pre></div>`);
         }
 
         if (data.stderr) {
             const escapedStderr = this.escapeHtml(data.stderr);
-            output += `<div class="output-stderr"><strong>STDERR:</strong><pre>${escapedStderr}</pre></div>`;
+            blocks.push(`<div class="output-stderr"><strong>STDERR:</strong><pre>${escapedStderr}</pre></div>`);
         }
 
-        if (data.errors && data.errors.length > 0) {
-            const errorMessages = data.errors.map(error =>
-                error.code && error.msg ? `${error.code}: ${error.msg}` : error.msg || error
-            );
-            const escapedErrors = this.escapeHtml(errorMessages.join('\n'));
-            output += `<div class="output-errors"><strong>ERRORS:</strong><pre>${escapedErrors}</pre></div>`;
+        if (data.error) {
+            const escapedError = this.escapeHtml(data.error);
+            blocks.push(`<div class="output-errors"><strong>Ошибка:</strong><pre>${escapedError}</pre></div>`);
         }
 
-        const elapsed = data.elapsed_ms ?? data.stats?.execution_time_ms;
-        if (elapsed !== undefined) {
-            output += `<div class="output-stats">
-                <hr>
-                <small>Время выполнения: ${elapsed}ms |
-                Exit code: ${data.stats?.exit_code || 0}
-                ${data.stats?.timeout ? '| ⚠️ Таймаут' : ''}
-                </small>
-            </div>`;
-        }
-
-        return output || '<div class="output-empty">No output</div>';
-    },
-
-    async runCode(code, runnerUrl, csrfToken) {
-        try {
-            const response = await fetch(runnerUrl, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': csrfToken
-                },
-                body: JSON.stringify({
-                    code: code,
-                    lang: 'python',
-                    run_id: crypto.randomUUID()
-                })
-            });
-
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-
-            const data = await response.json();
-
-            if (data.status === 'success') {
-                return {
-                    output: this.formatRunnerOutput(data),
-                    run_id: data.run_id,
-                    stats: {
-                        execution_time_ms: data.stats?.execution_time_ms ?? data.elapsed_ms ?? null,
-                        exit_code: data.stats?.exit_code || 0,
-                        timeout: data.stats?.timeout || false
-                    },
-                    artifacts: Array.isArray(data.artifacts) ? data.artifacts : []
-                };
-            } else {
-                const errorMsg = data.errors?.[0]?.msg || data.message || 'Execution failed';
-                const error = new Error(errorMsg);
-                error.artifacts = Array.isArray(data.artifacts) ? data.artifacts : [];
-                throw error;
-            }
-
-        } catch (error) {
-            const message = error instanceof Error ? error.message : String(error);
-            const wrappedError = new Error(`Execution error: ${message}`);
-
-            if (error && typeof error === 'object' && 'artifacts' in error) {
-                wrappedError.artifacts = error.artifacts;
-            }
-
-            throw wrappedError;
-        }
+        return blocks.join('') || '<div class="output-empty">Нет вывода</div>';
     },
 
     async saveCellOutput(notebookId, cellId, code, output, csrfToken, saveOutputUrl) {

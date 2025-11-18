@@ -13,10 +13,15 @@ from .views.notebook_detail import notebook_detail
 from .views.create_cell import create_cell, create_latex_cell
 from .views.delete_cell import delete_cell
 from .views.save_cell_output import save_cell_output
+from .views.reorder_cells import copy_cell, move_cell
 from .views.get_reports_list import get_reports_list
 from .views.receive_test_result import receive_test_result
 from .views.contest_draft import create_contest, contest_success
 from .views.run_code import run_code
+from .views.list_of_problems_polygon import problem_list_polygon
+from .views.create_problem_polygon import create_problem_polygon
+from .views.edit_problem_polygon import edit_problem_polygon
+from .views.publish_problem_polygon import publish_problem_polygon
 
 
 app_name = 'runner'
@@ -46,6 +51,12 @@ urlpatterns = [
     path('notebook/<int:notebook_id>/cell/new/', create_cell, name='create_cell'),
     path('notebook/<int:notebook_id>/cell/new/latex/', create_latex_cell, name='create_latex_cell'),
     path('notebook/<int:notebook_id>/cell/<int:cell_id>/delete/', delete_cell, name='delete_cell'),
+    path('notebook/<int:notebook_id>/cell/<int:cell_id>/copy/', copy_cell, name='copy_cell'),
+    path('notebook/<int:notebook_id>/cell/<int:cell_id>/move/', move_cell, name='move_cell'),
     path('notebook/<int:notebook_id>/cell/<int:cell_id>/save_output/', save_cell_output, name='save_cell_output'),
     path('run_code/', run_code, name='run_code'),
+    path('polygon/', problem_list_polygon, name='polygon'),
+    path('polygon/new/', create_problem_polygon, name='polygon_create_problem'),
+    path('polygon/problem/<int:problem_id>/', edit_problem_polygon, name='polygon_edit_problem'),
+    path('polygon/problem/<int:problem_id>/publish/', publish_problem_polygon, name='polygon_publish_problem'),
 ]

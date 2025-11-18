@@ -1,14 +1,23 @@
-<div class="cell" data-cell-id="{{ cell.id }}" data-cell-type="{{ cell.cell_type }}">
+<div class="cell"
+     data-cell-id="{{ cell.id }}"
+     data-cell-type="{{ cell.cell_type }}"
+     data-cell-order="{{ cell.execution_order }}">
     <div class="cell-header">
         <div class="cell-title">
             Ячейка {{ cell.execution_order|add:1 }}
         </div>
         <div class="cell-actions">
+            <button type="button" data-action="move-up">↑</button>
+            <button type="button" data-action="move-down">↓</button>
+            <button type="button" data-action="copy-cell">Копировать</button>
             {% if cell.cell_type == cell.CODE %}
                 <button type="button" data-action="run-cell">Запустить</button>
             {% endif %}
             <button type="button" data-action="delete-cell">Удалить</button>
         </div>
+        {% if cell.cell_type == cell.CODE %}
+            <div class="cell-status-indicator" data-cell-status data-status="idle">Ожидание</div>
+        {% endif %}
     </div>
 
     {% if cell.cell_type == cell.LATEX %}

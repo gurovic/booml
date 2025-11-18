@@ -1,14 +1,670 @@
+const MAX_FILES_DISPLAY = 200;
+
 const notebookDetail = {
     config: null,
     notebookElement: null,
+    sessionId: null,
+    sessionPromise: null,
+    cellStatuses: {},
+    cellQueue: [],
+    currentRun: null,
+    cellOutputSnapshots: {},
+    storageEnabled: undefined,
+    inactivityTimers: {
+        prompt: null,
+        ban: null,
+    },
+    inactivityOverlay: null,
+    lastActivityTs: null,
+    filesRequestId: 0,
+    sessionState: 'idle',
+    sessionStatusLabels: {
+        idle: 'Сессия не создана',
+        creating: 'Создание сессии...',
+        ready: 'Сессия создана',
+        restarting: 'Перезапуск сессии...',
+        stopping: 'Остановка сессии...',
+        error: 'Ошибка сессии. Создайте новую.',
+    },
+    sessionStatusElement: null,
+    sessionButtons: {},
+
+    sanitizeUrl(value) {
+        if (typeof value !== 'string') {
+            return '';
+        }
+        const trimmed = value.trim();
+        if (!trimmed || trimmed === 'undefined' || trimmed === 'null') {
+            return '';
+        }
+        return trimmed;
+    },
+
+    getSessionStorageKey() {
+        return `notebook:${this.config?.notebookId}:session-id`;
+    },
+
+    getStatusStorageKey() {
+        return `notebook:${this.config?.notebookId}:cell-statuses`;
+    },
+
+    isStorageAvailable() {
+        if (typeof window === 'undefined') {
+            return false;
+        }
+        if (typeof this.storageEnabled === 'boolean') {
+            return this.storageEnabled;
+        }
+        try {
+            const testKey = '__nb_storage_test__';
+            window.localStorage.setItem(testKey, '1');
+            window.localStorage.removeItem(testKey);
+            this.storageEnabled = true;
+        } catch (error) {
+            console.warn('LocalStorage недоступен:', error);
+            this.storageEnabled = false;
+        }
+        return this.storageEnabled;
+    },
+
+    readStorage(key) {
+        if (!this.isStorageAvailable()) {
+            return null;
+        }
+        try {
+            return window.localStorage.getItem(key);
+        } catch (error) {
+            console.warn('Не удалось прочитать localStorage', error);
+            return null;
+        }
+    },
+
+    writeStorage(key, value) {
+        if (!this.isStorageAvailable()) {
+            return;
+        }
+        try {
+            window.localStorage.setItem(key, value);
+        } catch (error) {
+            console.warn('Не удалось записать localStorage', error);
+        }
+    },
+
+    removeStorage(key) {
+        if (!this.isStorageAvailable()) {
+            return;
+        }
+        try {
+            window.localStorage.removeItem(key);
+        } catch (error) {
+            console.warn('Не удалось очистить localStorage', error);
+        }
+    },
+
+    getStoredSessionId() {
+        return this.readStorage(this.getSessionStorageKey());
+    },
+
+    storeSessionId(sessionId) {
+        if (sessionId) {
+            this.writeStorage(this.getSessionStorageKey(), sessionId);
+        }
+    },
+
+    clearStoredSessionId() {
+        this.removeStorage(this.getSessionStorageKey());
+        this.filesLoadedFor = null;
+        this.filesRequestId += 1;
+        this.resetFilesPanelMarkup();
+    },
+
+    loadCellStatuses() {
+        const raw = this.readStorage(this.getStatusStorageKey());
+        if (!raw) {
+            return {};
+        }
+        try {
+            const parsed = JSON.parse(raw);
+            if (!parsed || typeof parsed !== 'object') {
+                return {};
+            }
+            const normalized = {};
+            Object.entries(parsed).forEach(([cellId, value]) => {
+                if (!cellId) {
+                    return;
+                }
+                if (typeof value === 'string') {
+                    const nextState = (value === 'running' || value === 'queued') ? 'idle' : value;
+                    normalized[cellId] = { state: nextState };
+                } else if (value && typeof value === 'object' && value.state) {
+                    let nextState = value.state;
+                    let nextMeta = value.meta && typeof value.meta === 'object' ? value.meta : null;
+                    if (nextState === 'running' || nextState === 'queued') {
+                        nextState = 'idle';
+                        nextMeta = null;
+                    }
+                    normalized[cellId] = {
+                        state: nextState,
+                        meta: nextMeta,
+                    };
+                }
+            });
+            return normalized;
+        } catch (_error) {
+            return {};
+        }
+    },
+
+    persistCellStatuses() {
+        if (!this.cellStatuses || Object.keys(this.cellStatuses).length === 0) {
+            this.removeStorage(this.getStatusStorageKey());
+            return;
+        }
+        const payload = JSON.stringify(this.cellStatuses);
+        this.writeStorage(this.getStatusStorageKey(), payload);
+    },
+
+    describeStatus(status, meta) {
+        switch (status) {
+            case 'running':
+                return 'Выполняется...';
+            case 'success': {
+                const label = this.formatDuration(meta?.durationMs);
+                return label ? `Готово: ${label}` : 'Готово';
+            }
+            case 'queued': {
+                const ahead = typeof meta?.queueAhead === 'number' ? meta.queueAhead : null;
+                if (ahead && ahead > 0) {
+                    return `Ожидает запуска (перед ней ${ahead})`;
+                }
+                return 'Ожидает запуска (следующая)';
+            }
+            case 'error':
+                return 'Ошибка';
+            case 'cancelled':
+                return 'Отменено';
+            case 'reset':
+                return 'Нужен повторный запуск';
+            default:
+                return 'Ожидание';
+        }
+    },
+
+    formatDuration(ms) {
+        if (typeof ms !== 'number' || Number.isNaN(ms)) {
+            return '';
+        }
+        if (ms >= 1000) {
+            return `${(ms / 1000).toFixed(1)} с`;
+        }
+        return `${Math.round(ms)} мс`;
+    },
+
+    updateCellStatusElement(cellId, status, meta) {
+        const cellElement = document.querySelector(`[data-cell-id="${cellId}"]`);
+        if (!cellElement) {
+            return;
+        }
+        const statusElement = cellElement.querySelector('[data-cell-status]');
+        if (!statusElement) {
+            return;
+        }
+        const finalStatus = status || 'idle';
+        statusElement.dataset.status = finalStatus;
+        statusElement.textContent = this.describeStatus(finalStatus, meta);
+    },
+
+    setCellStatus(cellId, status, meta) {
+        if (!cellId) {
+            return;
+        }
+        if (!status || status === 'idle') {
+            delete this.cellStatuses[cellId];
+        } else {
+            this.cellStatuses[cellId] = {
+                state: status,
+                meta: meta || null,
+            };
+        }
+        this.persistCellStatuses();
+        this.updateCellStatusElement(cellId, status, meta);
+        const requiresCancel = status === 'running' || status === 'queued';
+        this.updateRunButtonState(cellId, requiresCancel ? 'cancel' : 'run');
+    },
+
+    resetAllCellStatuses(status = 'reset') {
+        const cells = document.querySelectorAll('[data-cell-id]');
+        const nextStatuses = {};
+        cells.forEach((cell) => {
+            const cellId = cell.dataset.cellId;
+            if (!cellId) {
+                return;
+            }
+            const hasStatus = !!cell.querySelector('[data-cell-status]');
+            if (!hasStatus) {
+                return;
+            }
+            if (status !== 'idle') {
+                nextStatuses[cellId] = { state: status };
+            }
+            const finalStatus = status === 'idle' ? 'idle' : status;
+            this.updateCellStatusElement(cellId, finalStatus, null);
+            const requiresCancel = finalStatus === 'running' || finalStatus === 'queued';
+            this.updateRunButtonState(cellId, requiresCancel ? 'cancel' : 'run');
+        });
+        this.cellStatuses = nextStatuses;
+        this.persistCellStatuses();
+    },
+
+    applyStatusesToExistingCells() {
+        const elements = document.querySelectorAll('[data-cell-status]');
+        elements.forEach((el) => {
+            const cellElement = el.closest('[data-cell-id]');
+            if (!cellElement) {
+                return;
+            }
+            const cellId = cellElement.dataset.cellId;
+            const record = this.cellStatuses[cellId];
+            const status = record?.state || 'idle';
+            this.updateCellStatusElement(cellId, status, record?.meta);
+            const requiresCancel = status === 'running' || status === 'queued';
+            this.updateRunButtonState(cellId, requiresCancel ? 'cancel' : 'run');
+        });
+    },
+
+    updateRunButtonState(cellId, mode) {
+        const cellElement = document.querySelector(`[data-cell-id="${cellId}"]`);
+        if (!cellElement) {
+            return;
+        }
+        const button = cellElement.querySelector('[data-action="run-cell"]');
+        if (!button) {
+            return;
+        }
+        if (mode === 'cancel') {
+            button.textContent = 'Отменить';
+            button.dataset.mode = 'cancel';
+        } else {
+            button.textContent = 'Запустить';
+            delete button.dataset.mode;
+        }
+    },
+
+    rememberOutputSnapshot(cellId, html) {
+        if (!cellId) {
+            return;
+        }
+        this.cellOutputSnapshots[cellId] = html ?? '';
+    },
+
+    getOutputSnapshot(cellId) {
+        if (!cellId) {
+            return '';
+        }
+        return this.cellOutputSnapshots[cellId] || '';
+    },
+
+    captureInitialOutputs() {
+        const outputs = document.querySelectorAll('.cell .output');
+        outputs.forEach((outputElement) => {
+            const cellElement = outputElement.closest('[data-cell-id]');
+            const cellId = cellElement?.dataset.cellId;
+            if (!cellId) {
+                return;
+            }
+            this.rememberOutputSnapshot(cellId, outputElement.innerHTML);
+        });
+    },
+
+    isCellQueued(cellId) {
+        return this.cellQueue.some((job) => job.cellId === cellId);
+    },
+
+    cancelQueuedCell(cellId) {
+        const before = this.cellQueue.length;
+        this.cellQueue = this.cellQueue.filter((job) => job.cellId !== cellId);
+        if (this.cellQueue.length === before) {
+            return false;
+        }
+        this.setCellStatus(cellId, 'idle');
+        this.updateQueueStatuses();
+        return true;
+    },
+
+    updateQueueStatuses() {
+        this.cellQueue.forEach((job, index) => {
+            this.setCellStatus(job.cellId, 'queued', {
+                queuePosition: index + 1,
+                queueAhead: index,
+            });
+        });
+        Object.entries({ ...this.cellStatuses }).forEach(([cellId, record]) => {
+            if (record?.state === 'queued') {
+                const stillQueued = this.cellQueue.some((job) => job.cellId === cellId);
+                const running = this.currentRun?.cellId === cellId;
+                if (!stillQueued && !running) {
+                    this.setCellStatus(cellId, 'idle');
+                }
+            }
+        });
+    },
+
+    enqueueCellRun(cellId) {
+        this.cellQueue.push({ cellId, enqueuedAt: Date.now() });
+        this.updateQueueStatuses();
+        this.processQueue();
+    },
+
+    processQueue() {
+        if (this.currentRun || this.cellQueue.length === 0) {
+            return;
+        }
+        const nextJob = this.cellQueue.shift();
+        if (!nextJob) {
+            return;
+        }
+        this.updateQueueStatuses();
+        this.startQueueJob(nextJob);
+    },
+
+    startQueueJob(job) {
+        const controller = typeof AbortController === 'function' ? new AbortController() : null;
+        job.controller = controller;
+        job.cancelled = false;
+        this.currentRun = job;
+        this.executeQueueJob(job).finally(() => {
+            const cellId = job.cellId;
+            if (this.currentRun && this.currentRun.cellId === cellId) {
+                this.currentRun = null;
+            }
+            this.updateRunButtonState(cellId, 'run');
+            this.updateQueueStatuses();
+            this.processQueue();
+            this.refreshSessionFiles();
+        });
+    },
+
+    cancelCurrentRun(reason = 'user') {
+        if (!this.currentRun) {
+            return;
+        }
+        this.currentRun.cancelled = reason;
+        if (this.currentRun.controller) {
+            this.currentRun.controller.abort();
+        }
+    },
+
+    abortAllRuns(reason = 'reset') {
+        if (this.currentRun) {
+            this.cancelCurrentRun(reason);
+        }
+        if (this.cellQueue.length > 0) {
+            this.cellQueue = [];
+            this.updateQueueStatuses();
+        }
+    },
+
+    async executeQueueJob(job) {
+        const cellId = job.cellId;
+        const cellElement = document.querySelector(`[data-cell-id="${cellId}"]`);
+        if (!cellElement) {
+            return;
+        }
+        const textarea = cellElement.querySelector('textarea');
+        const outputElement = document.getElementById(`output-${cellId}`);
+        const saveOutputUrl = this.buildCellUrl(this.saveOutputUrlTemplate, cellId);
+        const runCellUrl = this.runCellUrl;
+
+        if (!textarea || !outputElement || !runCellUrl) {
+            this.setCellStatus(cellId, 'error');
+            return;
+        }
+
+        const cellNumericId = Number(cellId);
+        if (Number.isNaN(cellNumericId)) {
+            alert('Некорректный идентификатор ячейки');
+            this.setCellStatus(cellId, 'error');
+            return;
+        }
+
+        const sessionId = await this.ensureSession();
+
+        if (!sessionId) {
+            alert('Сначала создайте сессию.');
+            this.updateSessionStatus('idle', 'Сессия не создана. Создайте новую.');
+            this.setCellStatus(cellId, 'error');
+            return;
+        }
+
+        const code = textarea.value;
+        this.markActivity();
+        await this.saveCellState(cellId, code, outputElement.innerHTML, saveOutputUrl);
+
+        this.renderArtifacts(cellId, []);
+        job.previousOutputHtml = outputElement.innerHTML || this.getOutputSnapshot(cellId);
+        outputElement.innerHTML = '<div class="output-loading">Выполнение...</div>';
+        outputElement.className = 'output running';
+        this.setCellStatus(cellId, 'running');
+        this.updateRunButtonState(cellId, 'cancel');
+
+        const startedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
+
+        try {
+            const response = await fetch(runCellUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': this.config.csrfToken
+                },
+                body: JSON.stringify({
+                    session_id: sessionId,
+                    cell_id: cellNumericId
+                }),
+                signal: job.controller?.signal
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                const message = data?.detail || data?.error || 'Не удалось выполнить ячейку';
+                const error = new Error(message);
+                error.status = response.status;
+                throw error;
+            }
+
+            const formattedOutput = NotebookUtils.formatCellRunResult(data);
+            outputElement.innerHTML = formattedOutput;
+            outputElement.className = data.error ? 'output error' : 'output success';
+            this.renderArtifacts(cellId, []);
+            const finalStatus = data.error ? 'error' : 'success';
+            const durationMs = Math.max(
+                0,
+                (typeof performance !== 'undefined' ? performance.now() : Date.now()) - startedAt,
+            );
+            const meta = finalStatus === 'success' ? { durationMs } : null;
+            this.setCellStatus(cellId, finalStatus, meta);
+            this.rememberOutputSnapshot(cellId, formattedOutput);
+            await this.saveCellState(cellId, code, formattedOutput, saveOutputUrl);
+        } catch (error) {
+            if (error?.status === 400 && /Сессия не создана/i.test(error.message || '')) {
+                this.handleSessionLost('Сессия не создана. Создайте новую.');
+            }
+            if (job.cancelled) {
+                const reason = job.cancelled === 'reset'
+                    ? 'Выполнение остановлено из-за перезапуска сессии.'
+                    : 'Выполнение отменено пользователем.';
+                if (job.cancelled === 'reset') {
+                    const fallback = job.previousOutputHtml || this.getOutputSnapshot(cellId) || '<div class="output-empty">Нет вывода</div>';
+                    outputElement.innerHTML = fallback;
+                    outputElement.className = 'output';
+                    this.renderArtifacts(cellId, []);
+                    this.setCellStatus(cellId, 'reset');
+                } else {
+                    const note = `<div class="output-error"><strong>Отмена:</strong> ${NotebookUtils.escapeHtml(reason)}</div>`;
+                    outputElement.innerHTML = note;
+                    outputElement.className = 'output error';
+                    this.renderArtifacts(cellId, []);
+                    this.setCellStatus(cellId, 'cancelled');
+                    this.rememberOutputSnapshot(cellId, note);
+                    await this.saveCellState(cellId, code, note, saveOutputUrl);
+                }
+                return;
+            }
+            console.error('Ошибка выполнения ячейки:', error);
+            const message = error?.message || 'Не удалось выполнить ячейку';
+            const errorHtml = `<div class="output-error"><strong>Ошибка:</strong> ${NotebookUtils.escapeHtml(message)}</div>`;
+            outputElement.innerHTML = errorHtml;
+            outputElement.className = 'output error';
+            this.renderArtifacts(cellId, []);
+            this.setCellStatus(cellId, 'error');
+            this.rememberOutputSnapshot(cellId, errorHtml);
+            await this.saveCellState(cellId, code, errorHtml, saveOutputUrl);
+        }
+    },
+
+    initActivityTracking() {
+        this.lastActivityTs = Date.now();
+        const events = ['click', 'keydown', 'mousemove', 'scroll', 'touchstart'];
+        this.activityHandler = this.markActivity.bind(this);
+        events.forEach((evt) => {
+            document.addEventListener(evt, this.activityHandler, { passive: true });
+        });
+        this.scheduleInactivityPrompt();
+    },
+
+    markActivity() {
+        this.lastActivityTs = Date.now();
+        this.hideInactivityPrompt();
+        this.scheduleInactivityPrompt();
+    },
+
+    scheduleInactivityPrompt() {
+        if (this.inactivityTimers.prompt) {
+            clearTimeout(this.inactivityTimers.prompt);
+        }
+        this.inactivityTimers.prompt = window.setTimeout(
+            () => this.showInactivityPrompt(),
+            30 * 60 * 1000,
+        );
+    },
+
+    showInactivityPrompt() {
+        if (!this.inactivityOverlay) {
+            this.inactivityOverlay = this.buildInactivityOverlay();
+            document.body.appendChild(this.inactivityOverlay);
+        }
+        this.inactivityOverlay.hidden = false;
+        if (this.inactivityTimers.ban) {
+            clearTimeout(this.inactivityTimers.ban);
+        }
+        this.inactivityTimers.ban = window.setTimeout(
+            () => this.banSession(),
+            10 * 60 * 1000,
+        );
+    },
+
+    hideInactivityPrompt() {
+        if (this.inactivityTimers.ban) {
+            clearTimeout(this.inactivityTimers.ban);
+            this.inactivityTimers.ban = null;
+        }
+        if (this.inactivityOverlay) {
+            this.inactivityOverlay.hidden = true;
+        }
+    },
+
+    buildInactivityOverlay() {
+        const overlay = document.createElement('div');
+        overlay.style.position = 'fixed';
+        overlay.style.inset = '0';
+        overlay.style.background = 'rgba(0, 0, 0, 0.4)';
+        overlay.style.display = 'flex';
+        overlay.style.alignItems = 'center';
+        overlay.style.justifyContent = 'center';
+        overlay.style.zIndex = '9999';
+
+        const modal = document.createElement('div');
+        modal.style.background = '#fff';
+        modal.style.padding = '24px';
+        modal.style.borderRadius = '8px';
+        modal.style.boxShadow = '0 10px 30px rgba(0,0,0,0.2)';
+        modal.style.maxWidth = '320px';
+        modal.style.textAlign = 'center';
+
+        const title = document.createElement('h3');
+        title.textContent = 'Вы ещё здесь?';
+        title.style.marginTop = '0';
+
+        const text = document.createElement('p');
+        text.textContent = 'Сессия будет перезапущена через 10 минут бездействия.';
+
+        const button = document.createElement('button');
+        button.textContent = 'Да, продолжаю';
+        button.style.marginTop = '12px';
+        button.addEventListener('click', () => this.handlePresenceConfirm());
+
+        modal.appendChild(title);
+        modal.appendChild(text);
+        modal.appendChild(button);
+        overlay.appendChild(modal);
+        overlay.hidden = true;
+        return overlay;
+    },
+
+    handlePresenceConfirm() {
+        this.hideInactivityPrompt();
+        this.markActivity();
+    },
+
+    async banSession() {
+        this.hideInactivityPrompt();
+        try {
+            await this.resetSession({ silent: true, reason: 'ban' });
+            alert('Сессия остановлена из-за длительного бездействия.');
+        } catch (error) {
+            console.error('Не удалось завершить сессию из-за бездействия:', error);
+        }
+    },
 
     init(config) {
         this.config = config;
         this.notebookElement = document.querySelector(`[data-notebook-id="${config.notebookId}"]`);
         this.deleteUrlTemplate = this.notebookElement?.dataset.deleteUrlTemplate || '';
         this.saveOutputUrlTemplate = this.notebookElement?.dataset.saveOutputUrlTemplate || '';
+        this.copyCellUrlTemplate = this.notebookElement?.dataset.copyCellUrlTemplate || '';
+        this.moveCellUrlTemplate = this.notebookElement?.dataset.moveCellUrlTemplate || '';
+        this.runCellUrl = this.sanitizeUrl(config.runCellUrl) || this.sanitizeUrl(this.notebookElement?.dataset.runCellUrl);
+        this.sessionCreateUrl = this.sanitizeUrl(config.sessionCreateUrl) || this.sanitizeUrl(this.notebookElement?.dataset.sessionCreateUrl);
+        this.sessionResetUrl = this.sanitizeUrl(config.sessionResetUrl) || this.sanitizeUrl(this.notebookElement?.dataset.sessionResetUrl);
+        this.sessionFilesUrl = this.sanitizeUrl(config.sessionFilesUrl) || this.sanitizeUrl(this.notebookElement?.dataset.sessionFilesUrl);
+        this.sessionFileDownloadUrl = this.sanitizeUrl(config.sessionFileDownloadUrl) || this.sanitizeUrl(this.notebookElement?.dataset.sessionFileDownloadUrl);
+        this.sessionStopUrl = this.sanitizeUrl(config.sessionStopUrl) || this.sanitizeUrl(this.notebookElement?.dataset.sessionStopUrl);
+        this.sessionStatusElement = this.notebookElement?.querySelector('[data-session-status]') || null;
+        this.sessionButtons = {
+            create: this.notebookElement?.querySelector('[data-action="create-session"]') || null,
+            reset: this.notebookElement?.querySelector('[data-action="reset-session"]') || null,
+            stop: this.notebookElement?.querySelector('[data-action="stop-session"]') || null,
+        };
+        this.filesPanel = document.querySelector('[data-files-panel]');
+        this.filesList = this.filesPanel?.querySelector('[data-files-list]');
+        this.filesLoadedFor = null;
+        this.filesRequestId = 0;
+        this.initialFilesLoaded = false;
+        this.cellStatuses = this.loadCellStatuses();
         this.bindEvents();
         this.initializeCells();
+        this.captureInitialOutputs();
+        this.applyStatusesToExistingCells();
+        this.updateQueueStatuses();
+        this.initActivityTracking();
+        const restored = this.getStoredSessionId();
+        if (restored) {
+            this.sessionId = restored;
+            this.updateSessionStatus('ready');
+            this.refreshSessionFiles();
+        } else {
+            this.updateSessionStatus('idle');
+        }
     },
 
     buildCellUrl(template, cellId) {
@@ -67,6 +723,15 @@ const notebookDetail = {
         else if (action === 'delete-cell' && cellId) {
             this.deleteCell(cellId, cellElement);
         }
+        else if (action === 'copy-cell' && cellId) {
+            this.copyCell(cellId, cellElement);
+        }
+        else if (action === 'move-up' && cellId) {
+            this.handleMoveCell(cellElement, -1);
+        }
+        else if (action === 'move-down' && cellId) {
+            this.handleMoveCell(cellElement, 1);
+        }
         else if (action === 'edit-latex' && cellId) {
             this.startLatexEdit(cellElement);
         }
@@ -75,6 +740,395 @@ const notebookDetail = {
         }
         else if (action === 'cancel-latex' && cellId) {
             this.cancelLatexEdit(cellElement);
+        }
+        else if (action === 'create-session') {
+            this.requestSessionCreation();
+        }
+        else if (action === 'reset-session') {
+            this.confirmAndResetSession();
+        }
+        else if (action === 'stop-session') {
+            this.confirmAndStopSession();
+        }
+        else if (action === 'refresh-files') {
+            this.refreshSessionFiles();
+        }
+    },
+
+    async ensureSession() {
+        if (this.sessionId) {
+            return this.sessionId;
+        }
+        const stored = this.getStoredSessionId();
+        if (stored) {
+            this.sessionId = stored;
+            this.updateSessionStatus('ready');
+            if (this.filesLoadedFor !== stored) {
+                this.refreshSessionFiles();
+            }
+            return stored;
+        }
+        return null;
+    },
+
+    async createSession() {
+        if (this.sessionPromise) {
+            return this.sessionPromise;
+        }
+        const promise = (async () => {
+            if (!this.sessionCreateUrl) {
+                throw new Error('URL создания сессии недоступен');
+            }
+            this.updateSessionStatus('creating');
+            const response = await fetch(this.sessionCreateUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': this.config.csrfToken
+                },
+                body: JSON.stringify({ notebook_id: this.config.notebookId })
+            });
+            const data = await response.json();
+            if (!response.ok) {
+                const message = data?.detail || data?.message || 'Не удалось создать сессию';
+                this.updateSessionStatus('error', message);
+                throw new Error(message);
+            }
+            this.sessionId = data.session_id;
+            this.storeSessionId(this.sessionId);
+            this.updateSessionStatus('ready');
+            this.refreshSessionFiles();
+            return this.sessionId;
+        })();
+        this.sessionPromise = promise;
+        try {
+            return await promise;
+        } finally {
+            if (this.sessionPromise === promise) {
+                this.sessionPromise = null;
+            }
+        }
+    },
+
+    async requestSessionCreation() {
+        if (this.sessionId) {
+            alert('Сессия уже создана.');
+            return;
+        }
+        try {
+            await this.createSession();
+        } catch (error) {
+            console.error('Не удалось создать сессию:', error);
+            const message = error?.message || 'Не удалось создать сессию';
+            alert(message);
+        }
+    },
+
+    updateSessionStatus(state, customMessage) {
+        this.sessionState = state;
+        const label = customMessage || this.sessionStatusLabels[state] || this.sessionStatusLabels.idle;
+        if (this.sessionStatusElement) {
+            this.sessionStatusElement.textContent = label;
+            this.sessionStatusElement.dataset.state = state;
+        }
+        const hasSession = state === 'ready';
+        const busy = state === 'creating' || state === 'restarting' || state === 'stopping';
+        const disableCreate = busy || hasSession;
+        const disableManage = busy || !hasSession;
+        if (this.sessionButtons?.create) {
+            this.sessionButtons.create.disabled = disableCreate;
+        }
+        if (this.sessionButtons?.reset) {
+            this.sessionButtons.reset.disabled = disableManage;
+        }
+        if (this.sessionButtons?.stop) {
+            this.sessionButtons.stop.disabled = disableManage;
+        }
+    },
+
+    handleSessionLost(message) {
+        this.sessionId = null;
+        this.clearStoredSessionId();
+        this.updateSessionStatus('idle', message);
+        this.resetAllCellStatuses('reset');
+    },
+
+    async resetSession(options = {}) {
+        const { silent = false, reason = 'user' } = options;
+        const sessionId = await this.ensureSession();
+        if (!sessionId) {
+            alert('Сначала создайте сессию.');
+            return;
+        }
+        if (!this.sessionResetUrl) {
+            alert('URL сброса сессии недоступен');
+            return;
+        }
+        try {
+            if (reason !== 'ban') {
+                this.markActivity();
+            }
+            this.abortAllRuns('reset');
+            this.updateSessionStatus('restarting');
+            const response = await fetch(this.sessionResetUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': this.config.csrfToken
+                },
+                body: JSON.stringify({ session_id: sessionId })
+            });
+            const data = await response.json();
+            if (!response.ok) {
+                const message = data?.detail || data?.message || 'Не удалось перезапустить сессию';
+                const error = new Error(message);
+                error.status = response.status;
+                throw error;
+            }
+            this.clearStoredSessionId();
+            this.sessionId = data.session_id;
+            this.storeSessionId(this.sessionId);
+            this.resetFilesPanelMarkup();
+            this.refreshSessionFiles();
+            this.clearOutputsAfterReset();
+            this.resetAllCellStatuses('reset');
+            this.updateSessionStatus('ready');
+            if (!silent && reason !== 'ban') {
+                alert('Сессия перезапущена. Все переменные очищены.');
+            }
+        } catch (error) {
+            console.error('Ошибка сброса сессии:', error);
+            if (error?.status === 404) {
+                this.handleSessionLost('Сессия не найдена. Создайте новую.');
+            } else if (this.sessionId) {
+                this.updateSessionStatus('ready');
+            } else {
+                this.updateSessionStatus('idle');
+            }
+            if (!silent) {
+                alert('Не удалось перезапустить сессию: ' + (error?.message || error));
+            }
+        }
+    },
+
+    confirmAndResetSession() {
+        const ok = window.confirm('Перезапустить сессию? Все переменные будут очищены.');
+        if (!ok) {
+            return;
+        }
+        this.resetSession();
+    },
+
+    async stopSession() {
+        const sessionId = await this.ensureSession();
+        if (!sessionId) {
+            alert('Сессия не создана.');
+            return;
+        }
+        if (!this.sessionStopUrl) {
+            alert('URL остановки сессии недоступен');
+            return;
+        }
+        try {
+            this.updateSessionStatus('stopping');
+            const response = await fetch(this.sessionStopUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': this.config.csrfToken,
+                },
+                body: JSON.stringify({ session_id: sessionId }),
+            });
+            const data = await response.json();
+            if (!response.ok) {
+                const message = data?.detail || data?.message || 'Не удалось остановить сессию';
+                const error = new Error(message);
+                error.status = response.status;
+                throw error;
+            }
+            this.handleSessionLost('Сессия остановлена. Создайте новую для продолжения работы.');
+        } catch (error) {
+            console.error('Не удалось остановить сессию:', error);
+            if (error?.status === 404) {
+                this.handleSessionLost('Сессия не найдена. Создайте новую.');
+            } else {
+                if (this.sessionId) {
+                    this.updateSessionStatus('ready');
+                } else {
+                    this.updateSessionStatus('idle');
+                }
+                alert('Не удалось остановить сессию: ' + (error?.message || error));
+            }
+        }
+    },
+
+    confirmAndStopSession() {
+        const hasSession = Boolean(this.sessionId || this.getStoredSessionId());
+        if (!hasSession) {
+            alert('Сессия не создана.');
+            return;
+        }
+        const ok = window.confirm('Остановить текущую сессию? Все переменные и файлы будут удалены.');
+        if (!ok) {
+            return;
+        }
+        this.stopSession();
+    },
+
+    clearOutputsAfterReset() {
+        const outputs = document.querySelectorAll('.cell .output');
+        outputs.forEach((outputElement) => {
+            const cellElement = outputElement.closest('[data-cell-id]');
+            const cellId = cellElement?.dataset.cellId;
+            const previousWrapper = outputElement.querySelector('.output-previous');
+            const snapshot = cellId ? this.getOutputSnapshot(cellId) : '';
+            const previousHtml = snapshot || previousWrapper?.innerHTML || outputElement.innerHTML || '<div class="output-empty">Нет вывода</div>';
+            outputElement.innerHTML = `
+                <div class="output-reset-note">Нужен повторный запуск. Ниже показан вывод предыдущей сессии.</div>
+                <div class="output-previous">${previousHtml}</div>
+            `;
+            outputElement.className = 'output reset stale';
+            const hasStatus = cellElement?.querySelector('[data-cell-status]');
+            if (cellId && hasStatus) {
+                this.setCellStatus(cellId, 'reset');
+            }
+        });
+    },
+
+    getCellsContainer() {
+        return document.getElementById('cells-container');
+    },
+
+    getCellIndex(cellElement) {
+        const container = this.getCellsContainer();
+        if (!container || !cellElement) {
+            return -1;
+        }
+        return Array.from(container.children).indexOf(cellElement);
+    },
+
+    insertCellHtmlAt(container, html, targetPosition) {
+        if (!container || typeof html !== 'string') {
+            return null;
+        }
+        const wrapper = document.createElement('div');
+        wrapper.innerHTML = html.trim();
+        const newCell = wrapper.firstElementChild;
+        if (!newCell) {
+            return null;
+        }
+        const beforeElement = container.children[targetPosition] || null;
+        container.insertBefore(newCell, beforeElement);
+        return newCell;
+    },
+
+    updateCellTitles() {
+        const container = this.getCellsContainer();
+        if (!container) {
+            return;
+        }
+        Array.from(container.children).forEach((cellElement, index) => {
+            const titleElement = cellElement.querySelector('.cell-title');
+            if (titleElement) {
+                titleElement.textContent = `Ячейка ${index + 1}`;
+            }
+            cellElement.dataset.cellOrder = index;
+        });
+    },
+
+    handleMoveCell(cellElement, offset) {
+        if (!cellElement) {
+            return;
+        }
+        const currentIndex = this.getCellIndex(cellElement);
+        if (currentIndex === -1) {
+            return;
+        }
+        const targetIndex = currentIndex + offset;
+        const container = this.getCellsContainer();
+        if (!container || targetIndex < 0 || targetIndex >= container.children.length) {
+            return;
+        }
+        const cellId = cellElement.dataset?.cellId;
+        if (!cellId) {
+            return;
+        }
+        this.moveCell(cellId, targetIndex, cellElement);
+    },
+
+    async moveCell(cellId, targetPosition, cellElement) {
+        try {
+            const moveUrl = this.buildCellUrl(this.moveCellUrlTemplate, cellId);
+            if (!moveUrl) {
+                throw new Error('URL перемещения ячейки недоступен');
+            }
+            const response = await fetch(moveUrl, {
+                method: 'PATCH',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': this.config.csrfToken,
+                },
+                body: JSON.stringify({ target_position: targetPosition }),
+            });
+            const data = await response.json();
+            if (!response.ok || data?.status !== 'success') {
+                const message = data?.message || `HTTP error ${response.status}`;
+                throw new Error(message);
+            }
+            const container = this.getCellsContainer();
+            const element = cellElement || document.querySelector(`[data-cell-id="${cellId}"]`);
+            if (container && element) {
+                const before = container.children[targetPosition] || null;
+                container.insertBefore(element, before);
+                this.updateCellTitles();
+            }
+        } catch (error) {
+            console.error('Ошибка перемещения ячейки:', error);
+            alert('Не удалось переместить ячейку: ' + (error.message || error));
+        }
+    },
+
+    async copyCell(cellId, cellElement) {
+        const container = this.getCellsContainer();
+        if (!container) {
+            return;
+        }
+        const position = this.getCellIndex(cellElement) + 1;
+        try {
+            const copyUrl = this.buildCellUrl(this.copyCellUrlTemplate, cellId);
+            if (!copyUrl) {
+                throw new Error('URL копирования ячейки недоступен');
+            }
+            const response = await fetch(copyUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': this.config.csrfToken,
+                },
+                body: JSON.stringify({ target_position: position }),
+            });
+
+            const data = await response.json();
+            if (!response.ok || data?.status !== 'success') {
+                const message = data?.message || `HTTP error ${response.status}`;
+                throw new Error(message);
+            }
+            const html = data.html;
+            const executionOrder = typeof data.execution_order === 'number' ? data.execution_order : position;
+            const newCell = this.insertCellHtmlAt(container, html, executionOrder);
+            if (newCell) {
+                this.initializeCell(newCell);
+                const newCellId = newCell.dataset?.cellId;
+                if (newCellId) {
+                    this.cellStatuses[newCellId] = { state: 'idle' };
+                    this.persistCellStatuses();
+                    this.updateCellStatusElement(newCellId, 'idle');
+                }
+            }
+            this.updateCellTitles();
+        } catch (error) {
+            console.error('Ошибка копирования ячейки:', error);
+            alert('Не удалось скопировать ячейку: ' + (error.message || error));
         }
     },
 
@@ -117,7 +1171,20 @@ const notebookDetail = {
             const newCell = container.lastElementChild;
             if (newCell) {
                 this.initializeCell(newCell);
+                const newCellId = newCell.dataset?.cellId;
+                if (newCellId) {
+                    const record = this.cellStatuses[newCellId];
+                    const status = record?.state || 'idle';
+                    this.updateCellStatusElement(newCellId, status, record?.meta);
+                    const requiresCancel = status === 'running' || status === 'queued';
+                    this.updateRunButtonState(newCellId, requiresCancel ? 'cancel' : 'run');
+                    const newOutput = newCell.querySelector('.output');
+                    if (newOutput) {
+                        this.rememberOutputSnapshot(newCellId, newOutput.innerHTML);
+                    }
+                }
             }
+            this.updateCellTitles();
 
         } catch (error) {
             console.error('Ошибка:', error);
@@ -125,50 +1192,138 @@ const notebookDetail = {
         }
     },
 
-    async runCell(cellId) {
-        const code = document.querySelector(`[data-cell-id="${cellId}"] textarea`).value;
-        const outputElement = document.getElementById(`output-${cellId}`);
-        const runnerUrl = this.notebookElement.dataset.runnerUrl;
-        const saveOutputUrl = this.buildCellUrl(this.saveOutputUrlTemplate, cellId);
-
-        this.renderArtifacts(cellId, []);
-
-        try {
-            outputElement.innerHTML = '<div class="output-loading">Выполнение...</div>';
-            outputElement.className = 'output running';
-
-            const result = await NotebookUtils.runCode(code, runnerUrl, this.config.csrfToken);
-
-            outputElement.innerHTML = result.output;
-            outputElement.className = 'output success';
-
-            this.renderArtifacts(cellId, result.artifacts);
-
-            await NotebookUtils.saveCellOutput(
-                this.config.notebookId,
-                cellId,
-                code,
-                result.output,
-                this.config.csrfToken,
-                saveOutputUrl
-            );
-
-        } catch (error) {
-            outputElement.innerHTML = `<div class="output-error"><strong>Ошибка:</strong> ${NotebookUtils.escapeHtml(error.message)}</div>`;
-            outputElement.className = 'output error';
-
-            const artifacts = Array.isArray(error?.artifacts) ? error.artifacts : [];
-            this.renderArtifacts(cellId, artifacts);
-
-            await NotebookUtils.saveCellOutput(
-                this.config.notebookId,
-                cellId,
-                code,
-                `<div class="output-error">Ошибка: ${NotebookUtils.escapeHtml(error.message)}</div>`,
-                this.config.csrfToken,
-                saveOutputUrl
-            );
+    runCell(cellId) {
+        if (!cellId) {
+            return;
         }
+        if (!this.runCellUrl) {
+            alert('URL запуска ячейки недоступен');
+            return;
+        }
+        if (this.currentRun?.cellId === cellId) {
+            this.cancelCurrentRun('user');
+            return;
+        }
+        if (this.cancelQueuedCell(cellId)) {
+            return;
+        }
+        this.enqueueCellRun(cellId);
+    },
+
+    async saveCellState(cellId, code, outputHtml, saveOutputUrl) {
+        const result = await NotebookUtils.saveCellOutput(
+            this.config.notebookId,
+            cellId,
+            code,
+            outputHtml || '',
+            this.config.csrfToken,
+            saveOutputUrl
+        );
+
+        if (!result.ok) {
+            console.warn('Не удалось сохранить состояние ячейки', result.error);
+        }
+    },
+
+    async refreshSessionFiles() {
+        if (!this.sessionFilesUrl) {
+            return;
+        }
+        if (!this.sessionId) {
+            if (this.filesList) {
+                this.filesList.innerHTML = '<div class="files-empty">Создайте сессию, чтобы увидеть файлы.</div>';
+            }
+            return;
+        }
+        const requestId = ++this.filesRequestId;
+        try {
+            const url = `${this.sessionFilesUrl}?session_id=${encodeURIComponent(this.sessionId)}`;
+            const response = await fetch(url, {
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            });
+            if (response.status === 404) {
+                const error = new Error('SESSION_NOT_FOUND');
+                error.code = 'SESSION_NOT_FOUND';
+                throw error;
+            }
+            if (!response.ok) {
+                throw new Error(`HTTP error ${response.status}`);
+            }
+            const data = await response.json();
+            const files = Array.isArray(data?.files) ? data.files : [];
+            if (requestId !== this.filesRequestId) {
+                return;
+            }
+            this.renderSessionFiles(files);
+        } catch (error) {
+            if (error?.code === 'SESSION_NOT_FOUND') {
+                this.handleSessionLost('Сессия не найдена. Создайте новую.');
+                return;
+            }
+            console.error('Не удалось получить список файлов сессии:', error);
+            if (this.filesList) {
+                this.filesList.innerHTML = '<div class="files-error">Не удалось загрузить список файлов</div>';
+            }
+        }
+    },
+
+    renderSessionFiles(files) {
+        if (!this.filesList) {
+            return;
+        }
+        if (!Array.isArray(files) || files.length === 0) {
+            this.filesList.innerHTML = '<div class="files-empty">Файлы ещё не созданы</div>';
+            this.filesLoadedFor = this.sessionId || null;
+            return;
+        }
+        const sessionId = this.sessionId ? encodeURIComponent(this.sessionId) : '';
+        const downloadBase = this.sessionFileDownloadUrl;
+        const items = files.slice(0, MAX_FILES_DISPLAY).map((file) => {
+            const safePath = NotebookUtils.escapeHtml(file.path || 'file');
+            const sizeLabel = this.formatFileSize(file.size);
+            const href = downloadBase && sessionId
+                ? `${downloadBase}?session_id=${sessionId}&path=${encodeURIComponent(file.path)}`
+                : '';
+            const link = href
+                ? `<a href="${href}" target="_blank" rel="noopener noreferrer">${safePath}</a>`
+                : `<span>${safePath}</span>`;
+            return `<div class="file-entry">
+                ${link}
+                <span class="file-meta">${sizeLabel}</span>
+            </div>`;
+        }).join('');
+        this.filesList.innerHTML = items;
+        this.filesLoadedFor = this.sessionId || null;
+    },
+
+    resetFilesPanelMarkup() {
+        if (!this.filesPanel) {
+            return;
+        }
+        this.filesPanel.innerHTML = `
+            <div class="files-panel-header">
+                <span>Файлы сессии</span>
+                <button type="button" data-action="refresh-files">Обновить</button>
+            </div>
+            <div class="files-panel-body" data-files-list>
+                <div class="files-empty">Файлы ещё не созданы</div>
+            </div>
+        `;
+        this.filesList = this.filesPanel.querySelector('[data-files-list]');
+    },
+
+    formatFileSize(bytes) {
+        const value = Number(bytes);
+        if (!Number.isFinite(value) || value < 0) {
+            return '';
+        }
+        if (value >= 1024 * 1024) {
+            return `${(value / (1024 * 1024)).toFixed(1)} МБ`;
+        }
+        if (value >= 1024) {
+            return `${(value / 1024).toFixed(1)} КБ`;
+        }
+        return `${value} Б`;
     },
 
     renderArtifacts(cellId, artifacts) {
@@ -217,7 +1372,21 @@ const notebookDetail = {
 
             if (!response.ok) throw new Error('HTTP error ' + response.status);
 
+            this.cancelQueuedCell(cellId);
+            if (this.currentRun?.cellId === cellId) {
+                this.cancelCurrentRun('user');
+            }
+
             cellElement.remove();
+            this.updateCellTitles();
+            if (this.cellStatuses[cellId]) {
+                delete this.cellStatuses[cellId];
+                this.persistCellStatuses();
+            }
+            if (this.cellOutputSnapshots[cellId]) {
+                delete this.cellOutputSnapshots[cellId];
+            }
+            this.refreshSessionFiles();
 
         } catch (error) {
             console.error('Ошибка:', error);
