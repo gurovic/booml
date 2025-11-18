@@ -24,7 +24,7 @@ def test_submission_consumer_receives_metric_event():
             },
         )
 
-        response = await communicator.receive_json_from()
+        response = await communicator.receive_json_from(timeout=10)
         assert response == {
             "submission_id": 42,
             "metric_name": "accuracy",

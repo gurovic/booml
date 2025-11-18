@@ -59,9 +59,6 @@ class SubmissionMetricConsumer(AsyncJsonWebsocketConsumer):
             if trimmed.lstrip("-").isdigit():
                 return int(trimmed)
 
-        if value is None:
-            return None
-
         text_value = str(value).strip()
         if text_value.lstrip("-").isdigit():
             return int(text_value)

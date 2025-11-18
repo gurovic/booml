@@ -28,7 +28,7 @@ def broadcast_metric_update(submission_id: Optional[int], metric_name: str, metr
         "type": "submission.metric",
         "submission_id": submission_id,
         "metric_name": metric_name,
-        "metric_score": float(metric_score),
+        "metric_score": metric_score,
     }
 
     async_to_sync(channel_layer.group_send)(

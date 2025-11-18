@@ -9,6 +9,7 @@ from __future__ import annotations
 import os
 import sys
 from pathlib import Path
+from runner.services import routing as runner_routing  # noqa: E402
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 DOCKER_DIR = BACKEND_DIR / "docker"
@@ -28,8 +29,6 @@ os.environ.setdefault("DJANGO_SETTINGS_MODULE", "core.settings")
 register_runtime_shutdown_hooks()
 
 django_asgi_app = get_asgi_application()
-
-from runner.services import routing as runner_routing  # noqa: E402
 
 application = ProtocolTypeRouter(
     {
