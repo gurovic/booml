@@ -29,7 +29,7 @@ register_runtime_shutdown_hooks()
 
 django_asgi_app = get_asgi_application()
 
-from runner import routing as runner_routing  # noqa: E402
+from runner.services import routing as runner_routing  # noqa: E402
 
 application = ProtocolTypeRouter(
     {
