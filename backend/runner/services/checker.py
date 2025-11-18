@@ -8,6 +8,7 @@ from ..models.submission import Submission
 from ..models.problem_desriptor import ProblemDescriptor
 from .metrics import calculate_metric
 from .report_service import ReportGenerator
+from .websocket_notifications import broadcast_metric_update
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +73,11 @@ class SubmissionChecker:
         }
 
         report = self.report_generator.create_report_from_testing_system(report_data)
+        broadcast_metric_update(
+            getattr(submission, "id", None),
+            metric_name,
+            getattr(report, "metric", metric_result["score"]),
+        )
         logger.info(
             "Check completed for submission %s. Metric %s: %.4f",
             getattr(submission, "id", "?"),
