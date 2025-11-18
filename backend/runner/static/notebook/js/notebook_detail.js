@@ -631,6 +631,8 @@ const notebookDetail = {
         this.notebookElement = document.querySelector(`[data-notebook-id="${config.notebookId}"]`);
         this.deleteUrlTemplate = this.notebookElement?.dataset.deleteUrlTemplate || '';
         this.saveOutputUrlTemplate = this.notebookElement?.dataset.saveOutputUrlTemplate || '';
+        this.copyCellUrlTemplate = this.notebookElement?.dataset.copyCellUrlTemplate || '';
+        this.moveCellUrlTemplate = this.notebookElement?.dataset.moveCellUrlTemplate || '';
         this.runCellUrl = this.sanitizeUrl(config.runCellUrl) || this.sanitizeUrl(this.notebookElement?.dataset.runCellUrl);
         this.sessionCreateUrl = this.sanitizeUrl(config.sessionCreateUrl) || this.sanitizeUrl(this.notebookElement?.dataset.sessionCreateUrl);
         this.sessionResetUrl = this.sanitizeUrl(config.sessionResetUrl) || this.sanitizeUrl(this.notebookElement?.dataset.sessionResetUrl);
@@ -720,6 +722,15 @@ const notebookDetail = {
         }
         else if (action === 'delete-cell' && cellId) {
             this.deleteCell(cellId, cellElement);
+        }
+        else if (action === 'copy-cell' && cellId) {
+            this.copyCell(cellId, cellElement);
+        }
+        else if (action === 'move-up' && cellId) {
+            this.handleMoveCell(cellElement, -1);
+        }
+        else if (action === 'move-down' && cellId) {
+            this.handleMoveCell(cellElement, 1);
         }
         else if (action === 'edit-latex' && cellId) {
             this.startLatexEdit(cellElement);
@@ -984,6 +995,143 @@ const notebookDetail = {
         });
     },
 
+    getCellsContainer() {
+        return document.getElementById('cells-container');
+    },
+
+    getCellIndex(cellElement) {
+        const container = this.getCellsContainer();
+        if (!container || !cellElement) {
+            return -1;
+        }
+        return Array.from(container.children).indexOf(cellElement);
+    },
+
+    insertCellHtmlAt(container, html, targetPosition) {
+        if (!container || typeof html !== 'string') {
+            return null;
+        }
+        const wrapper = document.createElement('div');
+        wrapper.innerHTML = html.trim();
+        const newCell = wrapper.firstElementChild;
+        if (!newCell) {
+            return null;
+        }
+        const beforeElement = container.children[targetPosition] || null;
+        container.insertBefore(newCell, beforeElement);
+        return newCell;
+    },
+
+    updateCellTitles() {
+        const container = this.getCellsContainer();
+        if (!container) {
+            return;
+        }
+        Array.from(container.children).forEach((cellElement, index) => {
+            const titleElement = cellElement.querySelector('.cell-title');
+            if (titleElement) {
+                titleElement.textContent = `Ячейка ${index + 1}`;
+            }
+            cellElement.dataset.cellOrder = index;
+        });
+    },
+
+    handleMoveCell(cellElement, offset) {
+        if (!cellElement) {
+            return;
+        }
+        const currentIndex = this.getCellIndex(cellElement);
+        if (currentIndex === -1) {
+            return;
+        }
+        const targetIndex = currentIndex + offset;
+        const container = this.getCellsContainer();
+        if (!container || targetIndex < 0 || targetIndex >= container.children.length) {
+            return;
+        }
+        const cellId = cellElement.dataset?.cellId;
+        if (!cellId) {
+            return;
+        }
+        this.moveCell(cellId, targetIndex, cellElement);
+    },
+
+    async moveCell(cellId, targetPosition, cellElement) {
+        try {
+            const moveUrl = this.buildCellUrl(this.moveCellUrlTemplate, cellId);
+            if (!moveUrl) {
+                throw new Error('URL перемещения ячейки недоступен');
+            }
+            const response = await fetch(moveUrl, {
+                method: 'PATCH',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': this.config.csrfToken,
+                },
+                body: JSON.stringify({ target_position: targetPosition }),
+            });
+            const data = await response.json();
+            if (!response.ok || data?.status !== 'success') {
+                const message = data?.message || `HTTP error ${response.status}`;
+                throw new Error(message);
+            }
+            const container = this.getCellsContainer();
+            const element = cellElement || document.querySelector(`[data-cell-id="${cellId}"]`);
+            if (container && element) {
+                const before = container.children[targetPosition] || null;
+                container.insertBefore(element, before);
+                this.updateCellTitles();
+            }
+        } catch (error) {
+            console.error('Ошибка перемещения ячейки:', error);
+            alert('Не удалось переместить ячейку: ' + (error.message || error));
+        }
+    },
+
+    async copyCell(cellId, cellElement) {
+        const container = this.getCellsContainer();
+        if (!container) {
+            return;
+        }
+        const position = this.getCellIndex(cellElement) + 1;
+        try {
+            const copyUrl = this.buildCellUrl(this.copyCellUrlTemplate, cellId);
+            if (!copyUrl) {
+                throw new Error('URL копирования ячейки недоступен');
+            }
+            const response = await fetch(copyUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': this.config.csrfToken,
+                },
+                body: JSON.stringify({ target_position: position }),
+            });
+
+            const data = await response.json();
+            if (!response.ok || data?.status !== 'success') {
+                const message = data?.message || `HTTP error ${response.status}`;
+                throw new Error(message);
+            }
+            const html = data.html;
+            const executionOrder = typeof data.execution_order === 'number' ? data.execution_order : position;
+            const newCell = this.insertCellHtmlAt(container, html, executionOrder);
+            if (newCell) {
+                this.initializeCell(newCell);
+                const newCellId = newCell.dataset?.cellId;
+                if (newCellId) {
+                    this.cellStatuses[newCellId] = { state: 'idle' };
+                    this.persistCellStatuses();
+                    this.updateCellStatusElement(newCellId, 'idle');
+                }
+            }
+            this.updateCellTitles();
+        } catch (error) {
+            console.error('Ошибка копирования ячейки:', error);
+            alert('Не удалось скопировать ячейку: ' + (error.message || error));
+        }
+    },
+
     async createCell(options = {}) {
         const { urlKey = 'createCellUrl', payload = null } = options;
 
@@ -1036,6 +1184,7 @@ const notebookDetail = {
                     }
                 }
             }
+            this.updateCellTitles();
 
         } catch (error) {
             console.error('Ошибка:', error);
@@ -1229,6 +1378,7 @@ const notebookDetail = {
             }
 
             cellElement.remove();
+            this.updateCellTitles();
             if (this.cellStatuses[cellId]) {
                 delete this.cellStatuses[cellId];
                 this.persistCellStatuses();
