@@ -6,6 +6,7 @@ class ProblemDescriptor(models.Model):
     
     id_column = models.CharField(max_length=100, default="id")
     target_column = models.CharField(max_length=100, default="prediction")
+    metric = models.CharField(max_length=50, blank=True, default="")
 
     id_type = models.CharField(max_length=20, choices=[("int", "Integer"), ("str", "String")], default="int")
     target_type = models.CharField(max_length=20, choices=[("float", "Float"), ("int", "Integer"), ("str", "String")], default="float")

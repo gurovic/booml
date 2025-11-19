@@ -41,6 +41,7 @@ def edit_problem_polygon(request, problem_id):
         "target_column": descriptor.target_column if descriptor else _descriptor_default("target_column"),
         "id_type": descriptor.id_type if descriptor else _descriptor_default("id_type"),
         "target_type": descriptor.target_type if descriptor else _descriptor_default("target_type"),
+        "metric": descriptor.metric if descriptor else _descriptor_default("metric"),
         "check_order": descriptor.check_order if descriptor else _descriptor_default("check_order"),
     }
     errors = {}
@@ -67,6 +68,7 @@ def edit_problem_polygon(request, problem_id):
         descriptor_form_data["target_column"] = (request.POST.get("target_column") or "").strip()
         descriptor_form_data["id_type"] = (request.POST.get("id_type") or "").strip()
         descriptor_form_data["target_type"] = (request.POST.get("target_type") or "").strip()
+        descriptor_form_data["metric"] = (request.POST.get("metric") or "").strip()
         descriptor_form_data["check_order"] = request.POST.get("check_order") == "on"
 
         if not descriptor_form_data["id_column"]:
@@ -102,6 +104,7 @@ def edit_problem_polygon(request, problem_id):
                     "target_column": descriptor_form_data["target_column"],
                     "id_type": descriptor_form_data["id_type"],
                     "target_type": descriptor_form_data["target_type"],
+                    "metric": descriptor_form_data["metric"],
                     "check_order": descriptor_form_data["check_order"],
                 },
             )
