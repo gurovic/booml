@@ -8,4 +8,6 @@ coverage==7.11.0
 pandas==2.3.3
 numpy==2.1.*
 markdown>=3.5
+pytest-django==4.9.0
+python-dotenv
 daphne==4.1.*

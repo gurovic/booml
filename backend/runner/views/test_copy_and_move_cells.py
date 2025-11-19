@@ -53,6 +53,39 @@ class CopyCellViewTests(BaseNotebookTestCase):
         payload = response.json()
         self.assertEqual(payload["status"], "error")
 
+    def test_copy_cell_allows_explicit_target(self):
+        response = self.client.post(
+            reverse("runner:copy_cell", args=[self.notebook.id, self.second.id]),
+            data=json.dumps({"target_position": 0}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["status"], "success")
+        new_id = payload["cell_id"]
+
+        ordered_ids = list(self.notebook.cells.order_by("execution_order").values_list("id", flat=True))
+        self.assertEqual(len(ordered_ids), 3)
+        # Новый элемент теперь первый
+        self.assertEqual(ordered_ids[0], new_id)
+        self.assertEqual(ordered_ids[1], self.first.id)
+
+    def test_copy_cell_preserves_cell_type(self):
+        latex = Cell.objects.create(
+            notebook=self.notebook, cell_type=Cell.LATEX, content="\\frac{1}{2}", execution_order=2
+        )
+        response = self.client.post(
+            reverse("runner:copy_cell", args=[self.notebook.id, latex.id]),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        new_cell = Cell.objects.get(pk=payload["cell_id"])
+        self.assertEqual(new_cell.cell_type, Cell.LATEX)
+        self.assertEqual(new_cell.content, latex.content)
+
 
 class MoveCellViewTests(BaseNotebookTestCase):
     def setUp(self) -> None:
