@@ -13,7 +13,6 @@ https://docs.djangoproject.com/en/5.1/ref/settings/
 import os
 from pathlib import Path
 from dotenv import load_dotenv
-import os
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env")
@@ -90,12 +89,18 @@ ASGI_APPLICATION = 'core.asgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.1/ref/settings/#databases
 
+TEST_DB_DIR_ENV = os.getenv("TEST_DB_DIR")
+if TEST_DB_DIR_ENV:
+    TEST_DB_NAME = str(Path(TEST_DB_DIR_ENV) / "booml_test_db.sqlite3")
+else:
+    TEST_DB_NAME = os.getenv("TEST_DB_NAME", ":memory:")
+
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'NAME': str(BASE_DIR / 'db.sqlite3'),
         'TEST': {
-            'NAME': BASE_DIR / 'test_db.sqlite3',
+            'NAME': TEST_DB_NAME,
             'SERIALIZE': False,
         },
     }

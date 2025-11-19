@@ -11,6 +11,8 @@ class ProblemDescriptor(models.Model):
     target_type = models.CharField(max_length=20, choices=[("float", "Float"), ("int", "Integer"), ("str", "String")], default="float")
     
     check_order = models.BooleanField(default=False)
+    metric_name = models.CharField(max_length=100, default="rmse")
+    metric_code = models.TextField(blank=True, default="")
 
     created_at = models.DateTimeField(default=timezone.now)
     updated_at = models.DateTimeField(auto_now=True)
@@ -29,3 +31,6 @@ class ProblemDescriptor(models.Model):
         Defaults to the primary target column to keep callers simple.
         """
         return [self.target_column] if self.target_column else []
+
+    def has_custom_metric(self) -> bool:
+        return bool((self.metric_code or "").strip())
