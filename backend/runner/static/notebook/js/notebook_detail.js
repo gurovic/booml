@@ -28,6 +28,8 @@ const notebookDetail = {
     },
     sessionStatusElement: null,
     sessionButtons: {},
+    clipboardCellId: null,
+    clipboardIndicator: null,
 
     sanitizeUrl(value) {
         if (typeof value !== 'string') {
@@ -631,6 +633,8 @@ const notebookDetail = {
         this.notebookElement = document.querySelector(`[data-notebook-id="${config.notebookId}"]`);
         this.deleteUrlTemplate = this.notebookElement?.dataset.deleteUrlTemplate || '';
         this.saveOutputUrlTemplate = this.notebookElement?.dataset.saveOutputUrlTemplate || '';
+        this.copyCellUrlTemplate = this.notebookElement?.dataset.copyCellUrlTemplate || '';
+        this.moveCellUrlTemplate = this.notebookElement?.dataset.moveCellUrlTemplate || '';
         this.runCellUrl = this.sanitizeUrl(config.runCellUrl) || this.sanitizeUrl(this.notebookElement?.dataset.runCellUrl);
         this.sessionCreateUrl = this.sanitizeUrl(config.sessionCreateUrl) || this.sanitizeUrl(this.notebookElement?.dataset.sessionCreateUrl);
         this.sessionResetUrl = this.sanitizeUrl(config.sessionResetUrl) || this.sanitizeUrl(this.notebookElement?.dataset.sessionResetUrl);
@@ -643,6 +647,8 @@ const notebookDetail = {
             reset: this.notebookElement?.querySelector('[data-action="reset-session"]') || null,
             stop: this.notebookElement?.querySelector('[data-action="stop-session"]') || null,
         };
+        this.clipboardCellId = null;
+        this.clipboardIndicator = this.notebookElement?.querySelector('[data-clipboard-indicator]') || null;
         this.filesPanel = document.querySelector('[data-files-panel]');
         this.filesList = this.filesPanel?.querySelector('[data-files-list]');
         this.filesLoadedFor = null;
@@ -654,7 +660,9 @@ const notebookDetail = {
         this.bindEvents();
         this.initImportExport();
         this.initializeCells();
-        this.initTextCells();
+        this.updatePasteButtonsState();
+        this.updateClipboardIndicator();
+        this.updateClipboardHighlights();
         this.captureInitialOutputs();
         this.applyStatusesToExistingCells();
         this.updateQueueStatuses();
@@ -728,6 +736,27 @@ const notebookDetail = {
         else if (action === 'delete-cell' && cellId) {
             this.deleteCell(cellId, cellElement);
         }
+        else if (action === 'copy-cell' && cellId) {
+            this.saveCellToClipboard(cellId);
+        }
+        else if (action === 'duplicate-cell' && cellId) {
+            this.duplicateCell(cellId, cellElement);
+        }
+        else if (action === 'paste-cell-before' && cellId) {
+            this.pasteCellRelative(cellElement, 'before');
+        }
+        else if (action === 'paste-cell-after' && cellId) {
+            this.pasteCellRelative(cellElement, 'after');
+        }
+        else if (action === 'paste-at-end') {
+            this.pasteCellAtEnd();
+        }
+        else if (action === 'move-up' && cellId) {
+            this.handleMoveCell(cellElement, -1);
+        }
+        else if (action === 'move-down' && cellId) {
+            this.handleMoveCell(cellElement, 1);
+        }
         else if (action === 'edit-latex' && cellId) {
             this.startLatexEdit(cellElement);
         }
@@ -754,6 +783,86 @@ const notebookDetail = {
         }
         else if (action === 'import-notebook') {
             this.triggerImportFileSelect();
+        }
+    },
+
+    saveCellToClipboard(cellId) {
+        if (!cellId) {
+            return;
+        }
+        this.setClipboardCell(cellId);
+    },
+
+    setClipboardCell(cellId) {
+        this.clipboardCellId = cellId || null;
+        this.updateClipboardIndicator();
+        this.updateClipboardHighlights();
+        this.updatePasteButtonsState();
+    },
+
+    updateClipboardIndicator() {
+        if (!this.clipboardIndicator) {
+            return;
+        }
+        if (this.clipboardCellId) {
+            const cellNumber = this.getCellNumberById(this.clipboardCellId);
+            const suffix = cellNumber ? `ячейка ${cellNumber}` : `ячейка #${this.clipboardCellId}`;
+            this.clipboardIndicator.textContent = `В буфере: ${suffix}`;
+            this.clipboardIndicator.dataset.state = 'active';
+        } else {
+            this.clipboardIndicator.textContent = 'Буфер пуст';
+            this.clipboardIndicator.dataset.state = 'empty';
+        }
+    },
+
+    getCellNumberById(cellId) {
+        if (!cellId) {
+            return null;
+        }
+        const element = this.notebookElement?.querySelector(`[data-cell-id="${cellId}"]`);
+        if (!element) {
+            return null;
+        }
+        const index = this.getCellIndex(element);
+        return index === -1 ? null : index + 1;
+    },
+
+    updateClipboardHighlights() {
+        if (!this.notebookElement) {
+            return;
+        }
+        const cells = this.notebookElement.querySelectorAll('[data-cell-id]');
+        cells.forEach((element) => {
+            if (element.dataset.cellId === this.clipboardCellId) {
+                element.classList.add('clipboard-highlight');
+                element.dataset.clipboard = 'true';
+            } else {
+                element.classList.remove('clipboard-highlight');
+                delete element.dataset.clipboard;
+            }
+        });
+    },
+
+    updatePasteButtonsState() {
+        if (!this.notebookElement) {
+            return;
+        }
+        const hasClipboard = Boolean(this.clipboardCellId);
+        const buttons = this.notebookElement.querySelectorAll('[data-paste-button]');
+        buttons.forEach((button) => {
+            if (hasClipboard) {
+                button.removeAttribute('disabled');
+            } else {
+                button.setAttribute('disabled', 'disabled');
+            }
+        });
+    },
+
+    clearClipboardIfMatches(cellId) {
+        if (this.clipboardCellId === cellId) {
+            this.setClipboardCell(null);
+        } else {
+            this.updateClipboardHighlights();
         }
     },
 
@@ -997,6 +1106,223 @@ const notebookDetail = {
         });
     },
 
+    getCellsContainer() {
+        return document.getElementById('cells-container');
+    },
+
+    getCellIndex(cellElement) {
+        const container = this.getCellsContainer();
+        if (!container || !cellElement) {
+            return -1;
+        }
+        return Array.from(container.children).indexOf(cellElement);
+    },
+
+    insertCellHtmlAt(container, html, targetPosition) {
+        if (!container || typeof html !== 'string') {
+            return null;
+        }
+        const wrapper = document.createElement('div');
+        wrapper.innerHTML = html.trim();
+        const newCell = wrapper.firstElementChild;
+        if (!newCell) {
+            return null;
+        }
+        const beforeElement = container.children[targetPosition] || null;
+        container.insertBefore(newCell, beforeElement);
+        return newCell;
+    },
+
+    updateCellTitles() {
+        const container = this.getCellsContainer();
+        if (!container) {
+            return;
+        }
+        Array.from(container.children).forEach((cellElement, index) => {
+            const titleElement = cellElement.querySelector('.cell-title');
+            if (titleElement) {
+                titleElement.textContent = `Ячейка ${index + 1}`;
+            }
+            cellElement.dataset.cellOrder = index;
+        });
+        this.updateClipboardHighlights();
+    },
+
+    applyCellOrder(order) {
+        const container = this.getCellsContainer();
+        if (!container || !Array.isArray(order)) {
+            return;
+        }
+        const lookup = new Map();
+        Array.from(container.children).forEach((child) => {
+            const id = child?.dataset?.cellId;
+            if (id) {
+                lookup.set(id, child);
+            }
+        });
+        const fragment = document.createDocumentFragment();
+        order.forEach((item) => {
+            const id = item?.id?.toString();
+            if (!id) {
+                return;
+            }
+            const element = lookup.get(id);
+            if (element) {
+                fragment.appendChild(element);
+                lookup.delete(id);
+            }
+        });
+        container.appendChild(fragment);
+        this.updateCellTitles();
+    },
+
+    handleMoveCell(cellElement, offset) {
+        if (!cellElement) {
+            return;
+        }
+        const currentIndex = this.getCellIndex(cellElement);
+        if (currentIndex === -1) {
+            return;
+        }
+        const targetIndex = currentIndex + offset;
+        const container = this.getCellsContainer();
+        if (!container || targetIndex < 0 || targetIndex >= container.children.length) {
+            return;
+        }
+        const cellId = cellElement.dataset?.cellId;
+        if (!cellId) {
+            return;
+        }
+        this.moveCell(cellId, targetIndex, cellElement);
+    },
+
+    async moveCell(cellId, targetPosition, cellElement) {
+        try {
+            const moveUrl = this.buildCellUrl(this.moveCellUrlTemplate, cellId);
+            if (!moveUrl) {
+                throw new Error('URL перемещения ячейки недоступен');
+            }
+            const response = await fetch(moveUrl, {
+                method: 'PATCH',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': this.config.csrfToken,
+                },
+                body: JSON.stringify({ target_position: targetPosition }),
+            });
+            const data = await response.json();
+            if (!response.ok || data?.status !== 'success') {
+                const message = data?.message || `HTTP error ${response.status}`;
+                throw new Error(message);
+            }
+            if (Array.isArray(data?.order)) {
+                this.applyCellOrder(data.order);
+            } else {
+                const container = this.getCellsContainer();
+                const element = cellElement || document.querySelector(`[data-cell-id="${cellId}"]`);
+                if (container && element) {
+                    const before = container.children[targetPosition] || null;
+                    container.insertBefore(element, before);
+                    this.updateCellTitles();
+                }
+            }
+        } catch (error) {
+            console.error('Ошибка перемещения ячейки:', error);
+            alert('Не удалось переместить ячейку: ' + (error.message || error));
+        }
+    },
+
+    async duplicateCell(cellId, cellElement) {
+        const index = this.getCellIndex(cellElement);
+        if (index === -1) {
+            return;
+        }
+        await this.copyCellFromSource(cellId, index + 1, 'дублировать ячейку');
+    },
+
+    async pasteCellRelative(cellElement, direction) {
+        if (!this.clipboardCellId) {
+            alert('Сначала скопируйте ячейку.');
+            return;
+        }
+        const index = this.getCellIndex(cellElement);
+        if (index === -1) {
+            return;
+        }
+        const offset = direction === 'before' ? 0 : 1;
+        await this.copyCellFromSource(this.clipboardCellId, index + offset, 'вставить ячейку');
+    },
+
+    async pasteCellAtEnd() {
+        if (!this.clipboardCellId) {
+            alert('Сначала скопируйте ячейку.');
+            return;
+        }
+        const container = this.getCellsContainer();
+        if (!container) {
+            return;
+        }
+        await this.copyCellFromSource(this.clipboardCellId, container.children.length, 'вставить ячейку');
+    },
+
+    async copyCellFromSource(sourceCellId, targetPosition, actionLabel = 'создать копию ячейки') {
+        try {
+            const copyUrl = this.buildCellUrl(this.copyCellUrlTemplate, sourceCellId);
+            if (!copyUrl) {
+                throw new Error('URL копирования ячейки недоступен');
+            }
+            const headers = {
+                'X-CSRFToken': this.config.csrfToken,
+            };
+            let body = null;
+            if (typeof targetPosition === 'number' && Number.isFinite(targetPosition)) {
+                headers['Content-Type'] = 'application/json';
+                body = JSON.stringify({ target_position: targetPosition });
+            }
+            const response = await fetch(copyUrl, {
+                method: 'POST',
+                headers,
+                body,
+            });
+
+            const data = await response.json();
+            if (!response.ok || data?.status !== 'success') {
+                const message = data?.message || `HTTP error ${response.status}`;
+                throw new Error(message);
+            }
+            const container = this.getCellsContainer();
+            if (!container) {
+                throw new Error('Контейнер для ячеек не найден');
+            }
+            const insertionIndex = typeof targetPosition === 'number'
+                ? targetPosition
+                : (typeof data.execution_order === 'number' ? data.execution_order : container.children.length);
+            const newCell = this.insertCellHtmlAt(container, data.html, insertionIndex);
+            if (newCell) {
+                this.initializeCell(newCell);
+                const newCellId = newCell.dataset?.cellId;
+                if (newCellId) {
+                    const record = this.cellStatuses[newCellId];
+                    const status = record?.state || 'idle';
+                    this.updateCellStatusElement(newCellId, status, record?.meta);
+                    const requiresCancel = status === 'running' || status === 'queued';
+                    this.updateRunButtonState(newCellId, requiresCancel ? 'cancel' : 'run');
+                    const newOutput = newCell.querySelector('.output');
+                    if (newOutput) {
+                        this.rememberOutputSnapshot(newCellId, newOutput.innerHTML);
+                    }
+                }
+            }
+            this.updateCellTitles();
+            this.updatePasteButtonsState();
+            return data;
+        } catch (error) {
+            console.error(`Ошибка при попытке ${actionLabel}:`, error);
+            alert(`Не удалось ${actionLabel}: ` + (error.message || error));
+            return null;
+        }
+    },
+
     async createCell(options = {}) {
         const { urlKey = 'createCellUrl', payload = null } = options;
 
@@ -1049,6 +1375,8 @@ const notebookDetail = {
                     }
                 }
             }
+            this.updateCellTitles();
+            this.updatePasteButtonsState();
 
         } catch (error) {
             console.error('Ошибка:', error);
@@ -1282,6 +1610,8 @@ const notebookDetail = {
             }
 
             cellElement.remove();
+            this.updateCellTitles();
+            this.clearClipboardIfMatches(cellId);
             if (this.cellStatuses[cellId]) {
                 delete this.cellStatuses[cellId];
                 this.persistCellStatuses();
@@ -1290,6 +1620,7 @@ const notebookDetail = {
                 delete this.cellOutputSnapshots[cellId];
             }
             this.refreshSessionFiles();
+            this.updatePasteButtonsState();
 
         } catch (error) {
             console.error('Ошибка:', error);
