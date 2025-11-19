@@ -22,7 +22,7 @@ class SaveTextCellTests(TestCase):
         )
 
     def test_save_text_cell_success_json(self):
-
+        markdown_content = "# Заголовок\n\nТекст контента."
         
         response = self.client.post(
             reverse("runner:save_text_cell", args=[self.notebook.id, self.text_cell.id]),
@@ -39,7 +39,7 @@ class SaveTextCellTests(TestCase):
         self.assertEqual(self.text_cell.content, markdown_content)
 
     def test_save_text_cell_success_form_data(self):
-
+        markdown_content = "# Заголовок\n\nТекст контента."
         
         response = self.client.post(
             reverse("runner:save_text_cell", args=[self.notebook.id, self.text_cell.id]),
