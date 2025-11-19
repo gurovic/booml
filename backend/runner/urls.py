@@ -15,6 +15,8 @@ from .views.delete_cell import delete_cell
 from .views.save_cell_output import save_cell_output
 from .views.save_text_cell import save_text_cell
 from .views.create_text_cell import create_text_cell
+from .views.export_notebook import export_notebook
+from .views.import_notebook import import_notebook
 from .views.reorder_cells import copy_cell, move_cell
 from .views.get_reports_list import get_reports_list
 from .views.receive_test_result import receive_test_result
