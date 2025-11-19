@@ -668,7 +668,9 @@ const notebookDetail = {
         if (restored) {
             this.sessionId = restored;
             this.updateSessionStatus('ready');
-            this.refreshSessionFiles();
+            // Don't automatically refresh files on page load with restored session
+            // to avoid 404 errors if the session expired. Files will be loaded
+            // when user runs a cell or manually clicks refresh.
         } else {
             this.updateSessionStatus('idle');
         }
