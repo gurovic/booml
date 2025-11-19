@@ -66,11 +66,10 @@ class SubmissionChecker:
         if not metric_result["success"]:
             return CheckResult(False, errors=metric_result.get("error", "Metric calculation failed"))
 
-        try:
-            submission.metrics = metric_result.get("metrics")
+        metrics_payload = metric_result.get("metrics")
+        if metrics_payload is not None:
+            submission.metrics = metrics_payload
             submission.save(update_fields=["metrics"])
-        except Exception:
-            logger.info("Failed to persist metrics for submission %s", getattr(submission, "id", "?"))
 
         metric_for_log = metric_result.get("metric_name", metric_name)
         report_data = {

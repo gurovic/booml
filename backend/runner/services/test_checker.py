@@ -58,10 +58,17 @@ class TestChecker(unittest.TestCase):
         }
 
     def create_temp_csv(self, df, suffix=''):
-        """Создает временный CSV файл"""
+        """Создает временный CSV файл и регистрирует очистку"""
         temp_file = tempfile.NamedTemporaryFile(mode='w', suffix=f'{suffix}.csv', delete=False)
         df.to_csv(temp_file.name, index=False)
-        return temp_file.name
+        path = temp_file.name
+
+        def _cleanup():
+            if os.path.exists(path):
+                os.unlink(path)
+
+        self.addCleanup(_cleanup)
+        return path
 
     def tearDown(self):
         """Очистка после тестов"""

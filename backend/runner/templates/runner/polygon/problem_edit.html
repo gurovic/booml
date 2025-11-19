@@ -89,9 +89,9 @@
     </div>
 
     <h2>Метрика</h2>
-    <div class="form-group" style="background:#f8f8f8;padding:8px;border:1px solid #ddd;">
+    <div class="metric-help">
       <strong>Как выбрать метрику?</strong>
-      <ul style="margin:4px 0 0 18px;padding:0;">
+      <ul>
         <li>Если вам подходит стандартная метрика, выберите её из списка и оставьте поле с кодом пустым.</li>
         <li>Для кастомной логики введите своё название и добавьте функцию <code>compute_metric(y_true, y_pred)</code> ниже.</li>
         <li>Функция должна возвращать число или словарь с ключом <code>metric</code>. Можно подключать <code>numpy</code>, <code>pandas</code> и вызывать <code>calculate_metric()</code> для готовых метрик.</li>
