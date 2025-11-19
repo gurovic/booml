@@ -87,5 +87,19 @@ class LeaderboardAdmin(admin.ModelAdmin):
 
 @admin.register(ProblemDescriptor)
 class ProblemDescriptorAdmin(admin.ModelAdmin):
-    list_display = ("id", "problem", "id_column", "target_column", "check_order", "created_at")
+    list_display = (
+        "id",
+        "problem",
+        "id_column",
+        "target_column",
+        "metric_name",
+        "has_custom_metric",
+        "check_order",
+        "created_at",
+    )
     search_fields = ("problem__title",)
+
+    def has_custom_metric(self, obj):
+        return obj.has_custom_metric()
+
+    has_custom_metric.boolean = True
