@@ -38,7 +38,25 @@
     <script src="https://cdn.jsdelivr.net/npm/markdown-it@13.0.1/dist/markdown-it.min.js"></script>
     <script src="{% static 'notebook/js/utils.js' %}"></script>
     <script src="{% static 'notebook/js/notebook_detail.js' %}"></script>
-    <script src="https://cdn.jsdelivr.net/npm/easymde/dist/easymde.min.js"></script>
+    <style>
+        .cell.clipboard-highlight {
+            border: 1px solid #4caf50;
+            box-shadow: 0 0 0 2px rgba(76, 175, 80, 0.4);
+        }
+        .clipboard-indicator {
+            margin-left: 12px;
+            font-size: 14px;
+            color: #444;
+        }
+        .clipboard-indicator[data-state="empty"] {
+            color: #777;
+            font-style: italic;
+        }
+        [data-paste-button][disabled] {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+    </style>
 </head>
 <body>
     <div id="notebook-{{ notebook.id }}"
@@ -108,7 +126,8 @@
             </form>
             <button data-action="create-cell">➕ Новая ячейка кода</button>
             <button data-action="create-latex-cell">➕ Новая LaTeX-ячейка</button>
-            <button data-action="create-text-cell">➕ Новая ячейка текста</button>
+            <button data-action="paste-at-end" data-paste-button disabled>📋 Вставить в конец</button>
+            <span class="clipboard-indicator" data-clipboard-indicator data-state="empty">Буфер пуст</span>
         </div>
 
         <div id="cells-container">

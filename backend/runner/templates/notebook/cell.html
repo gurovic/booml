@@ -10,6 +10,9 @@
             <button type="button" data-action="move-up">↑</button>
             <button type="button" data-action="move-down">↓</button>
             <button type="button" data-action="copy-cell">Копировать</button>
+            <button type="button" data-action="paste-cell-before" data-paste-button disabled>Вставить ↑</button>
+            <button type="button" data-action="paste-cell-after" data-paste-button disabled>Вставить ↓</button>
+            <button type="button" data-action="duplicate-cell">Дублировать</button>
             {% if cell.cell_type == cell.CODE %}
                 <button type="button" data-action="run-cell">Запустить</button>
             {% endif %}
