@@ -656,7 +656,6 @@ const notebookDetail = {
         this.initialFilesLoaded = false;
         this.cellStatuses = this.loadCellStatuses();
         this.saveTextCellUrlTemplate = this.notebookElement?.dataset.saveTextCellUrlTemplate || '';
-        this.exportNotebookUrl = this.notebookElement?.dataset.exportNotebookUrl || '';
         this.bindEvents();
         this.initImportExport();
         this.initializeCells();
@@ -1795,7 +1794,7 @@ const notebookDetail = {
             return;
         }
 
-        // Рендерим markdown для отображения, если содержимое есть
+    
         const rawContent = textarea.value || '';
         if (rawContent && display.innerHTML === rawContent) {
             const renderer = NotebookUtils.getMarkdownRenderer();
@@ -1804,7 +1803,7 @@ const notebookDetail = {
 
         let mde = null;
 
-        // Удаляем старые обработчики, если они есть
+    
         const newEditBtn = editBtn.cloneNode(true);
         const newSaveBtn = saveBtn.cloneNode(true);
         const newCancelBtn = cancelBtn.cloneNode(true);
@@ -1816,7 +1815,7 @@ const notebookDetail = {
             display.hidden = true;
             editor.hidden = false;
 
-            // Инициализируем EasyMDE
+        
             if (!mde) {
                 mde = new EasyMDE({
                     element: textarea,
@@ -1863,142 +1862,13 @@ const notebookDetail = {
 
         newCancelBtn.addEventListener('click', () => {
             if (mde) {
-                // Восстанавливаем оригинальное содержимое из textarea
+            
                 const originalContent = textarea.value || '';
                 mde.value(originalContent);
             }
             editor.hidden = true;
             display.hidden = false;
         });
-    },
-
-    initImportExport() {
-        const fileInput = document.getElementById('import-file-input');
-        if (fileInput) {
-            fileInput.addEventListener('change', (e) => {
-                const file = e.target.files[0];
-                if (file) {
-                    this.importNotebook(file);
-                }
-                e.target.value = '';
-            });
-        }
-    },
-
-    triggerImportFileSelect() {
-        const fileInput = document.getElementById('import-file-input');
-        if (fileInput) {
-            fileInput.click();
-        }
-    },
-
-    async exportNotebook() {
-        if (!this.exportNotebookUrl) {
-            this.showStatus('error', 'URL экспорта недоступен');
-            return;
-        }
-
-        try {
-            this.showStatus('info', 'Экспорт ноутбука...');
-            
-            const link = document.createElement('a');
-            link.href = this.exportNotebookUrl;
-            link.download = '';
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            
-            this.showStatus('success', 'Ноутбук успешно экспортирован');
-            
-            setTimeout(() => this.hideStatus(), 3000);
-        } catch (error) {
-            console.error('Ошибка экспорта:', error);
-            this.showStatus('error', 'Ошибка при экспорте ноутбука: ' + error.message);
-        }
-    },
-
-    async importNotebook(file) {
-        const fileInput = document.getElementById('import-file-input');
-        const importUrl = fileInput?.dataset.importUrl;
-        
-        if (!importUrl) {
-            this.showStatus('error', 'URL импорта недоступен');
-            return;
-        }
-
-        if (!file.name.endsWith('.json')) {
-            this.showStatus('error', 'Поддерживаются только JSON файлы');
-            return;
-        }
-
-        try {
-            this.showStatus('info', 'Импорт ноутбука...');
-            
-            const formData = new FormData();
-            formData.append('file', file);
-
-            const response = await fetch(importUrl, {
-                method: 'POST',
-                headers: {
-                    'X-CSRFToken': this.config.csrfToken
-                },
-                body: formData
-            });
-
-            const data = await response.json();
-
-            if (!response.ok) {
-                throw new Error(data.message || 'Ошибка импорта');
-            }
-
-            if (data.status === 'success') {
-                let message = `Ноутбук "${data.notebook_title}" успешно импортирован. `;
-                message += `Создано ячеек: ${data.cells_created} из ${data.cells_total}`;
-                
-                if (data.warnings && data.warnings.length > 0) {
-                    message += `. Предупреждений: ${data.warnings.length}`;
-                }
-
-                this.showStatus('success', message);
-                
-                setTimeout(() => {
-                    const detailUrl = `/notebook/${data.notebook_id}/`;
-                    window.location.href = detailUrl;
-                }, 2000);
-            } else {
-                throw new Error(data.message || 'Неизвестная ошибка');
-            }
-        } catch (error) {
-            console.error('Ошибка импорта:', error);
-            this.showStatus('error', 'Ошибка при импорте ноутбука: ' + error.message);
-        }
-    },
-
-    showStatus(type, message) {
-        const statusElement = document.getElementById('import-export-status');
-        if (!statusElement) {
-            return;
-        }
-
-        statusElement.style.display = 'block';
-        statusElement.textContent = message;
-        
-        statusElement.style.backgroundColor = type === 'success' ? '#d4edda' : 
-                                             type === 'error' ? '#f8d7da' : 
-                                             '#d1ecf1';
-        statusElement.style.color = type === 'success' ? '#155724' : 
-                                    type === 'error' ? '#721c24' : 
-                                    '#0c5460';
-        statusElement.style.border = `1px solid ${type === 'success' ? '#c3e6cb' : 
-                                                  type === 'error' ? '#f5c6cb' : 
-                                                  '#bee5eb'}`;
-    },
-
-    hideStatus() {
-        const statusElement = document.getElementById('import-export-status');
-        if (statusElement) {
-            statusElement.style.display = 'none';
-        }
     }
 
 };

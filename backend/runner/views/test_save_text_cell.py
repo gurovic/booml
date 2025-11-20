@@ -8,7 +8,7 @@ from ..models import Notebook, Cell
 
 
 class SaveTextCellTests(TestCase):
-    """Тесты для сохранения содержимого текстовых ячеек"""
+
 
     def setUp(self) -> None:
         self.client = Client()
@@ -22,8 +22,7 @@ class SaveTextCellTests(TestCase):
         )
 
     def test_save_text_cell_success_json(self):
-        """Тест успешного сохранения через JSON"""
-        markdown_content = "# Заголовок\n\nЭто **жирный** текст."
+        markdown_content = "# Заголовок\n\nТекст контента."
         
         response = self.client.post(
             reverse("runner:save_text_cell", args=[self.notebook.id, self.text_cell.id]),
@@ -35,13 +34,12 @@ class SaveTextCellTests(TestCase):
         payload = response.json()
         self.assertEqual(payload["status"], "success")
         
-        # Проверяем что контент сохранился
+
         self.text_cell.refresh_from_db()
         self.assertEqual(self.text_cell.content, markdown_content)
 
     def test_save_text_cell_success_form_data(self):
-        """Тест успешного сохранения через form-data"""
-        markdown_content = "## Подзаголовок\n\nТекст с *курсивом*."
+        markdown_content = "# Заголовок\n\nТекст контента."
         
         response = self.client.post(
             reverse("runner:save_text_cell", args=[self.notebook.id, self.text_cell.id]),
@@ -57,7 +55,7 @@ class SaveTextCellTests(TestCase):
         self.assertEqual(self.text_cell.content, markdown_content)
 
     def test_save_text_cell_updates_content(self):
-        """Тест обновления существующего контента"""
+
         # Устанавливаем начальный контент
         self.text_cell.content = "Старый текст"
         self.text_cell.save()
@@ -75,7 +73,7 @@ class SaveTextCellTests(TestCase):
         self.assertNotEqual(self.text_cell.content, "Старый текст")
 
     def test_save_text_cell_notebook_not_found(self):
-        """Тест обработки несуществующего блокнота"""
+
         non_existent_notebook_id = 99999
         
         response = self.client.post(
@@ -87,7 +85,7 @@ class SaveTextCellTests(TestCase):
         self.assertEqual(response.status_code, 404)
 
     def test_save_text_cell_cell_not_found(self):
-        """Тест обработки несуществующей ячейки"""
+
         non_existent_cell_id = 99999
         
         response = self.client.post(
@@ -99,8 +97,8 @@ class SaveTextCellTests(TestCase):
         self.assertEqual(response.status_code, 404)
 
     def test_save_text_cell_wrong_notebook(self):
-        """Тест что нельзя сохранить ячейку из другого блокнота"""
-        # Создаем другой блокнот и ячейку
+
+
         other_notebook = Notebook.objects.create(owner=self.user, title="Other Notebook")
         other_cell = Cell.objects.create(
             notebook=other_notebook,
@@ -109,7 +107,7 @@ class SaveTextCellTests(TestCase):
             execution_order=0
         )
 
-        # Пытаемся сохранить ячейку из другого блокнота через URL первого блокнота
+
         response = self.client.post(
             reverse("runner:save_text_cell", args=[self.notebook.id, other_cell.id]),
             data=json.dumps({"content": "test"}),
@@ -119,7 +117,7 @@ class SaveTextCellTests(TestCase):
         self.assertEqual(response.status_code, 404)
 
     def test_save_text_cell_empty_content(self):
-        """Тест сохранения пустого контента"""
+
         response = self.client.post(
             reverse("runner:save_text_cell", args=[self.notebook.id, self.text_cell.id]),
             data=json.dumps({"content": ""}),
@@ -134,7 +132,7 @@ class SaveTextCellTests(TestCase):
         self.assertEqual(self.text_cell.content, "")
 
     def test_save_text_cell_markdown_content(self):
-        """Тест сохранения сложного Markdown контента"""
+
         complex_markdown = """# Главный заголовок
 
 ## Подзаголовок
@@ -166,7 +164,7 @@ def hello():
         self.assertIn("```python", self.text_cell.content)
 
     def test_save_text_cell_only_post_method(self):
-        """Тест что только POST метод разрешен"""
+
         # GET запрос должен вернуть 405 Method Not Allowed
         response = self.client.get(
             reverse("runner:save_text_cell", args=[self.notebook.id, self.text_cell.id])
@@ -175,7 +173,7 @@ def hello():
         self.assertEqual(response.status_code, 405)
 
     def test_save_text_cell_multiple_saves(self):
-        """Тест множественных сохранений одной ячейки"""
+
         contents = [
             "Первая версия",
             "Вторая версия",

@@ -15,8 +15,6 @@ from .views.delete_cell import delete_cell
 from .views.save_cell_output import save_cell_output
 from .views.save_text_cell import save_text_cell
 from .views.create_text_cell import create_text_cell
-from .views.export_notebook import export_notebook
-from .views.import_notebook import import_notebook
 from .views.reorder_cells import copy_cell, move_cell
 from .views.get_reports_list import get_reports_list
 from .views.receive_test_result import receive_test_result
@@ -60,8 +58,6 @@ urlpatterns = [
     path('notebook/<int:notebook_id>/cell/<int:cell_id>/save_output/', save_cell_output, name='save_cell_output'),
     path('notebook/<int:notebook_id>/cell/<int:cell_id>/save_text/', save_text_cell, name='save_text_cell'),
     path('notebook/<int:notebook_id>/create_text_cell/', create_text_cell, name='create_text_cell'),
-    path('notebook/<int:notebook_id>/export/', export_notebook, name='export_notebook'),
-    path('notebook/import/', import_notebook, name='import_notebook'),
     path('run_code/', run_code, name='run_code'),
     path('polygon/', problem_list_polygon, name='polygon'),
     path('polygon/new/', create_problem_polygon, name='polygon_create_problem'),
