@@ -21,7 +21,7 @@ def save_text_cell(request, notebook_id, cell_id):
         cell.save()
         
         return JsonResponse({'status': 'success'})
-except json.JSONDecodeError:
+    except json.JSONDecodeError:
         return JsonResponse({
             'status': 'error',
             'message': 'Invalid JSON format'
