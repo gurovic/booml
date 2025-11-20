@@ -13,6 +13,7 @@ class CreateTextCellTests(TestCase):
         self.client = Client()
         self.user = get_user_model().objects.create_user(username="creator", password="pass")
         self.notebook = Notebook.objects.create(owner=self.user, title="Test Notebook")
+        self.client.force_login(self.user)
 
     def test_create_text_cell_success(self):
         response = self.client.post(
@@ -120,4 +121,27 @@ class CreateTextCellTests(TestCase):
         self.assertEqual(response.status_code, 200)
         cell = Cell.objects.get(notebook=self.notebook)
         self.assertEqual(cell.execution_order, 0)
+
+    def test_create_text_cell_forbidden_for_other_user(self):
+        """Проверка, что другой пользователь не может создать ячейку в чужом блокноте"""
+        other_user = get_user_model().objects.create_user(username="other", password="pass")
+        self.client.force_login(other_user)
+        
+        response = self.client.post(
+            reverse("runner:create_text_cell", args=[self.notebook.id])
+        )
+        
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(Cell.objects.filter(notebook=self.notebook).count(), 0)
+
+    def test_create_text_cell_allowed_for_notebook_without_owner(self):
+        """Проверка, что можно создать ячейку в блокноте без владельца"""
+        public_notebook = Notebook.objects.create(owner=None, title="Public Notebook")
+        
+        response = self.client.post(
+            reverse("runner:create_text_cell", args=[public_notebook.id])
+        )
+        
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(Cell.objects.filter(notebook=public_notebook).count(), 1)
 
