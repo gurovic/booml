@@ -7,7 +7,7 @@ def get_user_notebook_or_404(user, notebook_id):
     except Notebook.DoesNotExist:
         raise Http404("Notebook not found")
 
-    if nb.owner != user:
+    if nb.owner is not None and nb.owner != user:
         raise Http404("Notebook not found")
 
     return nb
