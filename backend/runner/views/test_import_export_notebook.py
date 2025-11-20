@@ -104,11 +104,11 @@ class ImportExportNotebookTests(TestCase):
         json_file.name = 'empty_notebook.json'
 
         import_url = reverse("runner:import_notebook")
-        # передаем owner пользователя при импорте
+        # Передаем только файл, owner будет автоматически текущим пользователем
         import_response = self.client.post(
             import_url,
-            {'file': json_file, 'owner_id': self.user.id},  # <-- вот здесь
-            format='multipart'
+            {'file': json_file},
+            follow=True
         )
 
         self.assertEqual(import_response.status_code, 200)
@@ -118,7 +118,8 @@ class ImportExportNotebookTests(TestCase):
         self.assertEqual(import_data['cells_total'], 0)
 
         imported_notebook = Notebook.objects.get(id=import_data['notebook_id'])
-        self.assertEqual(imported_notebook.owner, self.user)  # теперь owner установлен
+        # Теперь owner — это текущий пользователь, который сделал POST
+        self.assertEqual(imported_notebook.owner, self.user)
         self.assertEqual(imported_notebook.cells.count(), 0)
 
     def test_export_post_returns_json(self):
