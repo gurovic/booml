@@ -96,17 +96,18 @@ class ImportExportNotebookTests(TestCase):
 
         self.assertEqual(export_response.status_code, 200)
         exported_data = json.loads(export_response.content.decode('utf-8'))
-        
+
         self.assertEqual(len(exported_data['cells']), 0)
         self.assertEqual(exported_data['notebook']['title'], 'Test Notebook')
 
         json_file = BytesIO(export_response.content)
         json_file.name = 'empty_notebook.json'
-        
+
         import_url = reverse("runner:import_notebook")
+        # передаем owner пользователя при импорте
         import_response = self.client.post(
             import_url,
-            {'file': json_file},
+            {'file': json_file, 'owner_id': self.user.id},  # <-- вот здесь
             format='multipart'
         )
 
@@ -117,6 +118,7 @@ class ImportExportNotebookTests(TestCase):
         self.assertEqual(import_data['cells_total'], 0)
 
         imported_notebook = Notebook.objects.get(id=import_data['notebook_id'])
+        self.assertEqual(imported_notebook.owner, self.user)  # теперь owner установлен
         self.assertEqual(imported_notebook.cells.count(), 0)
 
     def test_export_post_returns_json(self):

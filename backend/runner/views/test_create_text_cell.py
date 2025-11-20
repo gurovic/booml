@@ -134,14 +134,15 @@ class CreateTextCellTests(TestCase):
         self.assertEqual(response.status_code, 403)
         self.assertEqual(Cell.objects.filter(notebook=self.notebook).count(), 0)
 
-    def test_create_text_cell_allowed_for_notebook_without_owner(self):
-        """Проверка, что можно создать ячейку в блокноте без владельца"""
-        public_notebook = Notebook.objects.create(owner=None, title="Public Notebook")
-        
+    def test_create_text_cell_allowed_for_notebook_for_user(self):
+        """Проверка, что можно создать ячейку в блокноте для владельца"""
+        # используем существующего пользователя self.user
+        notebook_for_user = Notebook.objects.create(owner=self.user, title="User's Notebook")
+
         response = self.client.post(
-            reverse("runner:create_text_cell", args=[public_notebook.id])
+            reverse("runner:create_text_cell", args=[notebook_for_user.id])
         )
-        
+
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(Cell.objects.filter(notebook=public_notebook).count(), 1)
+        self.assertEqual(Cell.objects.filter(notebook=notebook_for_user).count(), 1)
 

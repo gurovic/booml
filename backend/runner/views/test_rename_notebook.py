@@ -44,6 +44,9 @@ class RenameNotebookViewTests(TestCase):
         self.assertEqual(self.notebook.title, "Initial title")
 
     def test_form_submission_updates_title(self):
+        # логинимся под владельцем
+        self.client.force_login(self.user)
+
         response = self.client.post(
             reverse("runner:rename_notebook", args=[self.notebook.id]),
             data={"title": "Form based title"},
@@ -53,3 +56,4 @@ class RenameNotebookViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.notebook.refresh_from_db()
         self.assertEqual(self.notebook.title, "Form based title")
+
