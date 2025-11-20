@@ -91,11 +91,11 @@
     <h2>Метрика</h2>
     <div class="metric-help">
       <strong>Как выбрать метрику?</strong>
-      <ul>
-        <li>Если вам подходит стандартная метрика, выберите её из списка и оставьте поле с кодом пустым.</li>
-        <li>Для кастомной логики введите своё название и добавьте функцию <code>compute_metric(y_true, y_pred)</code> ниже.</li>
-        <li>Функция должна возвращать число или словарь с ключом <code>metric</code>. Можно подключать <code>numpy</code>, <code>pandas</code> и вызывать <code>calculate_metric()</code> для готовых метрик.</li>
-      </ul>
+      <ol>
+        <li>Если подходит стандартная метрика — выберите её из списка и оставьте поле с кодом пустым.</li>
+        <li>Нужна своя логика — впишите название и добавьте функцию <code>compute_metric(y_true, y_pred)</code> ниже.</li>
+        <li>Функция должна вернуть число или словарь с ключом <code>metric</code>. Допустимы <code>numpy</code>, <code>pandas</code>, можно вызывать <code>calculate_metric()</code> для готовых метрик.</li>
+      </ol>
     </div>
     <div class="top-fields">
       <div class="form-group">
