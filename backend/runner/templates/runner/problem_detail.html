@@ -57,6 +57,18 @@
             </p>
         {% endif %}
 
+        {% if descriptor %}
+          <div class="metric-summary">
+            <strong>Метрика задачи:</strong>
+            <span class="metric-name">{{ descriptor.metric_name|default:"—" }}</span>
+            {% if descriptor.metric_code %}
+              <span class="metric-hint">используется кастомная реализация</span>
+            {% else %}
+              <span class="metric-hint">стандартная метрика</span>
+            {% endif %}
+          </div>
+        {% endif %}
+
         <div class="submission-section">
             <h2>Отправить решение</h2>
 
