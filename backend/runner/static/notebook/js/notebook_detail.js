@@ -657,6 +657,7 @@ const notebookDetail = {
         this.cellStatuses = this.loadCellStatuses();
         this.saveTextCellUrlTemplate = this.notebookElement?.dataset.saveTextCellUrlTemplate || '';
         this.bindEvents();
+        this.initImportExport();
         this.initializeCells();
         this.updatePasteButtonsState();
         this.updateClipboardIndicator();
@@ -775,6 +776,12 @@ const notebookDetail = {
         }
         else if (action === 'refresh-files') {
             this.refreshSessionFiles();
+        }
+        else if (action === 'export-notebook') {
+            this.exportNotebook();
+        }
+        else if (action === 'import-notebook') {
+            this.triggerImportFileSelect();
         }
     },
 
