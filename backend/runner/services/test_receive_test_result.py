@@ -6,7 +6,7 @@ from rest_framework import status
 from rest_framework.test import APIRequestFactory
 from unittest.mock import patch
 
-from .receive_test_result import receive_test_result
+from ..views.receive_test_result import receive_test_result
 from ..models.report import Report
 
 
