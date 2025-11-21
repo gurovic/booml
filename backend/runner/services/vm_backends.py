@@ -183,9 +183,13 @@ class DockerVmBackend(VmBackend):
         timestamp = _resolve_now(now)
 
         container_name = vm_id
-        self._create_container(container_name, spec, vm_dir, workspace)
-        self._start_agent(container_name)
-        self._wait_for_agent(agent_dir)
+        try:
+            self._create_container(container_name, spec, vm_dir, workspace)
+            self._start_agent(container_name)
+            self._wait_for_agent(agent_dir)
+        except Exception:
+            shutil.rmtree(vm_dir, ignore_errors=True)
+            raise
 
         vm = VirtualMachine(
             id=vm_id,
