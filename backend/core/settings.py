@@ -12,22 +12,31 @@ https://docs.djangoproject.com/en/5.1/ref/settings/
 
 import os
 from pathlib import Path
-
+from dotenv import load_dotenv
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
-
+load_dotenv(BASE_DIR / ".env")
 LOGIN_URL = '/login/'
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.1/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-n@f%gs#5+api!ms&%*jpvv_)iv7e-!m=ixbk7##wg=_+zk39r@'
+SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-key")
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.getenv("DEBUG", "True") == "True"
 
-ALLOWED_HOSTS = ["*"]
+ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "*").split(",")
+
+
+MODE = os.getenv("MODE", "dev")
+
+if MODE	== "prod":
+    CSRF_TRUSTED_ORIGINS = os.getenv("CSRF_TRUSTED_ORIGINS", "").split(",")
+    SECURE_SSL_REDIRECT = True
+    CSRF_COOKIE_SECURE = True
+    SESSION_COOKIE_SECURE = True
 
 
 # Application definition
@@ -39,6 +48,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'channels',
     'django_reverse_js',
     'runner',
     'rest_framework'
@@ -73,17 +83,24 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'core.wsgi.application'
+ASGI_APPLICATION = 'core.asgi.application'
 
 
 # Database
 # https://docs.djangoproject.com/en/5.1/ref/settings/#databases
 
+TEST_DB_DIR_ENV = os.getenv("TEST_DB_DIR")
+if TEST_DB_DIR_ENV:
+    TEST_DB_NAME = str(Path(TEST_DB_DIR_ENV) / "booml_test_db.sqlite3")
+else:
+    TEST_DB_NAME = os.getenv("TEST_DB_NAME", ":memory:")
+
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'NAME': str(BASE_DIR / 'db.sqlite3'),
         'TEST': {
-            'NAME': BASE_DIR / 'test_db.sqlite3',
+            'NAME': TEST_DB_NAME,
             'SERIALIZE': False,
         },
     }
@@ -146,8 +163,16 @@ RUNTIME_VM_ROOT = Path(os.environ.get("RUNTIME_VM_ROOT", str(BASE_DIR / "noteboo
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-CELERY_BROKER_URL = "redis://127.0.0.1:6379/0"
-CELERY_RESULT_BACKEND = "redis://127.0.0.1:6379/1"
+CELERY_BROKER_URL = "redis://localhost:6379/0"
+CELERY_RESULT_BACKEND = "redis://localhost:6379/1"
+
+STATIC_ROOT = BASE_DIR / "staticfiles"
 
 CELERY_TASK_ALWAYS_EAGER = False  # для реального async
 CELERY_TASK_EAGER_PROPAGATES = True
+
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels.layers.InMemoryChannelLayer",
+    }
+}

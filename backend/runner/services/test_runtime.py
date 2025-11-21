@@ -30,6 +30,7 @@ class RuntimeServiceTests(SimpleTestCase):
             RUNTIME_SANDBOX_ROOT=self._sandbox_tmp.name,
             RUNTIME_VM_ROOT=self._vm_tmp.name,
             RUNTIME_VM_BACKEND="local",
+            RUNTIME_SESSION_TTL_SECONDS=10,
         )
         self.override.enable()
         vm_manager.reset_vm_manager()
@@ -104,7 +105,7 @@ class RuntimeServiceTests(SimpleTestCase):
         self.assertIn("expired", removed)
         self.assertNotIn("expired", _sessions)
         self.assertIn("fresh", _sessions)
-        self.assertIs(get_session("fresh", touch=False), fresh)
+        self.assertIs(get_session("fresh", touch=False, now=current), fresh)
         self.assertFalse(expired_vm_dir.exists())
 
     def test_run_code_operates_inside_workdir(self) -> None:
@@ -146,6 +147,27 @@ class RuntimeServiceTests(SimpleTestCase):
         session = create_session(session_id)
         result = run_code(session_id, "import os\nprint(os.getcwd())")
         self.assertIn(str(session.workdir), (result.stdout or ""))
+
+    def test_auto_cleanup_on_create(self) -> None:
+        base = timezone.now()
+        expired = create_session("auto-expired", now=base)
+        self.assertIn("auto-expired", _sessions)
+
+        future = base + timedelta(seconds=20)
+        create_session("auto-new", now=future)
+
+        self.assertNotIn("auto-expired", _sessions)
+        self.assertFalse(expired.workdir.exists())
+
+    def test_auto_cleanup_on_get(self) -> None:
+        base = timezone.now()
+        create_session("auto-expire-get", now=base)
+
+        future = base + timedelta(seconds=20)
+        # get_session should trigger cleanup before returning value
+        result = get_session("auto-expire-get", now=future)
+        self.assertIsNone(result)
+        self.assertNotIn("auto-expire-get", _sessions)
 
     @patch("runner.services.runtime.urlopen")
     def test_download_helper_saves_file(self, mock_urlopen) -> None:

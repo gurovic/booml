@@ -26,6 +26,9 @@ class ReportGenerator:
                 'file_name': test_result['file_name'],
                 'status': test_result.get('status', 'success'),
             }
+            
+            if 'test_data' in test_result:
+                report_data['test_data'] = test_result['test_data']
 
             report = Report(**report_data)
             report.full_clean()

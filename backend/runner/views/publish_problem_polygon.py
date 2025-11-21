@@ -5,6 +5,9 @@ from django.views.decorators.http import require_http_methods
 from ..models.problem import Problem
 from ..models.problem_data import ProblemData
 from ..models.problem_desriptor import ProblemDescriptor
+from ..services.metrics import get_available_metrics
+
+AVAILABLE_METRICS = set(get_available_metrics())
 
 
 @require_http_methods(["POST"])
@@ -38,6 +41,12 @@ def publish_problem_polygon(request, problem_id):
             if not value:
                 errors.append("Заполните описание данных (descriptor)")
                 break
+        metric_name = (getattr(descriptor, "metric_name", "") or "").strip()
+        metric_code = (getattr(descriptor, "metric_code", "") or "").strip()
+        if not metric_name:
+            errors.append("Укажите метрику качества для задачи")
+        elif not metric_code and metric_name not in AVAILABLE_METRICS:
+            errors.append("Выберите стандартную метрику или добавьте Python код для своей метрики")
 
     data = ProblemData.objects.filter(problem=problem).first()
     if not data or not data.answer_file:

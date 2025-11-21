@@ -5,6 +5,7 @@ from runner.api.views import build_descriptor_from_problem
 from ..forms import SubmissionUploadForm
 from ..models.problem import Problem
 from ..models.problem_data import ProblemData
+from ..models.problem_desriptor import ProblemDescriptor
 from ..models.submission import Submission
 from ..services import enqueue_submission_for_evaluation, validation_service
 from .submissions import submission_list_data
@@ -32,6 +33,7 @@ def _report_is_valid(report) -> bool:
 def problem_detail(request, problem_id):
     problem = get_object_or_404(Problem, id=problem_id)
     problem_data = ProblemData.objects.filter(problem=problem).first()
+    descriptor = ProblemDescriptor.objects.filter(problem=problem).first()
 
     form = SubmissionUploadForm()
     submission_feedback = None
@@ -96,6 +98,7 @@ def problem_detail(request, problem_id):
     context = {
         "problem": problem,
         "data": problem_data,
+        "descriptor": descriptor,
         "form": form,
         "submission_feedback": submission_feedback,
         "submissions": context_submissions_list["submissions"],

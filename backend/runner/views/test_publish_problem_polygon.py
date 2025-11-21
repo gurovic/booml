@@ -92,6 +92,18 @@ class PublishProblemPolygonViewTests(TestCase):
         self.assertFalse(self.problem.is_published)
         self.assertContains(resp, "Файл ответов должен быть в формате CSV")
 
+    def test_requires_metric_configuration(self):
+        self._attach_answer_file()
+        self.descriptor.metric_name = ""
+        self.descriptor.metric_code = ""
+        self.descriptor.save(update_fields=["metric_name", "metric_code"])
+        self.client.force_login(self.author)
+        resp = self.client.post(self.publish_url, follow=True)
+
+        self.problem.refresh_from_db()
+        self.assertFalse(self.problem.is_published)
+        self.assertContains(resp, "Укажите метрику качества")
+
     def test_publishes_problem_with_required_data(self):
         self._attach_answer_file()
         self.client.force_login(self.author)

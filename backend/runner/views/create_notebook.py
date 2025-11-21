@@ -14,7 +14,9 @@ def create_notebook(request):
         )
         return JsonResponse({
             'status': 'success',
-            'notebook_id': notebook.id
+            'notebook_id': notebook.id,
+            'title': notebook.title,
+            'owner': notebook.owner.username if notebook.owner else None,
         })
     except Exception as e:
         return JsonResponse({
