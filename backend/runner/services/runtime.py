@@ -24,7 +24,7 @@ from .vm_models import VirtualMachine
 
 
 class SessionNotFoundError(Exception):
-    """Raised when runtime operations reference a missing session."""
+    pass
 
 DEFAULT_SESSION_TTL_SECONDS = 3600
 DEFAULT_RUNTIME_ROOT = Path(
@@ -41,6 +41,7 @@ class RuntimeSession:
     workdir: Path
     python_exec: Path | None = None
     vm: VirtualMachine | None = None
+    env: Dict[str, str] | None = None
 
 
 @dataclass
@@ -153,6 +154,7 @@ def create_session(session_id: str, *, now: datetime | None = None) -> RuntimeSe
         workdir=workdir,
         python_exec=python_exec,
         vm=vm,
+        env=os.environ.copy(),
     )
     if vm.backend == "local":
         session.namespace["download_file"] = _build_download_helper(session)
@@ -207,7 +209,6 @@ def cleanup_expired(
 
 
 def cleanup_all_sessions() -> None:
-    """Terminate all known sessions and purge leftover directories."""
     for session_id in list(_sessions.keys()):
         stop_session(session_id)
     _purge_runtime_root()

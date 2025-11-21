@@ -114,7 +114,7 @@ class RuntimeServiceTests(SimpleTestCase):
         session = get_session("sess", touch=False)
         assert session is not None
         self.assertTrue((session.workdir / "result.txt").exists())
-        self.assertEqual(result.variables["value"], "7")
+        self.assertEqual(result.variables["value"], 7)
 
     def test_run_code_requires_existing_session(self) -> None:
         with self.assertRaises(SessionNotFoundError):

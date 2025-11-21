@@ -55,7 +55,7 @@ class RunCellViewTests(TestCase):
         data = resp.json()
         self.assertEqual(data["stdout"].strip(), "2")
         self.assertIsNone(data["error"])
-        self.assertEqual(data["variables"]["x"], "2")
+        self.assertEqual(data["variables"]["x"], 2)
 
     def test_run_cell_forbidden_for_other_user(self):
         another = User.objects.create_user(username="alien", password="pass456")

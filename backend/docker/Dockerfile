@@ -11,5 +11,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /workspace
 
-# Контейнер держится живым; агент стартует через docker exec.
+RUN pip install --upgrade pip setuptools wheel
+
+COPY docker_requirements.txt /workspace/
+
+RUN pip install -r docker_requirements.txt
+
 CMD ["sleep", "infinity"]
