@@ -37,7 +37,7 @@ def ensure_vm_environment() -> None:
     _apply_config_defaults(config)
 
     requested = os.environ.get("RUNTIME_VM_BACKEND", "auto").strip().lower()
-    docker_available = shutil.which("docker") is not None
+    docker_available = _docker_available()
 
     if requested in ("docker", "auto") and docker_available:
         os.environ["RUNTIME_VM_BACKEND"] = "docker"
@@ -52,11 +52,14 @@ def ensure_vm_environment() -> None:
                 f"Выполните `{hint}` чтобы его собрать.",
                 file=sys.stderr,
             )
+            if requested == "auto":
+                os.environ["RUNTIME_VM_BACKEND"] = "local"
+            return
         return
 
     if requested == "docker" and not docker_available:
         print(
-            "WARNING: RUNTIME_VM_BACKEND=docker, но docker CLI не найден — "
+            "WARNING: RUNTIME_VM_BACKEND=docker, но docker daemon недоступен — "
             "переключаюсь на локальный runtime.",
             file=sys.stderr,
         )
@@ -108,6 +111,21 @@ def _docker_image_exists(image: str) -> bool:
         stderr=subprocess.DEVNULL,
     )
     return result.returncode == 0
+
+
+def _docker_available() -> bool:
+    if shutil.which("docker") is None:
+        return False
+    try:
+        result = subprocess.run(
+            ["docker", "info"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=3,
+        )
+        return result.returncode == 0
+    except Exception:
+        return False
 
 
 def _resolve_dockerfile() -> Path | None:
