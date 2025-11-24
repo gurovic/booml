@@ -70,8 +70,8 @@ def submission_list(request, problem_id):
 
 @login_required
 def recent_submissions(request):
-    submissions_qs = Submission.objects.filter(user=request.user).select_related("problem").order_by("-submitted_at")[:20]
-    submissions = _enrich_submissions(submissions_qs)
+    submissions_queryset = Submission.objects.filter(user=request.user).select_related("problem").order_by("-submitted_at")[:20]
+    submissions = _enrich_submissions(submissions_queryset)
     context = {
         "submissions": submissions,
         "result": _latest_result(submissions),

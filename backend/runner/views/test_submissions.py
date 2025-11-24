@@ -1,7 +1,9 @@
 from datetime import date
+import shutil
+import tempfile
 
 from django.conf import settings
-from django.test import Client, TestCase
+from django.test import Client, TestCase, override_settings
 from unittest.mock import patch, MagicMock
 from django.contrib.auth.models import User
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -54,6 +56,9 @@ class SubmissionListViewTests(TestCase):
 
 class SubmissionDetailAndCompareTests(TestCase):
     def setUp(self):
+        self._media_root = tempfile.mkdtemp()
+        self._override_media = override_settings(MEDIA_ROOT=self._media_root)
+        self._override_media.enable()
         self.client = Client()
         self.user = User.objects.create_user(username='u2', password='pass')
         self.problem = Problem.objects.create(
@@ -63,6 +68,11 @@ class SubmissionDetailAndCompareTests(TestCase):
             created_at=date.today(),
         )
         self.client.force_login(self.user)
+    
+    def tearDown(self):
+        self._override_media.disable()
+        shutil.rmtree(self._media_root, ignore_errors=True)
+        super().tearDown()
 
     def _create_submission(self):
         content = b"id,pred\n1,0.1\n"
@@ -99,6 +109,9 @@ class SubmissionDetailAndCompareTests(TestCase):
 
 class RecentSubmissionsViewTests(TestCase):
     def setUp(self):
+        self._media_root = tempfile.mkdtemp()
+        self._override_media = override_settings(MEDIA_ROOT=self._media_root)
+        self._override_media.enable()
         self.client = Client()
         self.user = User.objects.create_user(username="recent-user", password="pass")
         self.problem = Problem.objects.create(
@@ -107,6 +120,11 @@ class RecentSubmissionsViewTests(TestCase):
             rating=1100,
             created_at=date.today(),
         )
+
+    def tearDown(self):
+        self._override_media.disable()
+        shutil.rmtree(self._media_root, ignore_errors=True)
+        super().tearDown()
 
     def _create_submission(self):
         content = b"id,pred\n1,0.5\n"
