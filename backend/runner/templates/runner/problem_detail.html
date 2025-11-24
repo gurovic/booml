@@ -57,13 +57,16 @@
             </p>
         {% endif %}
 
-        {% if data.answer_file %}
-            <p>
-                <strong>Файл с правильным ответом:</strong>
-                <a href="{{ data.answer_file.url }}" download="{{ data.answer_file.name }}">
-                    answer_data
-                </a>
-            </p>
+        {% if descriptor %}
+          <div class="metric-summary">
+            <strong>Метрика задачи:</strong>
+            <span class="metric-name">{{ descriptor.metric_name|default:"—" }}</span>
+            {% if descriptor.metric_code %}
+              <span class="metric-hint">используется кастомная реализация</span>
+            {% else %}
+              <span class="metric-hint">стандартная метрика</span>
+            {% endif %}
+          </div>
         {% endif %}
 
         <div class="submission-section">

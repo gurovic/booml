@@ -11,6 +11,12 @@ class Report(models.Model):
     log = models.TextField(verbose_name="Лог проверки")
     errors = models.TextField(verbose_name="Ошибки", blank=True)
     file_name = models.CharField(max_length=255, verbose_name="Имя файла")
+    test_data = models.JSONField(
+        null=True,
+        blank=True,
+        verbose_name="Данные тестирования",
+        help_text="Дополнительная информация, полученная от тестирующей системы",
+    )
     submitted_at = models.DateTimeField(auto_now_add=True, verbose_name="Время отправки")
     status = models.CharField(
         max_length=20,

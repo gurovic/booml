@@ -84,6 +84,21 @@ def run_prevalidation(submission: Submission) -> PreValidation:
         _append_error(prevalidation, "Cannot read file or invalid encoding")
         return _finalize_report(prevalidation, submission, start_ts)
 
+    sample_rows = []
+    sample_file = getattr(getattr(submission.problem, "data", None), "sample_submission_file", None)
+    sample_path = getattr(sample_file, "path", None)
+    if sample_path:
+        try:
+            with open(sample_path, "r", encoding="utf-8", newline="") as f:
+                sample_rows = list(csv.DictReader(f))
+        except Exception:
+            _append_error(prevalidation, "Cannot read sample submission file")
+    else:
+        sample_rows = []
+
+    if sample_rows and len(rows) != len(sample_rows):
+        _append_error(prevalidation, "Row count does not match sample submission")
+
     seen_ids = set()
     first_id = None
     last_id = None
@@ -102,6 +117,14 @@ def run_prevalidation(submission: Submission) -> PreValidation:
             _append_error(prevalidation, f"Duplicate ID '{row_id}' at line {line_no}")
         else:
             seen_ids.add(row_id)
+
+    if sample_rows and getattr(descriptor, "check_order", False):
+        for idx, (submission_row, sample_row) in enumerate(zip(rows, sample_rows), start=2):
+            sub_id = submission_row.get(id_column)
+            sample_id = sample_row.get(id_column)
+            if sub_id != sample_id:
+                _append_error(prevalidation, f"IDs out of order at line {idx}: {sub_id} -> {sample_id}")
+                break
 
     prevalidation.unique_ids = len(seen_ids)
     prevalidation.first_id = first_id

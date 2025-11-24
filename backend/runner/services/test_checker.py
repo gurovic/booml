@@ -22,27 +22,24 @@ class TestChecker(unittest.TestCase):
         
         # Мок для ProblemData
         self.mock_problem_data = Mock(spec=ProblemData)
-        self.mock_problem_data.answer_file = MagicMock()
-        self.mock_problem_data.answer_file.path = "/fake/path/answer.csv"
-        self.mock_problem_data.answer_file.name = "answer.csv"
         self.mock_problem_data.test_file = MagicMock()
         self.mock_problem_data.test_file.path = "/fake/path/test.csv"
-        self.mock_problem_data.test_file.name = "test.csv"
         
         # Мок для ProblemDescriptor - ВАЖНО: используем реальные строки!
         self.mock_problem_descriptor = Mock(spec=ProblemDescriptor)
         self.mock_problem_descriptor.id_column = "id"  # СТРОКА, не мок!
         self.mock_problem_descriptor.target_column = "target"  # СТРОКА, не мок!
-        self.mock_problem_descriptor.metric = "accuracy"  # СТРОКА, не мок!
-        self.mock_problem_descriptor.target_type = "int"
+        self.mock_problem_descriptor.metric_name = "accuracy"
+        self.mock_problem_descriptor.metric_code = ""
         
         # Мок для Submission
         self.mock_submission = Mock(spec=Submission)
         self.mock_submission.id = 1
         self.mock_submission.problem = self.mock_problem
-        self.mock_submission.metrics = {"accuracy": 0.0}
+        self.mock_submission.metrics = {}
         self.mock_submission.file = MagicMock()
         self.mock_submission.file.path = "/fake/path/submission.csv"
+        self.mock_submission.save = Mock()
         
         # Связываем моки через правильные related_name
         self.mock_problem.data = self.mock_problem_data  # related_name="data"
@@ -61,18 +58,26 @@ class TestChecker(unittest.TestCase):
         }
 
     def create_temp_csv(self, df, suffix=''):
-        """Создает временный CSV файл"""
+        """Создает временный CSV файл и регистрирует очистку"""
         temp_file = tempfile.NamedTemporaryFile(mode='w', suffix=f'{suffix}.csv', delete=False)
         df.to_csv(temp_file.name, index=False)
-        return temp_file.name
+        path = temp_file.name
+
+        def _cleanup():
+            if os.path.exists(path):
+                os.unlink(path)
+
+        self.addCleanup(_cleanup)
+        return path
 
     def tearDown(self):
         """Очистка после тестов"""
         pass
 
+    @patch('runner.services.checker.broadcast_metric_update')
     @patch('runner.services.checker.ReportGenerator')
     @patch('runner.services.checker.pd.read_csv')
-    def test_successful_check(self, mock_read_csv, mock_report_generator):
+    def test_successful_check(self, mock_read_csv, mock_report_generator, mock_broadcast):
         """Тест успешной проверки submission"""
         # Настраиваем моки
         mock_read_csv.side_effect = [
@@ -82,6 +87,7 @@ class TestChecker(unittest.TestCase):
         
         mock_report = Mock(spec=Report)
         mock_report.id = 1
+        mock_report.metric = 0.76
         mock_report_generator.return_value.create_report_from_testing_system.return_value = mock_report
         
         # Создаем временные файлы
@@ -102,6 +108,9 @@ class TestChecker(unittest.TestCase):
             self.assertIn('metric_name', result.outputs)
             self.assertEqual(result.outputs['metric_name'], 'accuracy')
             self.assertEqual(result.errors, '')
+            mock_broadcast.assert_called_once_with(1, 'accuracy', 0.76)
+            self.mock_submission.save.assert_called_once()
+            self.assertIn('metric', self.mock_submission.metrics)
             
         finally:
             # Удаляем временные файлы
@@ -132,24 +141,17 @@ class TestChecker(unittest.TestCase):
         self.assertFalse(result.ok)
         self.assertIn("ProblemDescriptor not found", result.errors)
 
-    @patch('runner.services.checker.ReportGenerator')
     @patch('runner.services.checker.pd.read_csv')
-    def test_check_with_missing_metric(self, mock_read_csv, mock_report_generator):
-        """Если метрика не указана в submission, используется настройка дескриптора"""
-        self.mock_submission.metrics = {}
-        mock_read_csv.side_effect = [
-            self.test_data['submission'],
-            self.test_data['ground_truth']
-        ]
-        mock_report = Mock(spec=Report)
-        mock_report.id = 1
-        mock_report_generator.return_value.create_report_from_testing_system.return_value = mock_report
-
+    def test_check_with_missing_metric(self, mock_read_csv):
+        """Тест проверки с отсутствующей метрикой"""
+        self.mock_problem_descriptor.metric_name = ""
+        self.mock_problem_descriptor.metric_code = ""
+        
         checker = SubmissionChecker()
         result = checker.check_submission(self.mock_submission)
-
-        self.assertTrue(result.ok)
-        self.assertEqual(result.outputs['metric_name'], 'accuracy')
+        
+        self.assertFalse(result.ok)
+        self.assertIn("Metric name not found for this task", result.errors)
 
     @patch('runner.services.checker.pd.read_csv')
     def test_check_with_invalid_submission_file(self, mock_read_csv):
@@ -218,9 +220,10 @@ class TestChecker(unittest.TestCase):
         metric_name = checker._get_metric_name(self.mock_submission)
         self.assertIsNone(metric_name)
 
+    @patch('runner.services.checker.broadcast_metric_update')
     @patch('runner.services.checker.ReportGenerator')
     @patch('runner.services.checker.pd.read_csv')
-    def test_check_submission_function(self, mock_read_csv, mock_report_generator):
+    def test_check_submission_function(self, mock_read_csv, mock_report_generator, mock_broadcast):
         """Тест функции check_submission"""
         mock_read_csv.side_effect = [
             self.test_data['submission'],
@@ -229,15 +232,19 @@ class TestChecker(unittest.TestCase):
         
         mock_report = Mock(spec=Report)
         mock_report.id = 1
+        mock_report.metric = 0.91
         mock_report_generator.return_value.create_report_from_testing_system.return_value = mock_report
         
         result = check_submission(self.mock_submission)
         
         self.assertIsInstance(result, CheckResult)
         self.assertTrue(result.ok)
+        mock_broadcast.assert_called_once_with(1, 'accuracy', 0.91)
 
+    @patch('runner.services.checker.broadcast_metric_update')
+    @patch('runner.services.checker.ReportGenerator')
     @patch('runner.services.checker.pd.read_csv')
-    def test_check_with_different_metric_types(self, mock_read_csv):
+    def test_check_with_different_metric_types(self, mock_read_csv, mock_report_generator, mock_broadcast):
         """Тест с разными типами метрик"""
         test_cases = [
             ('accuracy', 0.8),
@@ -249,11 +256,16 @@ class TestChecker(unittest.TestCase):
         
         for metric_name, expected_score in test_cases:
             with self.subTest(metric_name=metric_name):
-                self.mock_submission.metrics = {metric_name: 0.0}
+                self.mock_problem_descriptor.metric_name = metric_name
+                self.mock_problem_descriptor.metric_code = ""
                 mock_read_csv.side_effect = [
                     self.test_data['submission'],
                     self.test_data['ground_truth']
                 ]
+
+                mock_report = Mock(spec=Report)
+                mock_report.metric = 0.55
+                mock_report_generator.return_value.create_report_from_testing_system.return_value = mock_report
                 
                 checker = SubmissionChecker()
                 result = checker.check_submission(self.mock_submission)
@@ -261,24 +273,32 @@ class TestChecker(unittest.TestCase):
                 self.assertTrue(result.ok)
                 self.assertEqual(result.outputs['metric_name'], metric_name)
                 self.assertIsInstance(result.outputs['metric_score'], float)
+                mock_broadcast.assert_called_once_with(1, metric_name, 0.55)
+                mock_broadcast.reset_mock()
 
+    @patch('runner.services.checker.broadcast_metric_update')
     @patch('runner.services.checker.ReportGenerator')
     @patch('runner.services.checker.pd.read_csv')
-    def test_metric_fallback_to_target_type(self, mock_read_csv, mock_report_generator):
-        """Если в descriptor.metric пусто, выбираем метрику по типу таргета"""
-        self.mock_submission.metrics = {}
-        self.mock_problem_descriptor.metric = ""
-        self.mock_problem_descriptor.target_type = "float"
+    def test_custom_metric_code_execution(self, mock_read_csv, mock_report_generator, mock_broadcast):
         mock_read_csv.side_effect = [
             self.test_data['submission'],
-            self.test_data['ground_truth']
+            self.test_data['ground_truth'],
         ]
+
         mock_report = Mock(spec=Report)
-        mock_report.id = 1
+        mock_report.metric = 0.42
         mock_report_generator.return_value.create_report_from_testing_system.return_value = mock_report
+
+        self.mock_problem_descriptor.metric_name = "macro_iou"
+        self.mock_problem_descriptor.metric_code = (
+            "def compute_metric(y_true, y_pred):\n"
+            "    return {'metric': 0.5, 'macro_iou': 0.5}\n"
+        )
 
         checker = SubmissionChecker()
         result = checker.check_submission(self.mock_submission)
 
         self.assertTrue(result.ok)
-        self.assertEqual(result.outputs['metric_name'], 'rmse')
+        self.assertEqual(result.outputs['metric_name'], 'macro_iou')
+        self.assertIn('macro_iou', self.mock_submission.metrics)
+        mock_broadcast.assert_called_once_with(1, 'macro_iou', 0.42)
