@@ -53,6 +53,8 @@ class EditProblemPolygonViewTests(TestCase):
             "target_column": "prediction",
             "id_type": "int",
             "target_type": "float",
+            "metric_name": "rmse",
+            "metric_code": "",
         }
         payload.update(overrides)
         return payload
@@ -90,6 +92,7 @@ class EditProblemPolygonViewTests(TestCase):
                 id_type="str",
                 target_type="int",
                 check_order="on",
+                metric_name="accuracy",
             ),
         )
         self.assertEqual(resp.status_code, 302)
@@ -103,6 +106,8 @@ class EditProblemPolygonViewTests(TestCase):
         self.assertEqual(descriptor.id_type, "str")
         self.assertEqual(descriptor.target_type, "int")
         self.assertTrue(descriptor.check_order)
+        self.assertEqual(descriptor.metric_name, "accuracy")
+        self.assertFalse(descriptor.metric_code)
 
     def test_post_invalid_rating_shows_errors(self):
         self.client.force_login(self.author)
@@ -125,6 +130,32 @@ class EditProblemPolygonViewTests(TestCase):
         self.assertEqual(resp.status_code, 302)
         descriptor = ProblemDescriptor.objects.get(problem=self.problem)
         self.assertEqual(descriptor.id_column, "id")
+
+    def test_metric_name_must_be_known_without_code(self):
+        self.client.force_login(self.author)
+        resp = self.client.post(
+            self.url,
+            self._base_post_payload(metric_name="unknown_metric", metric_code=""),
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "Выберите метрику из списка")
+
+    def test_custom_metric_code_allows_any_name(self):
+        self.client.force_login(self.author)
+        resp = self.client.post(
+            self.url,
+            self._base_post_payload(
+                metric_name="macro_iou",
+                metric_code="def compute_metric(y_true, y_pred):\n    return {'metric': 1.0}",
+            ),
+        )
+        self.assertEqual(resp.status_code, 302)
+        descriptor = ProblemDescriptor.objects.get(problem=self.problem)
+        self.assertEqual(descriptor.metric_name, "macro_iou")
+        self.assertEqual(
+            descriptor.metric_code.strip(),
+            "def compute_metric(y_true, y_pred):\n    return {'metric': 1.0}",
+        )
 
     def test_upload_problem_files_updates_problem_data(self):
         ProblemData.objects.filter(problem=self.problem).delete()

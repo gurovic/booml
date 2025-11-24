@@ -117,6 +117,7 @@ def _session_cwd(path: Path):
 
 def create_session(session_id: str, *, now: datetime | None = None) -> RuntimeSession:
     current = _resolve_now(now)
+    _auto_cleanup_expired(now=current)
     existing = _sessions.get(session_id)
     if existing is not None:
         existing.updated_at = current
@@ -161,9 +162,11 @@ def create_session(session_id: str, *, now: datetime | None = None) -> RuntimeSe
 
 
 def get_session(session_id: str, *, touch: bool = True, now: datetime | None = None) -> RuntimeSession | None:
+    current = _resolve_now(now)
+    _auto_cleanup_expired(now=current)
     session = _sessions.get(session_id)
     if session and touch:
-        session.updated_at = _resolve_now(now)
+        session.updated_at = current
     return session
 
 
@@ -247,6 +250,19 @@ def register_runtime_shutdown_hooks() -> None:
 
 
 register_runtime_shutdown_hooks()
+
+
+def _auto_cleanup_expired(*, now: datetime | None = None) -> None:
+    ttl = _get_session_ttl_seconds()
+    cleanup_expired(ttl_seconds=ttl, now=now)
+
+
+def _get_session_ttl_seconds() -> int:
+    value = getattr(settings, "RUNTIME_SESSION_TTL_SECONDS", DEFAULT_SESSION_TTL_SECONDS)
+    try:
+        return max(0, int(value))
+    except (TypeError, ValueError):
+        return DEFAULT_SESSION_TTL_SECONDS
 
 
 def _require_session(session_id: str) -> RuntimeSession:
