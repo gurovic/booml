@@ -9,3 +9,4 @@ from .prevalidation import PreValidation
 from .leaderboard import Leaderboard
 from .notebook import Notebook
 from .problem import Problem
+from .tag import Tag
