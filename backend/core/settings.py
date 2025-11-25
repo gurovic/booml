@@ -168,6 +168,7 @@ CELERY_RESULT_BACKEND = "redis://localhost:6379/1"
 
 STATIC_ROOT = BASE_DIR / "staticfiles"
 
+RUNNER_USE_CELERY_QUEUE = os.environ.get("RUNNER_USE_CELERY_QUEUE", "0").lower() in {"1", "true", "yes"}
 CELERY_TASK_ALWAYS_EAGER = False  # для реального async
 CELERY_TASK_EAGER_PROPAGATES = True
 
