@@ -1,4 +1,4 @@
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from unittest.mock import patch, MagicMock
 
 from runner.services.worker import enqueue_submission_for_evaluation, evaluate_submission
@@ -7,12 +7,22 @@ from runner.models import Submission
 
 class TasksTestCase(TestCase):
 
+    @override_settings(RUNNER_USE_CELERY_QUEUE=True)
     @patch("runner.services.worker.evaluate_submission.delay")
     def test_enqueue_calls_worker_delay(self, mock_delay):
         submission_id = 1
         result = enqueue_submission_for_evaluation(submission_id)
         mock_delay.assert_called_once_with(submission_id)
         self.assertEqual(result, {"status": "enqueued", "submission_id": submission_id})
+
+    @override_settings(RUNNER_USE_CELERY_QUEUE=False)
+    @patch("runner.services.worker.evaluate_submission")
+    def test_enqueue_runs_inline_when_queue_disabled(self, mock_evaluate):
+        submission_id = 5
+        mock_evaluate.return_value = {"status": "ok"}
+        result = enqueue_submission_for_evaluation(submission_id)
+        mock_evaluate.assert_called_once_with(submission_id)
+        self.assertEqual(result, {"status": "ok"})
 
     @patch("runner.services.checker.check_submission")
     @patch("runner.models.Submission.objects.get")
@@ -27,7 +37,7 @@ class TasksTestCase(TestCase):
         # Мокаем результат чекера
         mock_result = MagicMock()
         mock_result.ok = True
-        mock_result.outputs = {"metric": "accuracy", "value": 0.95}
+        mock_result.outputs = {"metric_score": 0.95, "metric_name": "accuracy"}
         mock_result.errors = []
         mock_checker.return_value = mock_result
 
@@ -36,12 +46,14 @@ class TasksTestCase(TestCase):
         # ИСПРАВЛЕНО: используем pk вместо id
         mock_get.assert_called_once_with(pk=submission_id)  # БЫЛО: id=submission_id
         mock_checker.assert_called_once_with(mock_submission)
-        mock_submission.save.assert_called_once()
+        mock_submission.save.assert_called_once_with(update_fields=["status", "metrics"])
 
         # Проверяем поля сабмишена
-        self.assertEqual(mock_submission.status, "checked")
-        self.assertEqual(mock_submission.result_outputs, mock_result.outputs)
-        self.assertEqual(mock_submission.result_errors, mock_result.errors)
+        self.assertEqual(mock_submission.status, Submission.STATUS_ACCEPTED)
+        self.assertEqual(mock_submission.metrics, {
+            **mock_result.outputs,
+            "metric": mock_result.outputs["metric_score"],
+        })
 
         # Проверяем возвращаемое значение
-        self.assertEqual(result, {"submission_id": submission_id, "status": "checked"})
+        self.assertEqual(result, {"submission_id": submission_id, "status": Submission.STATUS_ACCEPTED})

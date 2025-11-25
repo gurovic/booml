@@ -48,7 +48,8 @@ class SubmissionChecker:
         if submission_df is None:
             return CheckResult(False, errors="Failed to load submission file")
 
-        ground_truth_df = self._load_ground_truth(getattr(problem_data, "test_file", None))
+        ground_truth_file = self._select_ground_truth_file(problem_data)
+        ground_truth_df = self._load_ground_truth(ground_truth_file)
         if ground_truth_df is None:
             return CheckResult(False, errors="Failed to load ground truth from problem data")
 
@@ -119,11 +120,23 @@ class SubmissionChecker:
             logger.info("Failed to load submission file %s", path)
             return None
 
+    def _select_ground_truth_file(self, problem_data):
+        """Возвращает файл с правильными ответами (answer_file -> test_file fallback)."""
+        for attr in ("answer_file", "test_file"):
+            file_field = getattr(problem_data, attr, None)
+            file_name = getattr(file_field, "name", "")
+            if file_field and file_name:
+                return file_field
+        logger.warning("No answer/test files available for problem %s", getattr(problem_data, "problem_id", "?"))
+        return None
+
     def _load_ground_truth(self, file_field) -> Optional[pd.DataFrame]:
-        """Загружаем ground truth из test_file ProblemData"""
+        """Загружаем ground truth из ProblemData"""
+        if not file_field:
+            return None
         path = getattr(file_field, "path", None)
         if not path:
-            logger.warning("Test file not available in ProblemData")
+            logger.warning("Ground truth file has no path (maybe not saved yet)")
             return None
         try:
             return pd.read_csv(path)
@@ -149,6 +162,29 @@ class SubmissionChecker:
             return metrics
 
         return None
+
+    def _resolve_metric_name(self, submission, descriptor: ProblemDescriptor) -> Optional[str]:
+        """Находит подходящую метрику из submission.metrics, descriptor.metric или по типу таргета."""
+        metric_name = self._get_metric_name(submission)
+        if metric_name:
+            return metric_name
+
+        descriptor_metric = getattr(descriptor, "metric", None)
+        if isinstance(descriptor_metric, str):
+            descriptor_metric = descriptor_metric.strip()
+            if descriptor_metric:
+                return descriptor_metric
+
+        return self._guess_metric_from_descriptor(descriptor)
+
+    def _guess_metric_from_descriptor(self, descriptor: ProblemDescriptor) -> str:
+        """Автоматический выбор метрики по типу таргета."""
+        target_type = (getattr(descriptor, "target_type", "") or "").lower()
+        if target_type == "float":
+            return "rmse"
+        if target_type in {"int", "str"}:
+            return "accuracy"
+        return "rmse"
 
     def _calculate_metric(
         self,

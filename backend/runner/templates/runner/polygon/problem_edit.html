@@ -82,6 +82,13 @@
         {% endif %}
       </div>
     </div>
+    <div class="form-group">
+      <label for="metric-input">Метрика (accuracy, rmse, f1 ...)</label>
+      <input id="metric-input" type="text" name="metric" value="{{ descriptor_form_data.metric }}" placeholder="auto">
+      {% if descriptor_errors.metric %}
+        <div class="errors">{{ descriptor_errors.metric }}</div>
+      {% endif %}
+    </div>
 
     <div class="form-group" style="flex-direction: row; align-items: center; gap: 8px;">
       <input id="check-order-checkbox" type="checkbox" name="check_order" {% if descriptor_form_data.check_order %}checked{% endif %}>
