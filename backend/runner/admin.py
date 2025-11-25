@@ -8,6 +8,8 @@ from .models import (
     Notebook,
     Cell,
     Contest,
+    Course,
+    CourseParticipant,
     PreValidation,
     Leaderboard,
     ProblemDescriptor,
@@ -103,3 +105,17 @@ class ProblemDescriptorAdmin(admin.ModelAdmin):
         return obj.has_custom_metric()
 
     has_custom_metric.boolean = True
+
+
+@admin.register(Course)
+class CourseAdmin(admin.ModelAdmin):
+    list_display = ("id", "title", "owner", "is_open", "created_at")
+    list_filter = ("is_open", "created_at")
+    search_fields = ("title", "owner__username")
+
+
+@admin.register(CourseParticipant)
+class CourseParticipantAdmin(admin.ModelAdmin):
+    list_display = ("id", "course", "user", "role", "is_owner", "added_at")
+    list_filter = ("role", "is_owner")
+    search_fields = ("course__title", "user__username")
