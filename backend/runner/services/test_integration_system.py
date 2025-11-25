@@ -1,4 +1,4 @@
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.contrib.auth import get_user_model
 
@@ -7,7 +7,10 @@ from .prevalidation_service import run_prevalidation
 from ..views.problem_detail import _report_is_valid
 from ..models import Submission, Problem, ProblemDescriptor
 
-
+@override_settings(
+  CELERY_TASK_ALWAYS_EAGER=True,
+  CELERY_TASK_EAGER_PROPAGATES=True
+)
 class IntegrationPrevalidationTest(TestCase):
   def setUp(self):
     self.user = get_user_model().objects.create(username="tester")
