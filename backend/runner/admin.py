@@ -68,10 +68,24 @@ class CellAdmin(admin.ModelAdmin):
 
 @admin.register(Contest)
 class ContestAdmin(admin.ModelAdmin):
-    list_display = ("id", "source", "_type", "difficulty", "start_time", "status", "open")
-    list_filter = ("status", "open")
-    search_fields = ("source",)
+    list_display = (
+        "id",
+        "title",
+        "courses_list",
+        "is_published",
+        "start_time",
+        "duration_minutes",
+        "created_by",
+        "created_at",
+    )
+    list_filter = ("is_published", "courses")
+    search_fields = ("title", "courses__title", "created_by__username")
     filter_horizontal = ("problems",)
+
+    def courses_list(self, obj):
+        return ", ".join(obj.courses.values_list("title", flat=True))
+
+    courses_list.short_description = "Courses"
 
 
 @admin.register(PreValidation)

@@ -7,7 +7,7 @@ def create_contest(request):
     if request.method == 'POST':
         form = ContestForm(request.POST)
         if form.is_valid():
-            form.save()
+            form.save(created_by=request.user)
             return redirect('contest/success')  # имя URL для страницы успеха
     else:
         form = ContestForm()
