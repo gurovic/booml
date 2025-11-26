@@ -13,6 +13,7 @@ from .models import (
     PreValidation,
     Leaderboard,
     ProblemDescriptor,
+    Tag
 )
 
 @admin.register(Report)  # Регистрируем модель в админке
@@ -119,3 +120,8 @@ class CourseParticipantAdmin(admin.ModelAdmin):
     list_display = ("id", "course", "user", "role", "is_owner", "added_at")
     list_filter = ("role", "is_owner")
     search_fields = ("course__title", "user__username")
+
+@admin.register(Tag)
+class TagAdmin(admin.ModelAdmin):
+    list_display = ("id", "name")
+    search_fields = ("name",)
