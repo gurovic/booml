@@ -72,21 +72,17 @@ class ContestAdmin(admin.ModelAdmin):
     list_display = (
         "id",
         "title",
-        "courses_list",
+        "course",
         "is_published",
+        "status",
         "start_time",
         "duration_minutes",
         "created_by",
         "created_at",
     )
-    list_filter = ("is_published", "courses")
-    search_fields = ("title", "courses__title", "created_by__username")
+    list_filter = ("is_published", "status", "course")
+    search_fields = ("title", "course__title", "created_by__username")
     filter_horizontal = ("problems",)
-
-    def courses_list(self, obj):
-        return ", ".join(obj.courses.values_list("title", flat=True))
-
-    courses_list.short_description = "Courses"
 
 
 @admin.register(PreValidation)

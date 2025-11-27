@@ -6,17 +6,24 @@ from .course import Course, CourseParticipant
 
 class Contest(models.Model):
     """
-    Contest bound to one or more courses; visibility controlled by publication state.
+    Contest is bound to a single course; visibility controlled by publication state and status.
     """
 
-    courses = models.ManyToManyField(
+    course = models.ForeignKey(
         Course,
+        on_delete=models.CASCADE,
         related_name="contests",
+        null=True,
     )
     title = models.CharField(max_length=255)
     description = models.TextField(blank=True, default="")
     problems = models.ManyToManyField("Problem", blank=True)
-    source = models.CharField(max_length=255, blank=True, default="")
+    source = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        help_text="Optional source label or namespace for the contest",
+    )
     start_time = models.DateTimeField(null=True, blank=True)
     duration_minutes = models.PositiveIntegerField(
         null=True,
@@ -30,6 +37,11 @@ class Contest(models.Model):
             "otherwise only course teachers can see it."
         ),
     )
+    class Status(models.IntegerChoices):
+        GOING = 0, "going"
+        AFTER_SOLVING = 1, "after-solving"
+
+    status = models.IntegerField(choices=Status.choices, default=Status.GOING)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.PROTECT,
@@ -42,17 +54,15 @@ class Contest(models.Model):
         ordering = ["-created_at"]
 
     def __str__(self):
-        first_course = self.courses.first()
-        suffix = f" ({first_course})" if first_course else ""
-        return f"{self.title}{suffix}"
+        return f"{self.title} ({self.course})"
 
     def is_visible_to(self, user):
         """
         Teachers of linked courses see drafts; published contests visible to course participants.
         """
         if self.is_published:
-            return self.courses.filter(participants__user=user).exists()
-        return self.courses.filter(
-            participants__user=user,
-            participants__role=CourseParticipant.Role.TEACHER,
+            return self.course.participants.filter(user=user).exists()
+        return self.course.participants.filter(
+            user=user,
+            role=CourseParticipant.Role.TEACHER,
         ).exists()
