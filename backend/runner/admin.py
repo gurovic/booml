@@ -69,9 +69,19 @@ class CellAdmin(admin.ModelAdmin):
 
 @admin.register(Contest)
 class ContestAdmin(admin.ModelAdmin):
-    list_display = ("id", "source", "_type", "difficulty", "start_time", "status", "open")
-    list_filter = ("status", "open")
-    search_fields = ("source",)
+    list_display = (
+        "id",
+        "title",
+        "course",
+        "is_published",
+        "status",
+        "start_time",
+        "duration_minutes",
+        "created_by",
+        "created_at",
+    )
+    list_filter = ("is_published", "status", "course")
+    search_fields = ("title", "course__title", "created_by__username")
     filter_horizontal = ("problems",)
 
 
