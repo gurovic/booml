@@ -14,9 +14,12 @@ class Migration(migrations.Migration):
             name="parent",
             field=models.ForeignKey(
                 blank=True,
-                help_text="Optional parent course to build hierarchies (e.g., sections/years).",
+                help_text=(
+                    "Optional parent course to build hierarchies (e.g., sections/years). "
+                    "Parent cannot be deleted while children exist."
+                ),
                 null=True,
-                on_delete=django.db.models.deletion.CASCADE,
+                on_delete=django.db.models.deletion.PROTECT,
                 related_name="children",
                 to="runner.course",
             ),
