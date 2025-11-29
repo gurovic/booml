@@ -120,7 +120,7 @@ class ProblemDescriptorAdmin(admin.ModelAdmin):
 
 @admin.register(Course)
 class CourseAdmin(admin.ModelAdmin):
-    list_display = ("id", "title", "owner", "is_open", "created_at")
+    list_display = ("id", "title", "owner", "parent", "is_open", "created_at")
     list_filter = ("is_open", "created_at")
     search_fields = ("title", "owner__username")
 
