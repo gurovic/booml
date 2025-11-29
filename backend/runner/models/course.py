@@ -9,6 +9,14 @@ class Course(models.Model):
         default=False,
         help_text="Visible to any authenticated user when True",
     )
+    parent = models.ForeignKey(
+        "self",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="children",
+        help_text="Optional parent course to build hierarchies (e.g., sections/years).",
+    )
     owner = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.PROTECT,
@@ -19,6 +27,7 @@ class Course(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
+        indexes = [models.Index(fields=["parent"], name="runner_course_parent_idx")]
 
     def __str__(self):
         return self.title

@@ -17,6 +17,7 @@ class CourseCreateInput:
     owner: User
     is_open: bool = False
     description: str = ""
+    parent: Course | None = None
     teachers: Iterable[User] | None = None
     students: Iterable[User] | None = None
 
@@ -38,6 +39,8 @@ def _unique_users(users: Iterable[User]) -> List[User]:
 def create_course(payload: CourseCreateInput) -> Course:
     if payload.owner is None or payload.owner.pk is None:
         raise ValueError("Owner must be a saved user instance")
+    if payload.parent is not None and payload.parent.pk is None:
+        raise ValueError("Parent course must be saved before use")
 
     teacher_candidates = [payload.owner]
     if payload.teachers:
@@ -61,6 +64,7 @@ def create_course(payload: CourseCreateInput) -> Course:
             description=payload.description or "",
             is_open=payload.is_open,
             owner=payload.owner,
+            parent=payload.parent,
         )
 
         participants = [
@@ -86,3 +90,86 @@ def create_course(payload: CourseCreateInput) -> Course:
         CourseParticipant.objects.bulk_create(participants)
 
     return course
+
+
+def add_users_to_course(
+    course: Course,
+    *,
+    teachers: Iterable[User] | None = None,
+    students: Iterable[User] | None = None,
+    allow_role_update: bool = True,
+):
+    """
+    Добавить пользователей в курс с указанными ролями.
+    Приоритет: teacher > student. Owner всегда остаётся teacher+owner.
+    Возвращает dict с созданными/обновлёнными участниками.
+    """
+    if course.pk is None:
+        raise ValueError("Course must be saved before adding participants")
+
+    teacher_users = _unique_users(teachers or [])
+    student_users = _unique_users(students or [])
+
+    teacher_ids = {u.pk for u in teacher_users}
+    lookup_ids = teacher_ids | {u.pk for u in student_users}
+
+    existing = {
+        p.user_id: p
+        for p in CourseParticipant.objects.filter(course=course, user_id__in=lookup_ids)
+    }
+
+    created: list[CourseParticipant] = []
+    updated: list[CourseParticipant] = []
+
+    with transaction.atomic():
+        # Teachers first (owner included)
+        for user in teacher_users:
+            participant = existing.get(user.pk)
+            desired_is_owner = user.pk == course.owner_id
+            if participant:
+                new_role = CourseParticipant.Role.TEACHER
+                new_is_owner = participant.is_owner or desired_is_owner
+                if allow_role_update and (
+                    participant.role != new_role or participant.is_owner != new_is_owner
+                ):
+                    participant.role = new_role
+                    participant.is_owner = new_is_owner
+                    participant.save(update_fields=["role", "is_owner"])
+                    updated.append(participant)
+                continue
+
+            participant = CourseParticipant.objects.create(
+                course=course,
+                user=user,
+                role=CourseParticipant.Role.TEACHER,
+                is_owner=desired_is_owner,
+            )
+            created.append(participant)
+            existing[user.pk] = participant
+
+        # Students, skip those already teachers/owner
+        for user in student_users:
+            if user.pk in teacher_ids or user.pk == course.owner_id:
+                continue
+
+            participant = existing.get(user.pk)
+            if participant:
+                if participant.role == CourseParticipant.Role.STUDENT:
+                    continue
+                if allow_role_update:
+                    participant.role = CourseParticipant.Role.STUDENT
+                    participant.is_owner = False
+                    participant.save(update_fields=["role", "is_owner"])
+                    updated.append(participant)
+                continue
+
+            participant = CourseParticipant.objects.create(
+                course=course,
+                user=user,
+                role=CourseParticipant.Role.STUDENT,
+                is_owner=False,
+            )
+            created.append(participant)
+            existing[user.pk] = participant
+
+    return {"created": created, "updated": updated}
