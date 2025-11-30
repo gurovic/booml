@@ -144,7 +144,7 @@ USE_TZ = True
 STATIC_URL = 'static/'
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
-RUNTIME_SANDBOX_ROOT = BASE_DIR / 'notebook_sessions'
+RUNTIME_SANDBOX_ROOT = BASE_DIR / "media" / "notebook_sessions"
 RUNTIME_VM_BACKEND = os.environ.get("RUNTIME_VM_BACKEND", "auto")
 RUNTIME_VM_IMAGE = os.environ.get("RUNTIME_VM_IMAGE", "runner-vm:latest")
 RUNTIME_VM_CPU = int(os.environ.get("RUNTIME_VM_CPU", "2"))
@@ -156,7 +156,7 @@ _runtime_vm_allowlist = os.environ.get("RUNTIME_VM_NET_ALLOWLIST", "")
 RUNTIME_VM_NET_ALLOWLIST = tuple(
     item.strip() for item in _runtime_vm_allowlist.split(",") if item.strip()
 )
-RUNTIME_VM_ROOT = Path(os.environ.get("RUNTIME_VM_ROOT", str(BASE_DIR / "notebook_sessions")))
+RUNTIME_VM_ROOT = Path(os.environ.get("RUNTIME_VM_ROOT", str(BASE_DIR / "media" / "notebook_sessions")))
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field
