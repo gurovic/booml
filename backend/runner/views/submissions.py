@@ -59,14 +59,24 @@ def _latest_result(submissions):
 def submission_list(request, problem_id):
     problem = get_object_or_404(Problem, id=problem_id)
     submissions_qs = Submission.objects.filter(problem=problem, user=request.user).order_by("-submitted_at")
+    try:
+        has_submissions = submissions_qs.exists()
+    except:
+        has_submissions = False
+
+    if has_submissions:
+        try:
+            submissions = _enrich_submissions(submissions_qs)
+        except:
+            submissions = []
+    else:
+        submissions = []
     submissions = _enrich_submissions(submissions_qs)
     context = {
         "problem": problem,
         "submissions": submissions,
         "result": _latest_result(submissions),
     }
-
-    return render(request, "runner/submissions/list.html", context)
 
 @login_required
 def recent_submissions(request):

@@ -22,6 +22,7 @@ class Problem(models.Model):
         default=800,
     )
     is_published = models.BooleanField("Опубликована", default=True)
+    tags = models.ManyToManyField("Tag", blank=True, related_name="problems")
     author = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         verbose_name="Автор",

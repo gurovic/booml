@@ -1,9 +1,13 @@
+channels==4.1.*
 Django==5.2.*
 django-reverse-js==0.1.8
-celery==5.3.0
+celery[redis]==5.3.0
 djangorestframework==3.16.1
 pydantic==2.12.3
 coverage==7.11.0
-pandas==2.2.3
+pandas==2.3.3
 numpy==2.1.*
 markdown>=3.5
+pytest-django==4.9.0
+python-dotenv
+daphne==4.1.*

@@ -1,9 +1,18 @@
-<div class="cell" data-cell-id="{{ cell.id }}" data-cell-type="{{ cell.cell_type }}">
+<div class="cell"
+     data-cell-id="{{ cell.id }}"
+     data-cell-type="{{ cell.cell_type }}"
+     data-cell-order="{{ cell.execution_order }}">
     <div class="cell-header">
         <div class="cell-title">
             Ячейка {{ cell.execution_order|add:1 }}
         </div>
         <div class="cell-actions">
+            <button type="button" data-action="move-up">↑</button>
+            <button type="button" data-action="move-down">↓</button>
+            <button type="button" data-action="copy-cell">Копировать</button>
+            <button type="button" data-action="paste-cell-before" data-paste-button disabled>Вставить ↑</button>
+            <button type="button" data-action="paste-cell-after" data-paste-button disabled>Вставить ↓</button>
+            <button type="button" data-action="duplicate-cell">Дублировать</button>
             {% if cell.cell_type == cell.CODE %}
                 <button type="button" data-action="run-cell">Запустить</button>
             {% endif %}
@@ -13,6 +22,27 @@
             <div class="cell-status-indicator" data-cell-status data-status="idle">Ожидание</div>
         {% endif %}
     </div>
+
+    {% if cell.cell_type == cell.TEXT %}
+    <div class="cell-content text-cell" data-text-container>
+        <div class="text-display" data-text-display>
+            {{ cell.content|safe }}
+        </div>
+
+        <div class="text-editor" data-text-editor hidden>
+            <textarea data-text-textarea>{{ cell.content }}</textarea>
+
+            <div class="text-editor-actions">
+                <button type="button" data-action="save-text">Сохранить</button>
+                <button type="button" data-action="cancel-text">Отмена</button>
+            </div>
+        </div>
+
+        <div class="text-actions">
+            <button type="button" data-action="edit-text">Редактировать</button>
+        </div>
+    </div>
+    {% endif %}
 
     {% if cell.cell_type == cell.LATEX %}
         <div class="cell-content latex-cell" data-latex-container>
@@ -28,7 +58,7 @@
                 <button type="button" data-action="edit-latex">Редактировать</button>
             </div>
         </div>
-    {% else %}
+    {% elif cell.cell_type == cell.CODE %}
         <div class="cell-content">
             <textarea placeholder="Введите ваш код здесь...">{{ cell.content }}</textarea>
             <div class="output" id="output-{{ cell.id }}">

@@ -26,6 +26,35 @@
         <h1>{{ problem.title }}</h1>
         <p><strong>Сложность:</strong> {{ problem.rating }}</p>
 
+        <div class="tags-container">
+            <button class="tags-toggle" onclick="toggleTags()">Показать теги</button>
+
+            <div id="tags-list" style="display:none; margin-top:10px;">
+                {% if problem.tags.all %}
+                    {% for tag in problem.tags.all %}
+                        <span class="tag">{{ tag.name }}</span>
+                    {% endfor %}
+                {% else %}
+                    <p>Теги отсутствуют</p>
+                {% endif %}
+            </div>
+        </div>
+
+        <script>
+        function toggleTags() {
+            const block = document.getElementById("tags-list");
+            const btn = document.querySelector(".tags-toggle");
+
+            if (block.style.display === "none") {
+                block.style.display = "block";
+                btn.innerText = "Скрыть теги";
+            } else {
+                block.style.display = "none";
+                btn.innerText = "Показать теги";
+            }
+        }
+        </script>
+
         <div class="problem-statement">
             {{ problem.render_statement|safe }}
         </div>
@@ -57,13 +86,16 @@
             </p>
         {% endif %}
 
-        {% if data.answer_file %}
-            <p>
-                <strong>Файл с правильным ответом:</strong>
-                <a href="{{ data.answer_file.url }}" download="{{ data.answer_file.name }}">
-                    answer_data
-                </a>
-            </p>
+        {% if descriptor %}
+          <div class="metric-summary">
+            <strong>Метрика задачи:</strong>
+            <span class="metric-name">{{ descriptor.metric_name|default:"—" }}</span>
+            {% if descriptor.metric_code %}
+              <span class="metric-hint">используется кастомная реализация</span>
+            {% else %}
+              <span class="metric-hint">стандартная метрика</span>
+            {% endif %}
+          </div>
         {% endif %}
 
         <div class="submission-section">
@@ -115,6 +147,8 @@
                 </a>
             </p>
         {% endif %}
+
+        {% include "runner/submissions/list.html" with limit=5 %}
     </div>
 </body>
 </html>

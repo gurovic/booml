@@ -8,9 +8,12 @@ from .models import (
     Notebook,
     Cell,
     Contest,
+    Course,
+    CourseParticipant,
     PreValidation,
     Leaderboard,
     ProblemDescriptor,
+    Tag
 )
 
 @admin.register(Report)  # Регистрируем модель в админке
@@ -66,9 +69,19 @@ class CellAdmin(admin.ModelAdmin):
 
 @admin.register(Contest)
 class ContestAdmin(admin.ModelAdmin):
-    list_display = ("id", "source", "_type", "difficulty", "start_time", "status", "open")
-    list_filter = ("status", "open")
-    search_fields = ("source",)
+    list_display = (
+        "id",
+        "title",
+        "course",
+        "is_published",
+        "status",
+        "start_time",
+        "duration_minutes",
+        "created_by",
+        "created_at",
+    )
+    list_filter = ("is_published", "status", "course")
+    search_fields = ("title", "course__title", "created_by__username")
     filter_horizontal = ("problems",)
 
 
@@ -87,5 +100,38 @@ class LeaderboardAdmin(admin.ModelAdmin):
 
 @admin.register(ProblemDescriptor)
 class ProblemDescriptorAdmin(admin.ModelAdmin):
-    list_display = ("id", "problem", "id_column", "target_column", "check_order", "created_at")
+    list_display = (
+        "id",
+        "problem",
+        "id_column",
+        "target_column",
+        "metric_name",
+        "has_custom_metric",
+        "check_order",
+        "created_at",
+    )
     search_fields = ("problem__title",)
+
+    def has_custom_metric(self, obj):
+        return obj.has_custom_metric()
+
+    has_custom_metric.boolean = True
+
+
+@admin.register(Course)
+class CourseAdmin(admin.ModelAdmin):
+    list_display = ("id", "title", "owner", "parent", "is_open", "created_at")
+    list_filter = ("is_open", "created_at")
+    search_fields = ("title", "owner__username")
+
+
+@admin.register(CourseParticipant)
+class CourseParticipantAdmin(admin.ModelAdmin):
+    list_display = ("id", "course", "user", "role", "is_owner", "added_at")
+    list_filter = ("role", "is_owner")
+    search_fields = ("course__title", "user__username")
+
+@admin.register(Tag)
+class TagAdmin(admin.ModelAdmin):
+    list_display = ("id", "name")
+    search_fields = ("name",)

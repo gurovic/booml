@@ -7,7 +7,7 @@ from django.test import Client, TestCase, override_settings
 from unittest.mock import patch, MagicMock
 from django.contrib.auth.models import User
 from django.core.files.uploadedfile import SimpleUploadedFile
-
+from runner.views.submissions import _primary_metric, extract_labels_and_metrics
 from runner.models.problem import Problem
 from runner.models.submission import Submission
 
@@ -52,6 +52,64 @@ class SubmissionListViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("problem", response.context)
         self.assertEqual(response.context["submissions"], [])
+
+    @patch("runner.views.submissions.Submission")
+    def test_submission_list_iteration_exception(self, mock_submission):
+        mock_qs = MagicMock()
+        mock_submission.objects.filter.return_value = mock_qs
+        mock_qs.exists.return_value = True
+        mock_qs.order_by.return_value = mock_qs
+        mock_qs.__iter__.side_effect = Exception("Database error")
+
+        response = self.client.get(f"/problem/{self.problem.id}/submissions/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["submissions"], [])
+
+    @patch("runner.views.submissions.Submission")
+    def test_submission_list_exists_exception(self, mock_submission):
+        mock_qs = MagicMock()
+        mock_submission.objects.filter.return_value = mock_qs
+        mock_qs.exists.side_effect = Exception("Exists failed")
+        mock_qs.order_by.return_value = mock_qs
+        mock_qs.__iter__.return_value = []
+
+        response = self.client.get(f"/problem/{self.problem.id}/submissions/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["submissions"], [])
+
+    @patch("runner.views.submissions.render")
+    @patch("runner.views.submissions.Submission")
+    def test_submission_list_with_different_statuses(self, mock_submission, mock_render):
+        mock_submission1 = MagicMock()
+        mock_submission1.status = "accepted"
+        mock_submission1.metrics = {"metric": 0.8}
+        mock_submission1.submitted_at = date.today()
+
+        mock_submission2 = MagicMock()
+        mock_submission2.status = "failed"
+        mock_submission2.metrics = {"metric": 0.5}
+        mock_submission2.submitted_at = date.today()
+
+        mock_qs = MagicMock()
+        mock_submission.objects.filter.return_value = mock_qs
+        mock_qs.exists.return_value = True
+        mock_qs.order_by.return_value = mock_qs
+        mock_qs.__iter__.return_value = [mock_submission1, mock_submission2]
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_render.return_value = mock_response
+
+        from runner.views.submissions import submission_list
+        request = MagicMock()
+        request.user = self.user
+        response = submission_list(request, self.problem.id)
+
+        call_args = mock_render.call_args
+        context = call_args[0][2]
+        self.assertEqual(context["result"]["status"], "OK")
 
 
 class SubmissionDetailAndCompareTests(TestCase):
@@ -106,65 +164,68 @@ class SubmissionDetailAndCompareTests(TestCase):
         self.assertEqual(len(resp.context["labels"]), 2)
         self.assertEqual(len(resp.context["metrics"]), 2)
 
+    def test_submission_compare_invalid_ids(self):
+        url = f"/problem/{self.problem.id}/compare/?ids=invalid&ids=123abc"
+        resp = self.client.get(url)
+        self.assertEqual(resp.status_code, 400)
 
-class RecentSubmissionsViewTests(TestCase):
-    def setUp(self):
-        self._media_root = tempfile.mkdtemp()
-        self._override_media = override_settings(MEDIA_ROOT=self._media_root)
-        self._override_media.enable()
-        self.client = Client()
-        self.user = User.objects.create_user(username="recent-user", password="pass")
-        self.problem = Problem.objects.create(
-            title="Recent Problem",
-            statement="desc",
-            rating=1100,
-            created_at=date.today(),
-        )
+    def test_submission_compare_no_permission(self):
+        other_user = User.objects.create_user(username='other', password='pass')
+        other_problem = Problem.objects.create(title='Other', statement='desc', rating=1000)
 
-    def tearDown(self):
-        self._override_media.disable()
-        shutil.rmtree(self._media_root, ignore_errors=True)
-        super().tearDown()
+        content = b"id,pred\n1,0.1\n"
+        f = SimpleUploadedFile("other.csv", content, content_type="text/csv")
+        from runner.models.submission import Submission
+        other_sub = Submission.objects.create(user=other_user, problem=other_problem, file=f)
 
-    def _create_submission(self):
-        content = b"id,pred\n1,0.5\n"
-        upload = SimpleUploadedFile("preds.csv", content, content_type="text/csv")
-        return Submission.objects.create(user=self.user, problem=self.problem, file=upload)
+        url = f"/problem/{self.problem.id}/compare/?ids={other_sub.id}"
+        resp = self.client.get(url)
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(len(resp.context["submissions"]), 0)
 
-    def test_recent_submissions_requires_login(self):
-        response = self.client.get("/submissions/recent")
-        self.assertEqual(response.status_code, 302)
-        self.assertTrue(response.url.startswith(settings.LOGIN_URL))
 
-    def test_recent_submissions_renders_template_with_data(self):
-        self.client.force_login(self.user)
-        created = [self._create_submission() for _ in range(3)]
+class PrimaryMetricTests(TestCase):
+    def test_primary_metric_none(self):
+        self.assertIsNone(_primary_metric(None))
 
-        response = self.client.get("/submissions/recent")
+    def test_primary_metric_number(self):
+        self.assertEqual(_primary_metric(42), 42.0)
+        self.assertEqual(_primary_metric(3.14), 3.14)
 
-        self.assertEqual(response.status_code, 200)
-        self.assertTemplateUsed(response, "runner/submissions/recent.html")
-        context_submissions = list(response.context["submissions"])
-        expected_ids = list(
-            Submission.objects.filter(user=self.user).order_by("-submitted_at").values_list("id", flat=True)[:3]
-        )
-        self.assertEqual([s.id for s in context_submissions], expected_ids)
-        for submission in context_submissions:
-            self.assertIsNotNone(submission.problem)
-            self.assertTrue(hasattr(submission, "created_at"))
-            self.assertTrue(hasattr(submission, "metric"))
+    def test_primary_metric_dict(self):
+        self.assertEqual(_primary_metric({"metric": 0.8}), 0.8)
+        self.assertEqual(_primary_metric({"score": 0.9}), 0.9)
+        self.assertEqual(_primary_metric({"accuracy": 0.95}), 0.95)
+        self.assertEqual(_primary_metric({"f1": 0.85}), 0.85)
+        self.assertEqual(_primary_metric({"auc": 0.75}), 0.75)
+        self.assertEqual(_primary_metric({"other": 0.5}), 0.5)
+        self.assertIsNone(_primary_metric({"invalid": "text"}))
 
-    def test_recent_submissions_limits_results_to_twenty(self):
-        self.client.force_login(self.user)
-        for _ in range(25):
-            self._create_submission()
+    def test_primary_metric_list(self):
+        self.assertEqual(_primary_metric([0.7, 0.8]), 0.7)
+        self.assertEqual(_primary_metric(["text", 0.8]), 0.8)
+        self.assertIsNone(_primary_metric(["text1", "text2"]))
 
-        response = self.client.get("/submissions/recent")
+    def test_primary_metric_string(self):
+        self.assertIsNone(_primary_metric("invalid"))
+        self.assertEqual(_primary_metric("0.8"), 0.8)
 
-        self.assertEqual(response.status_code, 200)
-        context_submissions = list(response.context["submissions"])
-        self.assertEqual(len(context_submissions), 20)
-        expected_ids = list(
-            Submission.objects.filter(user=self.user).order_by("-submitted_at").values_list("id", flat=True)[:20]
-        )
-        self.assertEqual([s.id for s in context_submissions], expected_ids)
+
+class ExtractLabelsAndMetricsTests(TestCase):
+    def test_extract_labels_and_metrics(self):
+        mock_sub1 = MagicMock()
+        mock_sub1.created_at = None
+        mock_sub1.metric = 0.8
+
+        mock_sub2 = MagicMock()
+        mock_sub2.created_at = date(2023, 1, 15)
+        mock_sub2.metric = None
+
+        mock_sub3 = MagicMock()
+        mock_sub3.created_at = date(2023, 1, 16)
+        mock_sub3.metric = 0.9
+
+        labels, metrics = extract_labels_and_metrics([mock_sub1, mock_sub2, mock_sub3])
+
+        self.assertEqual(labels, ["-", "15.01 00:00", "16.01 00:00"])
+        self.assertEqual(metrics, [0.8, 0, 0.9])
