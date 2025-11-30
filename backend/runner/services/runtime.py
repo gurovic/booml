@@ -373,6 +373,18 @@ class JupyterExecutionBackend(ExecutionBackend):
 
     def run_code(self, session_id: str, code: str) -> RuntimeExecutionResult:
         session = self._require_session(session_id)
+        vm = session.vm
+        if vm and vm.backend == "docker":
+            agent = get_vm_agent(session_id, session)
+            result_payload = agent.exec_code(code)
+            session.updated_at = _resolve_now()
+            return RuntimeExecutionResult(
+                stdout=result_payload.get("stdout", ""),
+                stderr=result_payload.get("stderr", ""),
+                error=result_payload.get("error"),
+                variables=result_payload.get("variables", {}),
+            )
+
         kernel = self._ensure_kernel(session_id, session)
         pip_stdout = io.StringIO()
         pip_stderr = io.StringIO()
@@ -412,7 +424,7 @@ class JupyterExecutionBackend(ExecutionBackend):
         try:
             from jupyter_client import KernelManager
         except Exception as exc:  # pragma: no cover - defensive
-            raise RuntimeError("Jupyter backend requires jupyter_client to be installed") from exc
+            raise RuntimeError(f"Jupyter backend requires jupyter_client to be installed: {exc}") from exc
 
         kernel_cmd = None
         env = os.environ.copy()
@@ -465,17 +477,17 @@ class JupyterExecutionBackend(ExecutionBackend):
             return
         self._terminate_kernel_process(context.client, context.manager)
 
-    def _terminate_kernel_process(self, client, manager) -> None:
+    def _terminate_kernel_process(self, client: Any | None, manager: Any | None) -> None:
         try:
             if client:
                 client.stop_channels()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Failed to stop kernel client channels: %s", exc)
         try:
             if manager:
                 manager.shutdown_kernel(now=True)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Failed to shutdown kernel manager: %s", exc)
 
     # --- kernel execution helpers ----------------------------------------
 
@@ -617,6 +629,7 @@ def _build_backend() -> ExecutionBackend:
         .strip()
         .lower()
     )
+    # Treat empty/default/legacy strings as legacy for backward compatibility.
     if backend_name in ("", "legacy", "default"):
         return LegacyExecutionBackend(sessions=_sessions)
     if backend_name == "jupyter":
@@ -637,8 +650,8 @@ def reset_execution_backend() -> None:
     if _backend is not None:
         try:
             _backend.cleanup_all_sessions()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Failed to cleanup sessions during backend reset: %s", exc)
     _backend = None
     _sessions.clear()
 

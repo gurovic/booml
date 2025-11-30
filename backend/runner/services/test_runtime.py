@@ -10,6 +10,7 @@ from runner.services import vm_agent, vm_manager
 from runner.services.runtime import (
     DEFAULT_SESSION_TTL_SECONDS,
     _sessions,
+    _resolve_now,
     cleanup_expired,
     cleanup_all_sessions,
     create_session,
@@ -20,6 +21,7 @@ from runner.services.runtime import (
     run_code,
     SessionNotFoundError,
 )
+from runner.services.vm_models import VirtualMachine, VmNetworkPolicy, VmResources, VmSpec, VirtualMachineState
 
 
 class RuntimeServiceTests(SimpleTestCase):
@@ -33,6 +35,7 @@ class RuntimeServiceTests(SimpleTestCase):
             RUNTIME_VM_ROOT=self._vm_tmp.name,
             RUNTIME_VM_BACKEND="local",
             RUNTIME_SESSION_TTL_SECONDS=10,
+            RUNTIME_EXECUTION_BACKEND="legacy",
         )
         self.override.enable()
         vm_manager.reset_vm_manager()
@@ -204,7 +207,7 @@ class RuntimeServiceTests(SimpleTestCase):
 
     @override_settings(RUNTIME_EXECUTION_BACKEND="jupyter")
     def test_jupyter_backend_runs_code_with_files_and_variables(self) -> None:
-        session = create_session("jpy")
+        create_session("jpy")
         result = run_code("jpy", "open('note.txt','w').write('hi')\nvalue = 42\nprint('done')")
         self.assertIn("done", result.stdout)
         self.assertIsNone(result.error)
@@ -215,7 +218,7 @@ class RuntimeServiceTests(SimpleTestCase):
             self.assertTrue((refreshed.workdir / "note.txt").exists())
 
 
-class JupyterBackendMockedKernelTests(SimpleTestCase):
+class JupyterBackendMockTests(SimpleTestCase):
     """Exercise Jupyter backend behavior without spawning a real kernel."""
 
     def setUp(self) -> None:
@@ -249,7 +252,7 @@ class JupyterBackendMockedKernelTests(SimpleTestCase):
         with patch("runner.services.vm_agent.subprocess.run", _fake_subprocess_run), patch(
             "jupyter_client.KernelManager", _FakeKernelManager
         ):
-            session = create_session("jpy-mock")
+            create_session("jpy-mock")
             result = run_code(
                 "jpy-mock",
                 "!pip install pandas\nopen('note.txt','w').write('hi')\nvalue = 7\nprint('done')",
@@ -272,7 +275,77 @@ class JupyterBackendMockedKernelTests(SimpleTestCase):
             self.assertEqual(result.stdout, "")
 
 
+class JupyterDockerIsolationTests(SimpleTestCase):
+    """Ensure Jupyter backend delegates to VM agent when VM backend is docker."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self._sandbox_tmp = TemporaryDirectory()
+        reset_execution_backend()
+        vm_agent.reset_vm_agents()
+        _sessions.clear()
+        self.override = override_settings(
+            RUNTIME_SANDBOX_ROOT=self._sandbox_tmp.name,
+            RUNTIME_VM_BACKEND="docker",
+            RUNTIME_EXECUTION_BACKEND="jupyter",
+        )
+        self.override.enable()
+
+    def tearDown(self) -> None:
+        reset_execution_backend()
+        vm_agent.reset_vm_agents()
+        _sessions.clear()
+        self.override.disable()
+        self._sandbox_tmp.cleanup()
+        super().tearDown()
+
+    def test_docker_vm_uses_agent(self) -> None:
+        workdir = Path(self._sandbox_tmp.name) / "runner-test"
+        vm = _build_fake_docker_vm(workdir)
+
+        class DummyAgent:
+            def exec_code(self, code: str) -> dict:
+                (workdir / "flag.txt").write_text("inside", encoding="utf-8")
+                return {"stdout": "ok\n", "stderr": "", "error": None, "variables": {"x": "1"}}
+
+        with patch("runner.services.runtime._ensure_session_vm", return_value=vm), patch(
+            "runner.services.runtime.get_vm_agent", return_value=DummyAgent()
+        ):
+            session = create_session("docker-sess")
+            self.assertEqual(session.vm.backend, "docker")
+            result = run_code("docker-sess", "x = 1")
+            self.assertEqual(result.stdout.strip(), "ok")
+            self.assertEqual(result.variables.get("x"), "1")
+            self.assertTrue((workdir / "flag.txt").exists())
+
+
+def _build_fake_docker_vm(workdir: Path) -> VirtualMachine:
+    workdir.mkdir(parents=True, exist_ok=True)
+    spec = VmSpec(
+        image="runner-vm:latest",
+        resources=VmResources(cpu=2, ram_mb=2048, disk_gb=8),
+        network=VmNetworkPolicy(outbound="deny", allowlist=()),
+        ttl_sec=3600,
+    )
+    now = _resolve_now()
+    return VirtualMachine(
+        id="runner-fake",
+        session_id="docker-sess",
+        spec=spec,
+        state=VirtualMachineState.RUNNING,
+        workspace_path=workdir,
+        created_at=now,
+        updated_at=now,
+        backend="docker",
+        backend_data={"container": "runner-fake"},
+    )
+
+
 def _fake_subprocess_run(cmd, capture_output=False, text=False, cwd=None, timeout=None, env=None):
+    if not isinstance(cmd, (list, tuple)):
+        raise AssertionError(f"cmd should be list/tuple, got {type(cmd)}")
+    if not any("pip" in str(part) for part in cmd):
+        raise AssertionError(f"Expected pip command, got: {cmd}")
     class DummyResult:
         def __init__(self) -> None:
             self.stdout = "pip-ok\n"
