@@ -1,95 +1,55 @@
 from __future__ import annotations
 
-import io
 import json
 import os
-import subprocess
-import sys
+import threading
 import time
-import traceback
 import uuid
 from abc import ABC, abstractmethod
-from contextlib import contextmanager, redirect_stderr, redirect_stdout
 from pathlib import Path
-from typing import Dict
-import logging
+from typing import Dict, Any
 
+from .execution_engine import ExecutionEngine
 from .vm_models import VirtualMachine
 
 _AGENT_CACHE: Dict[str, VmAgent] = {}
-logger = logging.getLogger(__name__)
-
-
-def _handle_shell_commands(code: str, workdir: Path, stdout_buffer: io.StringIO, stderr_buffer: io.StringIO, python_exec: Path | None = None) -> str:
-    lines = code.split('\n')
-    filtered_lines = []
-    
-    for line in lines:
-        stripped = line.lstrip()
-        if stripped.startswith('!pip install '):
-            pip_cmd = stripped[1:]
-            try:
-                parts = pip_cmd.split()[2:]
-                cmd = [str(python_exec or 'python'), '-m', 'pip', 'install'] + parts + ['--disable-pip-version-check']
-                result = subprocess.run(
-                    cmd,
-                    capture_output=True,
-                    text=True,
-                    cwd=str(workdir),
-                    timeout=300,
-                    env={**os.environ, 'PIP_ROOT_USER_ACTION': 'ignore'}
-                )
-                stdout_buffer.write(result.stdout)
-                stdout_buffer.write(result.stderr)
-            except Exception as e:
-                stdout_buffer.write(f"Error executing {pip_cmd}: {str(e)}\n")
-        else:
-            filtered_lines.append(line)
-    
-    return '\n'.join(filtered_lines)
-
 
 
 class VmAgent(ABC):
-    """Executes code within a VM and returns stdout/stderr/errors."""
 
     @abstractmethod
     def exec_code(self, code: str) -> Dict[str, object]:
         ...
 
     def shutdown(self) -> None:
-        """Optional hook when session resets."""
         return
 
 
 class LocalVmAgent(VmAgent):
-    """Legacy in-process executor for backwards compatibility."""
 
     def __init__(self, session):
         self.session = session
+        self._ipython_lock = threading.Lock()
 
-    def exec_code(self, code: str) -> Dict[str, object]:
-        namespace = self.session.namespace
-        stdout_buffer = io.StringIO()
-        stderr_buffer = io.StringIO()
-        error = None
-        with _workspace_cwd(self.session.workdir), redirect_stdout(stdout_buffer), redirect_stderr(stderr_buffer):
-            try:
-                code = _handle_shell_commands(code, self.session.workdir, stdout_buffer, stderr_buffer, self.session.python_exec)
-                if code.strip():
-                    exec(code, namespace, namespace)
-            except Exception:
-                error = traceback.format_exc()
-        return {
-            "stdout": stdout_buffer.getvalue(),
-            "stderr": stderr_buffer.getvalue(),
-            "error": error,
-            "variables": _snapshot_variables(namespace),
-        }
+    def exec_code(self, code: str) -> Dict[str, Any]:
+        ExecutionEngine.reset_ipython()
+        
+        engine = ExecutionEngine(
+            workdir=self.session.workdir,
+            namespace=self.session.namespace,
+            session_env=self.session.env or os.environ.copy(),
+            python_exec=self.session.python_exec,
+            shell_lock=self._ipython_lock,
+        )
+        
+        result = engine.execute(code)
+        
+        self.session.namespace = engine.namespace
+        
+        return result
 
 
 class FilesystemVmAgent(VmAgent):
-    """Communicates with the VM agent via the shared workspace directory."""
 
     def __init__(self, vm: VirtualMachine, *, timeout: float = 60.0):
         self.vm = vm
@@ -139,38 +99,13 @@ def dispose_vm_agent(session_id: str) -> None:
     if agent:
         try:
             agent.shutdown()
-        except Exception as exc:  # pragma: no cover - defensive
-            logger.debug("Failed to shutdown VM agent %s: %s", session_id, exc)
+        except Exception:
+            pass
 
 
 def reset_vm_agents() -> None:
     for session_id in list(_AGENT_CACHE.keys()):
         dispose_vm_agent(session_id)
-
-
-def _snapshot_variables(namespace: Dict[str, object]) -> Dict[str, str]:
-    snapshot: Dict[str, str] = {}
-    for key, value in namespace.items():
-        if key == "__builtins__":
-            continue
-        if key.startswith("__") and key.endswith("__"):
-            continue
-        try:
-            snapshot[key] = repr(value)
-        except Exception:
-            snapshot[key] = f"<unrepresentable {type(value).__name__}>"
-    return snapshot
-
-
-@contextmanager
-def _workspace_cwd(path: Path):
-    original = Path.cwd()
-    path.mkdir(parents=True, exist_ok=True)
-    os.chdir(path)
-    try:
-        yield
-    finally:
-        os.chdir(original)
 
 
 __all__ = ["get_vm_agent", "dispose_vm_agent", "reset_vm_agents"]

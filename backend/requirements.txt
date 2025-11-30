@@ -11,3 +11,4 @@ markdown>=3.5
 pytest-django==4.9.0
 python-dotenv
 daphne==4.1.*
+ipython==7.12.0

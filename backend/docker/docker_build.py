@@ -32,6 +32,11 @@ def parse_args() -> argparse.Namespace:
         default=str(DEFAULT_DOCKERFILE),
         help="Путь к Dockerfile (по умолчанию backend/docker/Dockerfile).",
     )
+    parser.add_argument(
+        "--no-cache",
+        action="store_true",
+        help="Не использовать кэш при сборке образа.",
+    )
     return parser.parse_args()
 
 
@@ -42,8 +47,13 @@ def main() -> int:
         print(f"ERROR: Dockerfile {dockerfile} не найден.", file=sys.stderr)
         return 1
     context = dockerfile.parent
-    cmd = ["docker", "build", "-t", args.image, "-f", str(dockerfile), str(context)]
+    cmd = ["docker", "build", "-t", args.image, "-f", str(dockerfile)]
+    if args.no_cache:
+        cmd.append("--no-cache")
+    cmd.append(str(context))
     print(f"[docker-build] Building {args.image} from {dockerfile}")
+    if args.no_cache:
+        print("[docker-build] Building without cache...")
     try:
         subprocess.run(cmd, check=True)
     except subprocess.CalledProcessError as exc:
