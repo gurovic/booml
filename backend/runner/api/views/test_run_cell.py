@@ -9,7 +9,7 @@ from django.urls import reverse
 
 from runner.models import Notebook, Cell
 from runner.services import vm_agent, vm_manager
-from runner.services.runtime import _sessions, create_session
+from runner.services.runtime import _sessions, create_session, reset_execution_backend
 
 User = get_user_model()
 
@@ -18,6 +18,7 @@ class RunCellViewTests(TestCase):
     def setUp(self):
         self.sandbox_tmp = TemporaryDirectory()
         self.vm_tmp = TemporaryDirectory()
+        reset_execution_backend()
         self.override = override_settings(
             RUNTIME_SANDBOX_ROOT=self.sandbox_tmp.name,
             RUNTIME_VM_ROOT=self.vm_tmp.name,
@@ -34,6 +35,7 @@ class RunCellViewTests(TestCase):
         _sessions.clear()
 
     def tearDown(self):
+        reset_execution_backend()
         vm_manager.reset_vm_manager()
         vm_agent.reset_vm_agents()
         _sessions.clear()
@@ -115,4 +117,3 @@ class RunCellViewTests(TestCase):
         data = resp.json()
         self.assertIsNone(data["error"])
         self.assertIn("success", data["stdout"])
-
