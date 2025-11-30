@@ -1,10 +1,15 @@
 from datetime import date
-from django.test import Client, TestCase
+import shutil
+import tempfile
+
+from django.conf import settings
+from django.test import Client, TestCase, override_settings
 from unittest.mock import patch, MagicMock
 from django.contrib.auth.models import User
 from django.core.files.uploadedfile import SimpleUploadedFile
-from runner.views.submissions import _primary_metric, extract_labels_and_metrics, submission_list_data
+from runner.views.submissions import _primary_metric, extract_labels_and_metrics
 from runner.models.problem import Problem
+from runner.models.submission import Submission
 
 
 class SubmissionListViewTests(TestCase):
@@ -109,6 +114,9 @@ class SubmissionListViewTests(TestCase):
 
 class SubmissionDetailAndCompareTests(TestCase):
     def setUp(self):
+        self._media_root = tempfile.mkdtemp()
+        self._override_media = override_settings(MEDIA_ROOT=self._media_root)
+        self._override_media.enable()
         self.client = Client()
         self.user = User.objects.create_user(username='u2', password='pass')
         self.problem = Problem.objects.create(
@@ -118,6 +126,11 @@ class SubmissionDetailAndCompareTests(TestCase):
             created_at=date.today(),
         )
         self.client.force_login(self.user)
+    
+    def tearDown(self):
+        self._override_media.disable()
+        shutil.rmtree(self._media_root, ignore_errors=True)
+        super().tearDown()
 
     def _create_submission(self):
         content = b"id,pred\n1,0.1\n"
