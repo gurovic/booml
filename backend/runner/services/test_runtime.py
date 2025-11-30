@@ -15,6 +15,7 @@ from runner.services.runtime import (
     create_session,
     get_session,
     reset_session,
+    reset_execution_backend,
     stop_session,
     run_code,
     SessionNotFoundError,
@@ -26,6 +27,7 @@ class RuntimeServiceTests(SimpleTestCase):
         super().setUp()
         self._sandbox_tmp = TemporaryDirectory()
         self._vm_tmp = TemporaryDirectory()
+        reset_execution_backend()
         self.override = override_settings(
             RUNTIME_SANDBOX_ROOT=self._sandbox_tmp.name,
             RUNTIME_VM_ROOT=self._vm_tmp.name,
@@ -38,6 +40,7 @@ class RuntimeServiceTests(SimpleTestCase):
         _sessions.clear()
 
     def tearDown(self) -> None:
+        reset_execution_backend()
         _sessions.clear()
         vm_agent.reset_vm_agents()
         vm_manager.reset_vm_manager()
@@ -198,3 +201,168 @@ class RuntimeServiceTests(SimpleTestCase):
         self.assertTrue(target.exists())
         self.assertEqual(target.read_bytes(), b"foobar")
         self.assertEqual(result.variables["payload"], "b'foobar'")
+
+    @override_settings(RUNTIME_EXECUTION_BACKEND="jupyter")
+    def test_jupyter_backend_runs_code_with_files_and_variables(self) -> None:
+        session = create_session("jpy")
+        result = run_code("jpy", "open('note.txt','w').write('hi')\nvalue = 42\nprint('done')")
+        self.assertIn("done", result.stdout)
+        self.assertIsNone(result.error)
+        self.assertEqual(result.variables.get("value"), "42")
+        refreshed = get_session("jpy", touch=False)
+        self.assertIsNotNone(refreshed)
+        if refreshed:
+            self.assertTrue((refreshed.workdir / "note.txt").exists())
+
+
+class JupyterBackendMockedKernelTests(SimpleTestCase):
+    """Exercise Jupyter backend behavior without spawning a real kernel."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self._sandbox_tmp = TemporaryDirectory()
+        self._vm_tmp = TemporaryDirectory()
+        reset_execution_backend()
+        self.override = override_settings(
+            RUNTIME_SANDBOX_ROOT=self._sandbox_tmp.name,
+            RUNTIME_VM_ROOT=self._vm_tmp.name,
+            RUNTIME_VM_BACKEND="local",
+            RUNTIME_SESSION_TTL_SECONDS=10,
+            RUNTIME_EXECUTION_BACKEND="jupyter",
+        )
+        self.override.enable()
+        vm_manager.reset_vm_manager()
+        vm_agent.reset_vm_agents()
+        _sessions.clear()
+
+    def tearDown(self) -> None:
+        reset_execution_backend()
+        _sessions.clear()
+        vm_agent.reset_vm_agents()
+        vm_manager.reset_vm_manager()
+        self.override.disable()
+        self._sandbox_tmp.cleanup()
+        self._vm_tmp.cleanup()
+        super().tearDown()
+
+    def test_pip_and_output_are_collected(self) -> None:
+        with patch("runner.services.vm_agent.subprocess.run", _fake_subprocess_run), patch(
+            "jupyter_client.KernelManager", _FakeKernelManager
+        ):
+            session = create_session("jpy-mock")
+            result = run_code(
+                "jpy-mock",
+                "!pip install pandas\nopen('note.txt','w').write('hi')\nvalue = 7\nprint('done')",
+            )
+            self.assertIn("pip-ok", result.stdout)
+            self.assertIn("done", result.stdout)
+            self.assertIsNone(result.error)
+            self.assertEqual(result.variables.get("value"), "7")
+            refreshed = get_session("jpy-mock", touch=False)
+            self.assertIsNotNone(refreshed)
+            if refreshed:
+                self.assertTrue((refreshed.workdir / "note.txt").exists())
+
+    def test_kernel_error_is_returned(self) -> None:
+        with patch("jupyter_client.KernelManager", _FakeKernelManager):
+            create_session("jpy-error")
+            result = run_code("jpy-error", "raise_error()")
+            self.assertIsNotNone(result.error)
+            self.assertIn("ValueError", result.error)
+            self.assertEqual(result.stdout, "")
+
+
+def _fake_subprocess_run(cmd, capture_output=False, text=False, cwd=None, timeout=None, env=None):
+    class DummyResult:
+        def __init__(self) -> None:
+            self.stdout = "pip-ok\n"
+            self.stderr = ""
+
+    return DummyResult()
+
+
+class _FakeKernelClient:
+    def __init__(self, workdir: Path):
+        self.workdir = Path(workdir)
+        self._iopub: list[dict] = []
+        self._shell: list[dict] = []
+        self._msg_counter = 0
+
+    def start_channels(self) -> None:
+        return
+
+    def wait_for_ready(self, timeout: float | None = None) -> None:
+        return
+
+    def execute(self, code: str, store_history: bool, allow_stdin: bool, stop_on_error: bool, user_expressions: dict):
+        self._msg_counter += 1
+        msg_id = f"msg-{self._msg_counter}"
+        stdout_text = "done\n" if "print(" in code else ""
+        if stdout_text:
+            self._iopub.append(
+                {
+                    "parent_header": {"msg_id": msg_id},
+                    "msg_type": "stream",
+                    "content": {"name": "stdout", "text": stdout_text},
+                }
+            )
+        if "note.txt" in code:
+            target = self.workdir / "note.txt"
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text("hi")
+        if "raise_error" in code:
+            self._iopub.append(
+                {
+                    "parent_header": {"msg_id": msg_id},
+                    "msg_type": "error",
+                    "content": {"ename": "ValueError", "evalue": "boom", "traceback": ["ValueError: boom"]},
+                }
+            )
+        self._iopub.append({"parent_header": {"msg_id": msg_id}, "msg_type": "status", "content": {"execution_state": "idle"}})
+
+        var_payload = {}
+        if user_expressions:
+            value_text = None
+            if "value" in code and "=" in code:
+                value_text = code.split("=")[-1].strip().split()[0]
+            var_payload = {"__booml_vars": {"status": "ok", "data": {"text/plain": str({"value": value_text})}}}
+        content = {"status": "ok", "user_expressions": var_payload}
+        if "raise_error" in code:
+            content["status"] = "error"
+            content["ename"] = "ValueError"
+            content["evalue"] = "boom"
+            content["traceback"] = ["ValueError: boom"]
+        self._shell.append({"parent_header": {"msg_id": msg_id}, "content": content})
+        return msg_id
+
+    def get_iopub_msg(self, timeout: float | None = None):
+        if not self._iopub:
+            raise Empty()
+        return self._iopub.pop(0)
+
+    def get_shell_msg(self, timeout: float | None = None):
+        if not self._shell:
+            raise Empty()
+        return self._shell.pop(0)
+
+    def stop_channels(self) -> None:
+        return
+
+
+class _FakeKernelManager:
+    def __init__(self, *_, **__):
+        self._client: _FakeKernelClient | None = None
+        self.started = False
+        self.cwd: Path | None = None
+
+    def start_kernel(self, cwd: str | None = None, env: dict | None = None) -> None:
+        self.started = True
+        self.cwd = Path(cwd) if cwd else None
+        self._client = _FakeKernelClient(self.cwd or Path("."))
+
+    def client(self) -> _FakeKernelClient:
+        assert self._client is not None
+        return self._client
+
+    def shutdown_kernel(self, now: bool = False) -> None:
+        self.started = False

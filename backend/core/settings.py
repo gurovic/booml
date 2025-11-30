@@ -157,6 +157,8 @@ RUNTIME_VM_NET_ALLOWLIST = tuple(
     item.strip() for item in _runtime_vm_allowlist.split(",") if item.strip()
 )
 RUNTIME_VM_ROOT = Path(os.environ.get("RUNTIME_VM_ROOT", str(BASE_DIR / "media" / "notebook_sessions")))
+# RUNTIME_EXECUTION_BACKEND = os.environ.get("RUNTIME_EXECUTION_BACKEND", "legacy")
+RUNTIME_EXECUTION_BACKEND = "jupyter"
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field
