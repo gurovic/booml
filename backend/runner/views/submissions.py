@@ -56,27 +56,34 @@ def _latest_result(submissions):
     }
 
 @login_required
-def submission_list(request, problem_id):
+def submission_list(request, problem_id, *, as_context=False, limit=None):
     problem = get_object_or_404(Problem, id=problem_id)
     submissions_qs = Submission.objects.filter(problem=problem, user=request.user).order_by("-submitted_at")
-    try:
-        has_submissions = submissions_qs.exists()
-    except:
-        has_submissions = False
+    submissions = []
 
-    if has_submissions:
-        try:
-            submissions = _enrich_submissions(submissions_qs)
-        except:
-            submissions = []
-    else:
+    try:
+        if submissions_qs.exists():
+            try:
+                submissions = _enrich_submissions(submissions_qs)
+            except Exception:
+                submissions = []
+    except Exception:
         submissions = []
-    submissions = _enrich_submissions(submissions_qs)
+
     context = {
         "problem": problem,
         "submissions": submissions,
         "result": _latest_result(submissions),
+        "limit": limit,
     }
+
+    if as_context:
+        return context
+
+    response = render(request, "runner/submissions/list.html", context)
+    # Expose context for internal callers without TestClient helpers.
+    response.context_data = context
+    return response
 
 @login_required
 def recent_submissions(request):
