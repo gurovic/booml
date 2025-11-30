@@ -28,7 +28,7 @@ class SessionNotFoundError(Exception):
 
 DEFAULT_SESSION_TTL_SECONDS = 3600
 DEFAULT_RUNTIME_ROOT = Path(
-    getattr(settings, "RUNTIME_SANDBOX_ROOT", Path(settings.BASE_DIR) / "notebook_sessions")
+    getattr(settings, "RUNTIME_SANDBOX_ROOT", Path(settings.BASE_DIR) / "media" / "notebook_sessions")
 )
 DEFAULT_RUNTIME_ROOT.mkdir(parents=True, exist_ok=True)
 
