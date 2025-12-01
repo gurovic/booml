@@ -54,7 +54,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'channels',
     'django_reverse_js',
-    'runner',
+    'runner.apps.RunnerConfig',
     'rest_framework',
     'corsheaders'
 ]
@@ -175,6 +175,10 @@ CELERY_BROKER_URL = "redis://localhost:6379/0"
 CELERY_RESULT_BACKEND = "redis://localhost:6379/1"
 
 STATIC_ROOT = BASE_DIR / "staticfiles"
+
+STATICFILES_DIRS = [
+    BASE_DIR / "runner" / "static",
+]
 
 RUNNER_USE_CELERY_QUEUE = os.environ.get("RUNNER_USE_CELERY_QUEUE", "0").lower() in {"1", "true", "yes"}
 CELERY_TASK_ALWAYS_EAGER = False  # для реального async
