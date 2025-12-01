@@ -55,7 +55,7 @@ INSTALLED_APPS = [
     'channels',
     'django_reverse_js',
     'runner.apps.RunnerConfig',
-    'rest_framework'
+    'rest_framework',
     'corsheaders'
 ]
 
