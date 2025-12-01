@@ -13,3 +13,4 @@ python-dotenv
 daphne==4.1.*
 jupyter-client==8.6.2
 ipykernel==6.29.5
+django-cors-headers==4.9.0
