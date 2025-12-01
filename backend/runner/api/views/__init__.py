@@ -10,3 +10,4 @@ from .sessions import (
     ensure_notebook_access,
 )
 from .run_cell import RunCellView
+from .courses import CourseCreateView, CourseParticipantsUpdateView

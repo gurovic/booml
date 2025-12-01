@@ -118,11 +118,19 @@ class ProblemDescriptorAdmin(admin.ModelAdmin):
     has_custom_metric.boolean = True
 
 
+class CourseParticipantInline(admin.TabularInline):
+    model = CourseParticipant
+    extra = 0
+    fields = ("user", "role", "is_owner", "added_at")
+    readonly_fields = ("added_at",)
+
+
 @admin.register(Course)
 class CourseAdmin(admin.ModelAdmin):
-    list_display = ("id", "title", "owner", "is_open", "created_at")
+    list_display = ("id", "title", "owner", "parent", "is_open", "created_at")
     list_filter = ("is_open", "created_at")
     search_fields = ("title", "owner__username")
+    inlines = [CourseParticipantInline]
 
 
 @admin.register(CourseParticipant)
