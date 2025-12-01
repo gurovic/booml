@@ -148,6 +148,17 @@ class SubmissionDetailAndCompareTests(TestCase):
         self.assertTrue(hasattr(ctx_sub, "created_at"))
         self.assertTrue(hasattr(ctx_sub, "metric"))
 
+    def test_submission_detail_includes_ws_client(self):
+        sub = self._create_submission()
+        resp = self.client.get(f"/submission/{sub.id}/")
+        self.assertEqual(resp.status_code, 200)
+        # Response content should include the JS snippet and JSON script tag
+        content = resp.content.decode('utf-8')
+        self.assertIn('id="submission-id"', content)
+        # The JS contains '/ws/submissions/' as a string; the complete URL is built at runtime using the submission id
+        self.assertIn('/ws/submissions/', content)
+        self.assertIn('new WebSocket', content)
+
     def test_submission_compare_requires_ids(self):
         resp = self.client.get(f"/problem/{self.problem.id}/compare/")
         self.assertEqual(resp.status_code, 400)
