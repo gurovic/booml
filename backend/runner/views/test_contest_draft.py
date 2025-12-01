@@ -27,11 +27,14 @@ class CreateContestViewTests(TestCase):
         data = {
             "title": "Via view",
             "description": "",
-            "source": "",
+            "source": "vsoch/2025/final",
             "start_time": "",
-            "duration_minutes": "",
+            "duration_minutes": "120",
             "is_published": True,
             "status": 0,
+            "scoring": "icpc",
+            "registration_type": "approval",
+            "is_rated": True,
         }
         request = self.factory.post("/", data=data)
         request.user = self.teacher
@@ -43,11 +46,20 @@ class CreateContestViewTests(TestCase):
         self.assertEqual(payload["title"], "Via view")
         self.assertEqual(payload["course"], self.course.id)
         self.assertTrue(payload["is_published"])
+        self.assertTrue(payload["is_rated"])
+        self.assertEqual(payload["scoring"], "icpc")
+        self.assertEqual(payload["registration_type"], "approval")
+        self.assertEqual(payload["duration_minutes"], 120)
+        self.assertEqual(payload["status"], 0)
 
         contest = Contest.objects.get(title="Via view")
         self.assertEqual(contest.course, self.course)
         self.assertEqual(contest.created_by, self.teacher)
         self.assertTrue(contest.is_published)
+        self.assertTrue(contest.is_rated)
+        self.assertEqual(contest.scoring, "icpc")
+        self.assertEqual(contest.registration_type, "approval")
+        self.assertEqual(contest.duration_minutes, 120)
 
     def test_non_teacher_gets_forbidden(self):
         student = User.objects.create_user(username="student", password="pass")
