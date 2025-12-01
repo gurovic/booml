@@ -1,7 +1,7 @@
 {
   "backend": "auto",
   "image": "runner-vm:latest",
-  "root": "notebook_sessions",
+  "root": "media/notebook_sessions",
   "cpu": 2,
   "ram_mb": 4096,
   "disk_gb": 32,

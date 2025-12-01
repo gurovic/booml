@@ -30,7 +30,7 @@ def get_vm_config() -> VmConfig:
     ttl_sec = int(getattr(settings, "RUNTIME_VM_TTL_SEC", 3600))
     net_outbound = str(getattr(settings, "RUNTIME_VM_NET_OUTBOUND", "deny"))
     allowlist = _normalize_allowlist(getattr(settings, "RUNTIME_VM_NET_ALLOWLIST", ()))
-    root_value = getattr(settings, "RUNTIME_VM_ROOT", None) or (Path(settings.BASE_DIR) / "notebook_sessions")
+    root_value = getattr(settings, "RUNTIME_VM_ROOT", None) or (Path(settings.BASE_DIR) / "media" / "notebook_sessions")
     root_path = _resolve_root(root_value)
     root_path.mkdir(parents=True, exist_ok=True)
 
