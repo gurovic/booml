@@ -3,7 +3,7 @@
 <p><b>Задача:</b> {{ submission.problem.title }}</p>
 <p><b>Дата:</b> {{ submission.created_at|date:"d.m.Y H:i" }}</p>
 <p><b>Статус:</b> {{ submission.get_status_display }}</p>
-<p><b>Метрика:</b> {% if submission.metric %}{{ submission.metric }}{% else %}-{% endif %}</p>
+<p><b>Метрика:</b> {{ submission.metric }}</p>
 
 {% if submission.file %}
 <p><a href="{{ submission.file.url }}">Скачать загруженный файл</a></p>

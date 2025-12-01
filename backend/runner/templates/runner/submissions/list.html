@@ -31,7 +31,7 @@
       <td>{{ submission.created_at|date:"d.m.Y H:i" }}</td>
       <td>{{ submission.get_status_display }}</td>
       {% if result and result.status == "OK" %}
-        <td>{% if submission.metric %}{{ submission.metric }}{% else %}-{% endif %}</td>
+        <td>{{ submission.metric }}</td>
       {% endif %}
       <td><a href="{% url 'runner:submission_detail' submission.id %}">Открыть</a></td>
     </tr>
