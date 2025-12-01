@@ -1,6 +1,7 @@
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.test import TestCase
+from django.core.exceptions import ValidationError
 
 from runner.models import Course, CourseParticipant
 from runner.services.course_service import (

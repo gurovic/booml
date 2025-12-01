@@ -16,7 +16,7 @@ class VmConfigTests(SimpleTestCase):
                 config = get_vm_config()
         self.assertEqual(config.backend, "local")
         self.assertTrue(config.root_dir.is_absolute())
-        self.assertEqual(config.root_dir, settings.BASE_DIR / "notebook_sessions")
+        self.assertEqual(config.root_dir, settings.BASE_DIR / "media" / "notebook_sessions")
 
     def test_auto_backend_with_docker_prefers_docker(self) -> None:
         fake_root = Path(settings.BASE_DIR) / "custom_sessions"

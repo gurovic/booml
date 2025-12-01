@@ -149,7 +149,7 @@ def add_users_to_course(
                 new_role = CourseParticipant.Role.TEACHER
                 new_is_owner = participant.is_owner or desired_is_owner
 
-                # Always fix owner flag even when role updates are disabled.
+                # Всегда чиним owner-флаг, даже если обновление ролей запрещено.
                 if desired_is_owner and not participant.is_owner:
                     participant.role = new_role
                     participant.is_owner = True
