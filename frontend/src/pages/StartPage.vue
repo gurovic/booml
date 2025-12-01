@@ -15,7 +15,7 @@ onMounted(async () => {
         const data = await getStartMessage()
         message.value = data.message
     } catch(err) {
-        message = 'Error getting message'
+        message.value = 'Error getting message'
         console.error(err)
     }
 })
