@@ -63,7 +63,12 @@ class LocalVmBackend(VmBackend):
     ) -> VirtualMachine:
         vm_dir = self._vm_dir(vm_id)
         if vm_dir.exists():
-            raise VmAlreadyExistsError(f"VM {vm_id} already exists at {vm_dir}")
+            # If directory exists but no metadata, it's a stale state - clean it up
+            metadata_path = self._metadata_path(vm_dir)
+            if not metadata_path.exists():
+                shutil.rmtree(vm_dir, ignore_errors=True)
+            else:
+                raise VmAlreadyExistsError(f"VM {vm_id} already exists at {vm_dir}")
 
         vm_dir.mkdir(parents=True, exist_ok=False)
         workspace = vm_dir / "workspace"
@@ -88,6 +93,11 @@ class LocalVmBackend(VmBackend):
         vm_dir = self._vm_dir(vm_id)
         if not vm_dir.exists():
             raise VmNotFoundError(f"VM {vm_id} was not found under {self.root}")
+        # If directory exists but no metadata, it's a stale state - clean it up and re-raise
+        metadata_path = self._metadata_path(vm_dir)
+        if not metadata_path.exists():
+            shutil.rmtree(vm_dir, ignore_errors=True)
+            raise VmNotFoundError(f"Metadata is missing for VM at {vm_dir}")
         return self._read_metadata(vm_dir)
 
     def delete_vm(self, vm_id: str) -> None:
@@ -175,7 +185,13 @@ class DockerVmBackend(VmBackend):
     ) -> VirtualMachine:
         vm_dir = self._vm_dir(vm_id)
         if vm_dir.exists():
-            raise VmAlreadyExistsError(f"VM {vm_id} already exists at {vm_dir}")
+            # If directory exists but no metadata, it's a stale state - clean it up
+            metadata_path = self._metadata_path(vm_dir)
+            if not metadata_path.exists():
+                shutil.rmtree(vm_dir, ignore_errors=True)
+            else:
+                raise VmAlreadyExistsError(f"VM {vm_id} already exists at {vm_dir}")
+        
         vm_dir.mkdir(parents=True, exist_ok=False)
 
         workspace = vm_dir / "workspace"
@@ -209,6 +225,14 @@ class DockerVmBackend(VmBackend):
         vm_dir = self._vm_dir(vm_id)
         if not vm_dir.exists():
             raise VmNotFoundError(f"VM {vm_id} was not found under {self.root}")
+        # If directory exists but no metadata, it's a stale state - clean it up and re-raise
+        metadata_path = self._metadata_path(vm_dir)
+        if not metadata_path.exists():
+            container = self._read_container_name(vm_dir)
+            if container:
+                self._run_docker(("rm", "-f", container), check=False)
+            shutil.rmtree(vm_dir, ignore_errors=True)
+            raise VmNotFoundError(f"Metadata is missing for VM at {vm_dir}")
         return self._read_metadata(vm_dir)
 
     def delete_vm(self, vm_id: str) -> None:
