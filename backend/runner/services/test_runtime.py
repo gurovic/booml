@@ -279,6 +279,46 @@ class JupyterBackendMockTests(SimpleTestCase):
             self.assertIn("ValueError", result.error)
             self.assertEqual(result.stdout, "")
 
+    def test_magic_command_percent_time(self) -> None:
+        """Test %time magic command execution"""
+        with patch("jupyter_client.KernelManager", _FakeKernelManager):
+            create_session("jpy-magic-time")
+            result = run_code("jpy-magic-time", "%time x = 1 + 1")
+            self.assertIsNone(result.error)
+            # Magic commands should be processed by kernel without error
+
+    def test_magic_command_percent_pwd(self) -> None:
+        """Test %pwd magic command (print working directory)"""
+        with patch("jupyter_client.KernelManager", _FakeKernelManager):
+            create_session("jpy-magic-pwd")
+            result = run_code("jpy-magic-pwd", "%pwd")
+            self.assertIsNone(result.error)
+            # Should execute without error
+
+    def test_magic_command_percent_pip(self) -> None:
+        """Test %pip magic command for package installation"""
+        with patch("jupyter_client.KernelManager", _FakeKernelManager):
+            create_session("jpy-magic-pip")
+            result = run_code("jpy-magic-pip", "%pip install requests")
+            self.assertIsNone(result.error)
+            # Jupyter kernel supports %pip natively
+
+    def test_shell_command_with_magic(self) -> None:
+        """Test shell commands (!) work alongside magic commands"""
+        with patch("jupyter_client.KernelManager", _FakeKernelManager):
+            create_session("jpy-shell-cmd")
+            result = run_code("jpy-shell-cmd", "!echo 'test'\nprint('done')")
+            self.assertIn("done", result.stdout)
+            self.assertIsNone(result.error)
+
+    def test_cell_magic_bash(self) -> None:
+        """Test %%bash cell magic command"""
+        with patch("jupyter_client.KernelManager", _FakeKernelManager):
+            create_session("jpy-bash-magic")
+            result = run_code("jpy-bash-magic", "%%bash\necho 'hello'\necho 'world'")
+            self.assertIsNone(result.error)
+            # Cell magics should be handled by kernel
+
 
 class JupyterDockerIsolationTests(SimpleTestCase):
     """Ensure Jupyter backend delegates to VM agent when VM backend is docker."""
@@ -380,7 +420,20 @@ class _FakeKernelClient:
     def execute(self, code: str, store_history: bool, allow_stdin: bool, stop_on_error: bool, user_expressions: dict):
         self._msg_counter += 1
         msg_id = f"msg-{self._msg_counter}"
-        stdout_text = "done\n" if "print(" in code else ""
+        
+        # Collect output from code execution
+        stdout_parts = []
+        
+        # Handle shell commands like !pip install
+        if "!pip" in code:
+            stdout_parts.append("pip-ok\n")
+        
+        # Handle print statements
+        if "print(" in code:
+            stdout_parts.append("done\n")
+        
+        stdout_text = "".join(stdout_parts)
+        
         if stdout_text:
             self._iopub.append(
                 {

@@ -386,24 +386,13 @@ class JupyterExecutionBackend(ExecutionBackend):
             )
 
         kernel = self._ensure_kernel(session_id, session)
-        pip_stdout = io.StringIO()
-        pip_stderr = io.StringIO()
-        filtered_code = _handle_shell_commands(
-            code,
-            session.workdir,
-            pip_stdout,
-            pip_stderr,
-            kernel.python_exec,
-        )
-        effective_code = filtered_code if filtered_code.strip() else "pass"
+        effective_code = code if code.strip() else "pass"
         kernel_result = self._execute_in_kernel(kernel, effective_code)
         session.updated_at = _resolve_now()
-        stdout = pip_stdout.getvalue() + kernel_result.stdout
-        stderr = pip_stderr.getvalue() + kernel_result.stderr
 
         return RuntimeExecutionResult(
-            stdout=stdout,
-            stderr=stderr,
+            stdout=kernel_result.stdout,
+            stderr=kernel_result.stderr,
             error=kernel_result.error,
             variables=kernel_result.variables,
         )
