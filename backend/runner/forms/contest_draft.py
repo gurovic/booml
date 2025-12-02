@@ -17,6 +17,9 @@ class ContestForm(forms.ModelForm):
             "duration_minutes",
             "is_published",
             "status",
+            "scoring",
+            "registration_type",
+            "is_rated",
             "problems",
         ]
 

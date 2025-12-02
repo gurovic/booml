@@ -30,6 +30,32 @@ class Contest(models.Model):
         blank=True,
         help_text="Contest duration in minutes",
     )
+    class Scoring(models.TextChoices):
+        ICPC = "icpc", "ICPC (penalty by time)"
+        IOI = "ioi", "IOI (sum of scores)"
+        PARTIAL = "partial", "Partial scoring"
+
+    scoring = models.CharField(
+        max_length=20,
+        choices=Scoring.choices,
+        default=Scoring.IOI,
+        help_text="How points are aggregated for the contest",
+    )
+    class Registration(models.TextChoices):
+        OPEN = "open", "Open"
+        APPROVAL = "approval", "By approval"
+        INVITE = "invite", "By invitation"
+
+    registration_type = models.CharField(
+        max_length=20,
+        choices=Registration.choices,
+        default=Registration.OPEN,
+        help_text="Who can register / how participants join the contest",
+    )
+    is_rated = models.BooleanField(
+        default=False,
+        help_text="If true, contest results affect participant rating",
+    )
     is_published = models.BooleanField(
         default=False,
         help_text=(

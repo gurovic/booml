@@ -28,6 +28,10 @@ def create_contest(request, course_id):
                 "course": contest.course_id,
                 "is_published": contest.is_published,
                 "status": contest.status,
+                "is_rated": contest.is_rated,
+                "scoring": contest.scoring,
+                "registration_type": contest.registration_type,
+                "duration_minutes": contest.duration_minutes,
             },
             status=201,
         )
