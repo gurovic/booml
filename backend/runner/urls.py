@@ -20,7 +20,7 @@ from .views.export_notebook import export_notebook
 from .views.reorder_cells import copy_cell, move_cell
 from .views.get_reports_list import get_reports_list
 from .views.receive_test_result import receive_test_result
-from .views.contest_draft import create_contest, contest_success
+from .views.contest_draft import add_problem_to_contest, create_contest, contest_success
 from .views.run_code import run_code
 from .views.list_of_problems_polygon import problem_list_polygon
 from .views.create_problem_polygon import create_problem_polygon
@@ -48,6 +48,7 @@ urlpatterns = [
     path("problems/<int:problem_id>/", problem_detail, name="problem_detail"),
     path("problems/", problem_list, name="problem_list"),
     path('contest/new/', create_contest, name='create_contest'),
+    path('contest/<int:contest_id>/problems/add/', add_problem_to_contest, name='contest_add_problem'),
     path('contest/success/', contest_success, name='contest_success'),
     path('notebook', notebook_list, name='notebook_list'),
     path('notebook/new/', create_notebook, name='create_notebook'),
