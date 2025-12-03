@@ -13,7 +13,12 @@
          data-create-notebook-url="{% url 'runner:create_notebook' %}"
          data-notebook-detail-url="{% url 'runner:notebook_detail' 0 %}">
 
-        <button id="create-notebook-btn" data-action="create-notebook">Новый блокнот</button>
+        <div style="margin-bottom: 20px;">
+            <button id="create-notebook-btn" data-action="create-notebook">Новый блокнот</button>
+            <button id="import-notebook-btn" data-action="import-notebook">📤 Импорт ноутбука</button>
+            <input type="file" id="import-file-input" accept=".json" style="display: none;" data-import-url="{% url 'runner:import_notebook' %}">
+        </div>
+        <div id="import-status" style="display: none; margin: 10px 0; padding: 10px; border-radius: 4px;"></div>
 
         <div id="notebooks-list">
             {% for notebook in notebooks %}

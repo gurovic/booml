@@ -9,7 +9,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 from django.urls import reverse
 
-from runner.models import Problem, Submission, ProblemData
+from runner.models import Problem, Submission, ProblemData, ProblemDescriptor
 
 problem_detail_view = import_module("runner.views.problem_detail")
 
@@ -65,6 +65,32 @@ class ProblemDetailViewTests(TestCase):
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, 200)
         self.assertIsNone(response.context["data"])
+
+    def test_descriptor_metric_shown_to_user(self):
+        ProblemDescriptor.objects.create(
+            problem=self.problem,
+            id_column="id",
+            target_column="prediction",
+            metric_name="accuracy",
+            metric_code="",
+        )
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Метрика задачи")
+        self.assertContains(response, "accuracy")
+
+    def test_descriptor_marks_custom_metric(self):
+        ProblemDescriptor.objects.create(
+            problem=self.problem,
+            id_column="id",
+            target_column="prediction",
+            metric_name="macro_iou",
+            metric_code="def compute_metric(y_true, y_pred):\n    return {'metric': 1.0}",
+        )
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "macro_iou")
+        self.assertContains(response, "кастомная реализация")
 
     @override_settings(MEDIA_ROOT='backend/data/runner/runs')
     def test_post_requires_authentication(self):

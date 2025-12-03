@@ -1,6 +1,17 @@
 <!DOCTYPE html>
 <html>
 <head>
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/easymde/dist/easymde.min.css"
+    />
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
+      integrity="sha512-iecdLmaskl7CVkqkXNQ/ZH/XLlvWZOJyj7Yy7tcenmpD1ypASozpmT/E0iPtmFIB46ZmdtAc9eNBvH0H/ZpiBw=="
+      crossorigin="anonymous"
+      referrerpolicy="no-referrer"
+    />
     <title>{{ notebook.title }}</title>
     {% load static %}
     <script>
@@ -44,6 +55,33 @@
         [data-paste-button][disabled] {
             opacity: 0.6;
             cursor: not-allowed;
+        }
+
+        #cells-container {
+            max-width: 95% !important;
+            margin: 0 auto;
+        }
+        
+        .cell {
+            width: 100%;
+            box-sizing: border-box;
+        }
+        
+        .cell-content {
+            width: 100%;
+            box-sizing: border-box;
+        }
+        
+        .cell-content textarea {
+            width: 100%;
+            min-height: 200px;
+            box-sizing: border-box;
+            padding: 10px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            resize: vertical;
         }
     </style>
 </head>
@@ -113,11 +151,17 @@
                 {% csrf_token %}
                 <button type="submit" data-action="delete-notebook">🗑 Удалить блокнот</button>
             </form>
+            <button data-action="export-notebook">📥 Экспорт ноутбука</button>
+            <button data-action="import-notebook">📤 Импорт ноутбука</button>
+            <input type="file" id="import-file-input" accept=".json" style="display: none;" data-import-url="{% url 'runner:import_notebook' %}">
             <button data-action="create-cell">➕ Новая ячейка кода</button>
             <button data-action="create-latex-cell">➕ Новая LaTeX-ячейка</button>
             <button data-action="paste-at-end" data-paste-button disabled>📋 Вставить в конец</button>
             <span class="clipboard-indicator" data-clipboard-indicator data-state="empty">Буфер пуст</span>
         </div>
+
+        <!-- Сообщения о статусе импорта/экспорта -->
+        <div id="import-export-status" style="display: none; margin: 10px 0; padding: 10px; border-radius: 4px;"></div>
 
         <div id="cells-container">
             {% for cell in cells %}

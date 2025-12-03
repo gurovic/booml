@@ -1,6 +1,9 @@
 import logging
 
 from celery import shared_task
+from django.conf import settings
+from kombu.exceptions import OperationalError as KombuOperationalError
+from redis.exceptions import ConnectionError as RedisConnectionError
 
 from runner.models.submission import Submission
 from runner.services import checker as checker_service
@@ -8,11 +11,27 @@ from runner.services import checker as checker_service
 logger = logging.getLogger(__name__)
 
 
+def _use_celery_queue() -> bool:
+    return getattr(settings, "RUNNER_USE_CELERY_QUEUE", False)
+
+
 @shared_task
 def enqueue_submission_for_evaluation(submission_id: int):
     logger.info(f"[QUEUE] Submission {submission_id} added to evaluation queue.")
-    evaluate_submission.delay(submission_id)
-    return {"status": "enqueued", "submission_id": submission_id}
+    if not _use_celery_queue():
+        logger.info("[QUEUE] Celery queue disabled; running submission %s inline.", submission_id)
+        return evaluate_submission(submission_id)
+
+    try:
+        evaluate_submission.delay(submission_id)
+        return {"status": "enqueued", "submission_id": submission_id}
+    except (KombuOperationalError, RedisConnectionError, ConnectionError) as exc:
+        logger.warning(
+            "[QUEUE] Celery broker unavailable; running submission %s inline. %s",
+            submission_id,
+            exc,
+        )
+        return evaluate_submission(submission_id)
 
 
 
@@ -26,10 +45,20 @@ def evaluate_submission(submission_id: int):
         result = checker_service.check_submission(submission)
 
         # --- Обработка результата ---
-        submission.status = "checked" if result.ok else "failed"
-        submission.result_outputs = result.outputs
-        submission.result_errors = result.errors
-        submission.save(update_fields=['status'])
+        status = Submission.STATUS_ACCEPTED if result.ok else Submission.STATUS_FAILED
+        metrics_payload = dict(result.outputs or {})
+        if result.ok:
+            if "metric" not in metrics_payload and "metric_score" in metrics_payload:
+                metrics_payload["metric"] = metrics_payload["metric_score"]
+        else:
+            error_value = result.errors or "Unknown evaluation error"
+            if isinstance(error_value, (list, tuple)):
+                error_value = error_value[0] if error_value else "Unknown evaluation error"
+            metrics_payload = {"error": str(error_value)}
+
+        submission.status = status
+        submission.metrics = metrics_payload
+        submission.save(update_fields=["status", "metrics"])
 
         logger.info(f"[WORKER] Submission {submission_id} evaluation finished: {submission.status}")
         return {"submission_id": submission_id, "status": submission.status}
@@ -40,4 +69,8 @@ def evaluate_submission(submission_id: int):
 
     except Exception as e:
         logger.exception(f"[WORKER] Error evaluating submission {submission_id}: {str(e)}")
+        if 'submission' in locals():
+            submission.status = Submission.STATUS_FAILED
+            submission.metrics = {"error": str(e)}
+            submission.save(update_fields=["status", "metrics"])
         return {"submission_id": submission_id, "status": "error", "error": str(e)}

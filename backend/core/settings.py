@@ -39,6 +39,10 @@ if MODE	== "prod":
     CSRF_COOKIE_SECURE = True
     SESSION_COOKIE_SECURE = True
 
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:3000",
+]
+
 
 # Application definition
 
@@ -51,11 +55,13 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'channels',
     'django_reverse_js',
-    'runner',
-    'rest_framework'
+    'runner.apps.RunnerConfig',
+    'rest_framework',
+    'corsheaders'
 ]
 
 MIDDLEWARE = [
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -167,7 +173,7 @@ USE_TZ = True
 STATIC_URL = 'static/'
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
-RUNTIME_SANDBOX_ROOT = BASE_DIR / 'notebook_sessions'
+RUNTIME_SANDBOX_ROOT = BASE_DIR / "media" / "notebook_sessions"
 RUNTIME_VM_BACKEND = os.environ.get("RUNTIME_VM_BACKEND", "auto")
 RUNTIME_VM_IMAGE = os.environ.get("RUNTIME_VM_IMAGE", "runner-vm:latest")
 RUNTIME_VM_CPU = int(os.environ.get("RUNTIME_VM_CPU", "2"))
@@ -179,7 +185,9 @@ _runtime_vm_allowlist = os.environ.get("RUNTIME_VM_NET_ALLOWLIST", "")
 RUNTIME_VM_NET_ALLOWLIST = tuple(
     item.strip() for item in _runtime_vm_allowlist.split(",") if item.strip()
 )
-RUNTIME_VM_ROOT = Path(os.environ.get("RUNTIME_VM_ROOT", str(BASE_DIR / "notebook_sessions")))
+RUNTIME_VM_ROOT = Path(os.environ.get("RUNTIME_VM_ROOT", str(BASE_DIR / "media" / "notebook_sessions")))
+RUNTIME_EXECUTION_BACKEND = os.environ.get("RUNTIME_EXECUTION_BACKEND", "jupyter")
+# To use jupyter interface, set RUNTIME_EXECUTION_BACKEND to "jupyter"
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field
@@ -191,6 +199,11 @@ CELERY_RESULT_BACKEND = "redis://localhost:6379/1"
 
 STATIC_ROOT = BASE_DIR / "staticfiles"
 
+STATICFILES_DIRS = [
+    BASE_DIR / "runner" / "static",
+]
+
+RUNNER_USE_CELERY_QUEUE = os.environ.get("RUNNER_USE_CELERY_QUEUE", "0").lower() in {"1", "true", "yes"}
 CELERY_TASK_ALWAYS_EAGER = False  # для реального async
 CELERY_TASK_EAGER_PROPAGATES = True
 

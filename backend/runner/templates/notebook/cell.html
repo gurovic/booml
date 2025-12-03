@@ -23,11 +23,32 @@
         {% endif %}
     </div>
 
+    {% if cell.cell_type == cell.TEXT %}
+    <div class="cell-content text-cell" data-text-container>
+        <div class="text-display" data-text-display>
+            {{ cell.content|safe }}
+        </div>
+
+        <div class="text-editor" data-text-editor hidden>
+            <textarea data-text-textarea rows="6">{{ cell.content }}</textarea>
+
+            <div class="text-editor-actions">
+                <button type="button" data-action="save-text">Сохранить</button>
+                <button type="button" data-action="cancel-text">Отмена</button>
+            </div>
+        </div>
+
+        <div class="text-actions">
+            <button type="button" data-action="edit-text">Редактировать</button>
+        </div>
+    </div>
+    {% endif %}
+
     {% if cell.cell_type == cell.LATEX %}
         <div class="cell-content latex-cell" data-latex-container>
             <div class="latex-display" data-latex-display>{{ cell.content }}</div>
             <div class="latex-editor" data-latex-editor hidden>
-                <textarea data-latex-textarea disabled placeholder="Введите ваш LaTeX или текст здесь...">{{ cell.content }}</textarea>
+                <textarea data-latex-textarea rows="6" disabled placeholder="Введите ваш LaTeX или текст здесь...">{{ cell.content }}</textarea>
                 <div class="latex-editor-actions">
                     <button type="button" data-action="save-latex">Сохранить</button>
                     <button type="button" data-action="cancel-latex">Отмена</button>
@@ -37,9 +58,9 @@
                 <button type="button" data-action="edit-latex">Редактировать</button>
             </div>
         </div>
-    {% else %}
+    {% elif cell.cell_type == cell.CODE %}
         <div class="cell-content">
-            <textarea placeholder="Введите ваш код здесь...">{{ cell.content }}</textarea>
+            <textarea rows="10" placeholder="Введите ваш код здесь...">{{ cell.content }}</textarea>
             <div class="output" id="output-{{ cell.id }}">
                 {% if cell.output %}{{ cell.output|safe }}{% endif %}
             </div>

@@ -7,7 +7,7 @@ from django.urls import reverse
 
 from runner.models import Notebook
 from runner.services import vm_agent, vm_manager
-from runner.services.runtime import _sessions, create_session, get_session, run_code
+from runner.services.runtime import _sessions, create_session, get_session, reset_execution_backend, run_code
 
 User = get_user_model()
 
@@ -16,6 +16,7 @@ class NotebookSessionAPITests(TestCase):
     def setUp(self):
         self.sandbox_tmp = TemporaryDirectory()
         self.vm_tmp = TemporaryDirectory()
+        reset_execution_backend()
         self.override = override_settings(
             RUNTIME_SANDBOX_ROOT=self.sandbox_tmp.name,
             RUNTIME_VM_ROOT=self.vm_tmp.name,
@@ -35,6 +36,7 @@ class NotebookSessionAPITests(TestCase):
         _sessions.clear()
 
     def tearDown(self):
+        reset_execution_backend()
         vm_manager.reset_vm_manager()
         vm_agent.reset_vm_agents()
         _sessions.clear()

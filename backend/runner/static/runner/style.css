@@ -11,3 +11,35 @@
 .btn:hover {
     background-color: #0056b3;
 }
+
+.metric-help {
+    background: #f8f8f8;
+    border: 1px solid #ddd;
+    padding: 8px 10px;
+    margin-bottom: 12px;
+}
+
+.metric-help ol {
+    margin: 6px 0 0 18px;
+    padding: 0;
+}
+
+.metric-summary {
+    padding: 8px 10px;
+    background: #f5f9ff;
+    border: 1px solid #cfe1ff;
+    margin: 12px 0;
+    border-radius: 4px;
+    display: inline-flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.metric-summary .metric-name {
+    font-weight: 600;
+}
+
+.metric-summary .metric-hint {
+    color: #4b647c;
+    font-size: 0.95em;
+}

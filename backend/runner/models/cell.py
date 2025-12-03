@@ -5,9 +5,11 @@ from .notebook import Notebook
 class Cell(models.Model):
     CODE = "code"
     LATEX = "latex"
+    TEXT = "text"
     TYPE_CHOICES = (
         (CODE, "Code"),
         (LATEX, "LaTeX"),
+        (TEXT, "Text"),
     )
 
     notebook = models.ForeignKey(Notebook, on_delete=models.CASCADE, related_name='cells')

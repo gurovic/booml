@@ -1,24 +1,94 @@
+from django.conf import settings
 from django.db import models
-from django.db.models import CharField, IntegerField, DateField, ManyToManyField
+
+from .course import Course, CourseParticipant
+
 
 class Contest(models.Model):
-  problems = ManyToManyField("Problem", blank=True)
-  source = CharField(max_length=255)
-  _type = IntegerField(db_column="type", blank=True)
-  difficulty = IntegerField(blank=True)
-  start_time = DateField()
-  duration = IntegerField(blank=True)
+    """
+    Contest is bound to a single course; visibility controlled by publication state and status.
+    """
 
-  STATUS_CHOICES = [
-      (0, "going"),
-      (1, "after-solving"),
-  ]
-  status = IntegerField(choices=STATUS_CHOICES, default=0)
+    course = models.ForeignKey(
+        Course,
+        on_delete=models.CASCADE,
+        related_name="contests",
+        null=True,
+    )
+    title = models.CharField(max_length=255)
+    description = models.TextField(blank=True, default="")
+    problems = models.ManyToManyField("Problem", blank=True)
+    source = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        help_text="Optional source label or namespace for the contest",
+    )
+    start_time = models.DateTimeField(null=True, blank=True)
+    duration_minutes = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="Contest duration in minutes",
+    )
+    class Scoring(models.TextChoices):
+        ICPC = "icpc", "ICPC (penalty by time)"
+        IOI = "ioi", "IOI (sum of scores)"
+        PARTIAL = "partial", "Partial scoring"
 
-  OPEN_CHOICES = [
-      (0, "closed"),
-      (1, "opened"),
-  ]
-  open = IntegerField(default=0, choices=OPEN_CHOICES)
-  
-  leaderBoard = models.ForeignKey("Leaderboard", on_delete=models.CASCADE)
+    scoring = models.CharField(
+        max_length=20,
+        choices=Scoring.choices,
+        default=Scoring.IOI,
+        help_text="How points are aggregated for the contest",
+    )
+    class Registration(models.TextChoices):
+        OPEN = "open", "Open"
+        APPROVAL = "approval", "By approval"
+        INVITE = "invite", "By invitation"
+
+    registration_type = models.CharField(
+        max_length=20,
+        choices=Registration.choices,
+        default=Registration.OPEN,
+        help_text="Who can register / how participants join the contest",
+    )
+    is_rated = models.BooleanField(
+        default=False,
+        help_text="If true, contest results affect participant rating",
+    )
+    is_published = models.BooleanField(
+        default=False,
+        help_text=(
+            "When True the contest is visible to all course participants; "
+            "otherwise only course teachers can see it."
+        ),
+    )
+    class Status(models.IntegerChoices):
+        GOING = 0, "going"
+        AFTER_SOLVING = 1, "after-solving"
+
+    status = models.IntegerField(choices=Status.choices, default=Status.GOING)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="created_contests",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.title} ({self.course})"
+
+    def is_visible_to(self, user):
+        """
+        Teachers of linked courses see drafts; published contests visible to course participants.
+        """
+        if self.is_published:
+            return self.course.participants.filter(user=user).exists()
+        return self.course.participants.filter(
+            user=user,
+            role=CourseParticipant.Role.TEACHER,
+        ).exists()

@@ -4,6 +4,7 @@ from django.views.decorators.http import require_http_methods
 from ..models.problem import Problem
 from ..models.problem_desriptor import ProblemDescriptor
 from ..models.problem_data import ProblemData
+from ..services.metrics import get_available_metrics
 
 MIN_RATING = None
 MAX_RATING = None
@@ -15,6 +16,9 @@ for v in getattr(rating_field, "validators", []):
         MIN_RATING = limit
     if "max" in name:
         MAX_RATING = limit
+
+METRIC_SUGGESTIONS = tuple(get_available_metrics())
+METRIC_SUGGESTIONS_SET = set(METRIC_SUGGESTIONS)
 
 
 @require_http_methods(["GET", "POST"])
@@ -41,7 +45,10 @@ def edit_problem_polygon(request, problem_id):
         "target_column": descriptor.target_column if descriptor else _descriptor_default("target_column"),
         "id_type": descriptor.id_type if descriptor else _descriptor_default("id_type"),
         "target_type": descriptor.target_type if descriptor else _descriptor_default("target_type"),
+        "metric": descriptor.metric if descriptor else _descriptor_default("metric"),
         "check_order": descriptor.check_order if descriptor else _descriptor_default("check_order"),
+        "metric_name": descriptor.metric_name if descriptor else _descriptor_default("metric_name"),
+        "metric_code": descriptor.metric_code if descriptor else _descriptor_default("metric_code"),
     }
     errors = {}
     descriptor_errors = {}
@@ -67,7 +74,10 @@ def edit_problem_polygon(request, problem_id):
         descriptor_form_data["target_column"] = (request.POST.get("target_column") or "").strip()
         descriptor_form_data["id_type"] = (request.POST.get("id_type") or "").strip()
         descriptor_form_data["target_type"] = (request.POST.get("target_type") or "").strip()
+        descriptor_form_data["metric"] = (request.POST.get("metric") or "").strip()
         descriptor_form_data["check_order"] = request.POST.get("check_order") == "on"
+        descriptor_form_data["metric_name"] = (request.POST.get("metric_name") or "").strip()
+        descriptor_form_data["metric_code"] = (request.POST.get("metric_code") or "").strip()
 
         if not descriptor_form_data["id_column"]:
             descriptor_errors["id_column"] = "Колонка идентификатора обязательна"
@@ -82,6 +92,14 @@ def edit_problem_polygon(request, problem_id):
 
         if descriptor_form_data["target_type"] not in target_type_choices:
             descriptor_errors["target_type"] = "Неверный тип ответа"
+
+        if not descriptor_form_data["metric_name"]:
+            descriptor_errors["metric_name"] = "Укажите метрику"
+        elif (
+            not descriptor_form_data["metric_code"]
+            and descriptor_form_data["metric_name"] not in METRIC_SUGGESTIONS_SET
+        ):
+            descriptor_errors["metric_name"] = "Выберите метрику из списка или добавьте Python код"
 
         uploaded_files = {}
         for field_name in ("train_file", "test_file", "sample_submission_file", "answer_file"):
@@ -102,7 +120,10 @@ def edit_problem_polygon(request, problem_id):
                     "target_column": descriptor_form_data["target_column"],
                     "id_type": descriptor_form_data["id_type"],
                     "target_type": descriptor_form_data["target_type"],
+                    "metric": descriptor_form_data["metric"],
                     "check_order": descriptor_form_data["check_order"],
+                    "metric_name": descriptor_form_data["metric_name"],
+                    "metric_code": descriptor_form_data["metric_code"],
                 },
             )
 
@@ -125,6 +146,9 @@ def edit_problem_polygon(request, problem_id):
             "descriptor_errors": descriptor_errors,
             "id_type_choices": ProblemDescriptor._meta.get_field("id_type").choices,
             "target_type_choices": ProblemDescriptor._meta.get_field("target_type").choices,
+            "metric_suggestions": METRIC_SUGGESTIONS,
+            "min_rating": MIN_RATING,
+            "max_rating": MAX_RATING,
             "problem_data": problem_data,
         },
     )

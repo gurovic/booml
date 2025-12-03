@@ -3,8 +3,48 @@
 <p><b>Задача:</b> {{ submission.problem.title }}</p>
 <p><b>Дата:</b> {{ submission.created_at|date:"d.m.Y H:i" }}</p>
 <p><b>Статус:</b> {{ submission.get_status_display }}</p>
-<p><b>Метрика:</b> {% if submission.metric %}{{ submission.metric }}{% else %}-{% endif %}</p>
+<p><b>Метрика:</b> <span id="submission-metric">{% if submission.metric %}{{ submission.metric }}{% else %}-{% endif %}</span></p>
 
 {% if submission.file %}
 <p><a href="{{ submission.file.url }}">Скачать загруженный файл</a></p>
 {% endif %}
+
+{# Embed the submission ID safely for JS consumption #}
+{{ submission.id|json_script:"submission-id" }}
+
+<script>
+(function() {
+	try {
+		var submissionId = JSON.parse(document.getElementById('submission-id').textContent);
+		var protocol = (window.location.protocol === 'https:') ? 'wss' : 'ws';
+		var wsUrl = protocol + '://' + window.location.host + '/ws/submissions/' + submissionId + '/';
+		var ws = new WebSocket(wsUrl);
+
+		ws.addEventListener('open', function() {
+			console.debug('Submission WS connected', wsUrl);
+		});
+
+		ws.addEventListener('message', function(event) {
+			try {
+				var payload = JSON.parse(event.data);
+				// The consumer sends JSON with fields: submission_id, metric_name, metric_score.
+				if (payload && Number(payload.submission_id) === Number(submissionId)) {
+					var metricEl = document.getElementById('submission-metric');
+					if (metricEl) {
+						metricEl.textContent = (payload.metric_name ? payload.metric_name + ': ' : '') + (payload.metric_score != null ? payload.metric_score : '-');
+					}
+				}
+			} catch (err) {
+				console.error('Malformed WS message', err, event.data);
+			}
+		});
+
+		ws.addEventListener('close', function() {
+			console.debug('Submission WS disconnected');
+		});
+		ws.addEventListener('error', function(err) { console.error('Submission WS error', err); });
+	} catch (e) {
+		console.error('Submission WS client error', e);
+	}
+})();
+</script>
