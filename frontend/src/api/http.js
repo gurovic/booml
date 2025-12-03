@@ -1,6 +1,6 @@
 export async function apiGet(endpoint, params = {}) {
   const queryString = new URLSearchParams(params).toString()
-  const url = `/api/${endpoint}${queryString ? `?${queryString}` : ''}`
+  const url = `/backend/${endpoint}${queryString ? `?${queryString}` : ''}`
 
   const res = await fetch(url, {
     method: 'GET',
@@ -17,15 +17,34 @@ export async function apiGet(endpoint, params = {}) {
   return await res.json()
 }
 
+function getCookie(name) {
+  let cookieValue = null;
+  if (document.cookie && document.cookie !== '') {
+    const cookies = document.cookie.split(';');
+    for (let i = 0; i < cookies.length; i++) {
+      const cookie = cookies[i].trim();
+      // Does this cookie string begin with the name we want?
+      if (cookie.substring(0, name.length + 1) === (name + '=')) {
+        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+        break;
+      }
+    }
+  }
+  return cookieValue;
+}
+
 export async function apiPost(endpoint, data = {}) {
-  const res = await fetch(`/api/${endpoint}`, {
+  const csrftoken = getCookie('csrftoken');
+  const res = await fetch(`/backend/${endpoint}`, {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/json'
+      'Content-Type': 'application/json',
+      'X-CSRFToken': csrftoken
     },
     body: JSON.stringify({
       ...data
-    })
+    }),
+    credentials: 'include'
   })
 
   if (!res.ok) {

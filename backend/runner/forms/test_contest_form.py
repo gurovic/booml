@@ -23,6 +23,9 @@ class ContestFormTests(TestCase):
                 "duration_minutes": "",
                 "is_published": False,
                 "status": 0,
+                "scoring": "icpc",
+                "registration_type": "open",
+                "is_rated": False,
             }
         )
         self.assertTrue(form.is_valid())
@@ -39,6 +42,9 @@ class ContestFormTests(TestCase):
                 "duration_minutes": "",
                 "is_published": True,
                 "status": 0,
+                "scoring": "partial",
+                "registration_type": "approval",
+                "is_rated": True,
             },
             course=self.course,
         )
@@ -49,4 +55,6 @@ class ContestFormTests(TestCase):
         self.assertEqual(contest.course, self.course)
         self.assertEqual(contest.created_by, self.creator)
         self.assertTrue(contest.is_published)
-
+        self.assertTrue(contest.is_rated)
+        self.assertEqual(contest.scoring, "partial")
+        self.assertEqual(contest.registration_type, "approval")

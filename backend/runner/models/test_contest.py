@@ -52,3 +52,14 @@ class ContestVisibilityTests(TestCase):
         self.assertFalse(contest.is_visible_to(self.student))
         self.assertFalse(contest.is_visible_to(self.outsider))
 
+    def test_defaults_for_scoring_registration_rating(self):
+        contest = Contest.objects.create(
+            course=self.course,
+            title="Defaults",
+            created_by=self.teacher,
+            is_published=True,
+        )
+
+        self.assertEqual(contest.scoring, Contest.Scoring.IOI)
+        self.assertEqual(contest.registration_type, Contest.Registration.OPEN)
+        self.assertFalse(contest.is_rated)

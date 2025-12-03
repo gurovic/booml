@@ -8,7 +8,7 @@ from ..models.problem_data import ProblemData
 from ..models.problem_desriptor import ProblemDescriptor
 from ..models.submission import Submission
 from ..services import enqueue_submission_for_evaluation, validation_service
-from .submissions import submission_list_data
+from .submissions import submission_list
 
 
 def _report_is_valid(report) -> bool:
@@ -88,7 +88,7 @@ def problem_detail(request, problem_id):
                 }
 
     if request.user.is_authenticated:
-        context_submissions_list = submission_list_data(request, problem_id, limit=5)
+        context_submissions_list = submission_list(request, problem_id, as_context=True, limit=5)
     else:
         context_submissions_list = {
             "submissions": [],

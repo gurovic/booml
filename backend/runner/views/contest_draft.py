@@ -1,22 +1,95 @@
-from django.shortcuts import render, redirect, get_object_or_404
+import json
+
+from django.http import JsonResponse
+from django.shortcuts import get_object_or_404
 from django.contrib.auth.decorators import login_required
 
-from ..models import Course
+from ..models import Contest, Course, CourseParticipant, Problem
 from ..forms.contest_draft import ContestForm
 
 @login_required
 def create_contest(request, course_id):
-    course = get_object_or_404(Course, pk=course_id)
-    if request.method == 'POST':
-        form = ContestForm(request.POST, course=course)
-        if form.is_valid():
-            form.save(created_by=request.user, course=course)
-            return redirect('contest/success')  # имя URL для страницы успеха
-    else:
-        form = ContestForm(course=course)
+    if request.method != 'POST':
+        return JsonResponse({"detail": "Method not allowed"}, status=405)
 
-    return render(request, 'runner/contest/contest_form.html', {'form': form, 'course': course})
+    course = get_object_or_404(Course, pk=course_id)
+    is_teacher = course.participants.filter(
+        user=request.user,
+        role=CourseParticipant.Role.TEACHER,
+    ).exists()
+    if not is_teacher:
+        return JsonResponse({"detail": "Only teachers can create contests for this course"}, status=403)
+
+    form = ContestForm(request.POST, course=course)
+    if form.is_valid():
+        contest = form.save(created_by=request.user, course=course)
+        return JsonResponse(
+            {
+                "id": contest.id,
+                "title": contest.title,
+                "course": contest.course_id,
+                "is_published": contest.is_published,
+                "status": contest.status,
+                "is_rated": contest.is_rated,
+                "scoring": contest.scoring,
+                "registration_type": contest.registration_type,
+                "duration_minutes": contest.duration_minutes,
+            },
+            status=201,
+        )
+
+    return JsonResponse({"errors": form.errors}, status=400)
+
+@login_required
+def add_problem_to_contest(request, contest_id):
+    if request.method != "POST":
+        return JsonResponse({"detail": "Method not allowed"}, status=405)
+
+    contest = get_object_or_404(Contest, pk=contest_id)
+    if contest.course is None:
+        return JsonResponse({"detail": "Contest must belong to a course"}, status=400)
+
+    is_teacher = contest.course.participants.filter(
+        user=request.user,
+        role=CourseParticipant.Role.TEACHER,
+    ).exists()
+    if not is_teacher:
+        return JsonResponse({"detail": "Only teachers can modify this contest"}, status=403)
+
+    try:
+        if request.content_type and "application/json" in request.content_type:
+            payload = json.loads(request.body or "{}")
+            problem_id = payload.get("problem_id")
+        else:
+            problem_id = request.POST.get("problem_id")
+    except json.JSONDecodeError:
+        return JsonResponse({"detail": "Invalid JSON payload"}, status=400)
+
+    if problem_id in (None, ""):
+        return JsonResponse({"detail": "problem_id is required"}, status=400)
+
+    try:
+        problem_id = int(problem_id)
+    except (TypeError, ValueError):
+        return JsonResponse({"detail": "problem_id must be an integer"}, status=400)
+
+    problem = get_object_or_404(Problem, pk=problem_id)
+    already_attached = contest.problems.filter(pk=problem.pk).exists()
+    contest.problems.add(problem)
+
+    return JsonResponse(
+        {
+            "contest": contest.id,
+            "problem": {
+                "id": problem.id,
+                "title": problem.title,
+            },
+            "added": not already_attached,
+            "problems_count": contest.problems.count(),
+        },
+        status=201 if not already_attached else 200,
+    )
 
 @login_required
 def contest_success(request):
-    return render(request, 'runner/contest/contest_success.html')
+    return JsonResponse({"detail": "success"})

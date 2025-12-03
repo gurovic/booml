@@ -35,54 +35,66 @@ def _primary_metric(metrics):
         return None
 
 
-def submission_list_data(request, problem_id, limit=None):
+def _enrich_submissions(queryset):
+    enriched = []
+    for submission in queryset:
+        setattr(submission, "created_at", getattr(submission, "submitted_at", None))
+        setattr(submission, "metric", _primary_metric(getattr(submission, "metrics", None)))
+        enriched.append(submission)
+    return enriched
+
+
+def _latest_result(submissions):
+    if not submissions:
+        return None
+    latest_submission = submissions[0]
+    status_map = {"accepted": "OK", "validated": "OK", "failed": "FAILED"}
+    result_status = status_map.get(getattr(latest_submission, "status", ""), getattr(latest_submission, "status", ""))
+    return {
+        "status": result_status,
+        "metric": getattr(latest_submission, "metric", None),
+    }
+
+@login_required
+def submission_list(request, problem_id, *, as_context=False, limit=None):
     problem = get_object_or_404(Problem, id=problem_id)
     submissions_qs = Submission.objects.filter(problem=problem, user=request.user).order_by("-submitted_at")
     submissions = []
+
     try:
-        for s in submissions_qs:
-            setattr(s, "created_at", s.submitted_at)
-            setattr(s, "metric", _primary_metric(s.metrics))
-            submissions.append(s)
+        if submissions_qs.exists():
+            try:
+                submissions = _enrich_submissions(submissions_qs)
+            except Exception:
+                submissions = []
     except Exception:
         submissions = []
 
-    has_any_exists = None
-    if hasattr(submissions_qs, "exists"):
-        try:
-            has_any_exists = bool(submissions_qs.exists())
-        except Exception:
-            has_any_exists = None
+    context = {
+        "problem": problem,
+        "submissions": submissions,
+        "result": _latest_result(submissions),
+        "limit": limit,
+    }
 
-    has_any = bool(submissions) or bool(has_any_exists)
+    if as_context:
+        return context
 
-    if has_any and submissions:
-        latest_submission = submissions[0]
-        status_map = {"accepted": "OK", "validated": "OK", "failed": "FAILED"}
-        result_status = status_map.get(getattr(latest_submission, "status", ""), getattr(latest_submission, "status", ""))
-        context = {
-            "problem": problem,
-            "submissions": submissions,
-            "result": {
-                "status": result_status,
-                "metric": getattr(latest_submission, "metric", None),
-            },
-            "limit": limit
-        }
-    else:
-        context = {
-            "problem": problem,
-            "submissions": submissions,
-            "result": None,
-            "limit": limit
-        }
-
-    return context
+    response = render(request, "runner/submissions/list.html", context)
+    # Expose context for internal callers without TestClient helpers.
+    response.context_data = context
+    return response
 
 @login_required
-def submission_list(request, problem_id, limit=None):
-    context = submission_list_data(request, problem_id, limit)
-    return render(request, "runner/submissions/list.html", context)
+def recent_submissions(request):
+    submissions_queryset = Submission.objects.filter(user=request.user).select_related("problem").order_by("-submitted_at")[:20]
+    submissions = _enrich_submissions(submissions_queryset)
+    context = {
+        "submissions": submissions,
+        "result": _latest_result(submissions),
+    }
+
+    return render(request, "runner/submissions/recent.html", context)
 
 def extract_labels_and_metrics(submissions):
     labels = []
