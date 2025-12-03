@@ -1,0 +1,22 @@
+@import './reset.css';
+@import './typography.css';
+@import './color-variables.css';
+
+.button {
+  font-family: var(--font-default);
+  font-weight: 400;
+  font-size: 20px;
+  padding: 10px 20px;
+  text-align: center;
+  border-radius: 10px;
+}
+
+.button--primary {
+  background-color: var(--color-button-primary);
+  color: var(--color-button-text-primary);
+}
+
+.button--secondary {
+  background-color: var(--color-button-secondary);
+  color: var(--color-button-text-secondary);
+}
