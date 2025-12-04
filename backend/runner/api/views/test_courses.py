@@ -45,3 +45,50 @@ class CourseSelfEnrollTests(TestCase):
         resp = self.client.post(self.enroll_url)
         self.assertEqual(resp.status_code, 400)
         self.assertIn("detail", resp.json())
+
+    def test_self_enroll_requires_authentication(self):
+        self.client.logout()
+        resp = self.client.post(self.enroll_url)
+        self.assertIn(resp.status_code, (401, 403))
+
+    def test_self_enroll_nonexistent_course(self):
+        student = User.objects.create_user(username="student4", password="pass")
+        self.client.login(username="student4", password="pass")
+        resp = self.client.post(reverse("course-self-enroll", kwargs={"course_id": 999999}))
+        self.assertEqual(resp.status_code, 404)
+
+
+class CourseCreateTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username="creator", password="pass")
+        self.client.login(username="creator", password="pass")
+        self.url = reverse("course-create")
+
+    def test_course_create_success(self):
+        resp = self.client.post(self.url, {"title": "Physics"})
+        self.assertEqual(resp.status_code, 201)
+        self.assertEqual(resp.json()["title"], "Physics")
+
+    def test_course_create_invalid_parent(self):
+        resp = self.client.post(self.url, {"title": "Physics", "parent_id": 999999})
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("parent_id", resp.json())
+
+
+class CourseParticipantsTests(TestCase):
+    def setUp(self):
+        self.teacher = User.objects.create_user(username="teacher", password="pass")
+        self.student = User.objects.create_user(username="student", password="pass")
+        self.course = create_course(CourseCreateInput(title="Open", owner=self.teacher, is_open=True))
+        self.url = reverse("course-participants-update", kwargs={"course_id": self.course.id})
+
+    def test_non_teacher_forbidden(self):
+        self.client.login(username="student", password="pass")
+        resp = self.client.post(self.url, {"student_ids": [self.student.id]})
+        self.assertEqual(resp.status_code, 403)
+
+    def test_teacher_can_add_student(self):
+        self.client.login(username="teacher", password="pass")
+        resp = self.client.post(self.url, {"student_ids": [self.student.id]})
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(len(resp.json()["created"]), 1)

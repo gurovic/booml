@@ -10,19 +10,22 @@ User = get_user_model()
 
 
 def _resolve_users(user_ids: Iterable[int], field_name: str) -> list[User]:
-    user_ids_list = list(user_ids)
-    users = list(User.objects.filter(pk__in=user_ids_list))
+    ids = list(user_ids)
+    if not ids:
+        return []
 
-    if len(users) != len(user_ids_list):
-        found_ids = {u.pk for u in users}
-        missing_ids = set(user_ids_list) - found_ids
+    users = list(User.objects.filter(pk__in=ids))
+    if len(users) != len(ids):
+        found = {user.pk for user in users}
+        missing = sorted(set(ids) - found)
         raise serializers.ValidationError(
-            {field_name: f"Users not found: {sorted(missing_ids)}"}
+            {field_name: f"Users not found: {missing}"}
         )
 
-    # Preserve original order
-    user_map = {u.pk: u for u in users}
-    return [user_map[uid] for uid in user_ids_list]
+    user_map = {user.pk: user for user in users}
+    return [user_map[pk] for pk in ids]
+
+
 class CourseReadSerializer(serializers.ModelSerializer):
     parent_id = serializers.IntegerField(source="parent.id", allow_null=True, read_only=True)
     owner_username = serializers.CharField(source="owner.username", read_only=True)

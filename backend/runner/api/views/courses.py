@@ -17,6 +17,10 @@ class CourseCreateView(generics.CreateAPIView):
     serializer_class = CourseCreateSerializer
     permission_classes = [permissions.IsAuthenticated]
 
+    """
+    Create a course with the authenticated user as owner and optional participants.
+    """
+
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -29,6 +33,10 @@ class CourseParticipantsUpdateView(generics.GenericAPIView):
     serializer_class = CourseParticipantsUpdateSerializer
     permission_classes = [permissions.IsAuthenticated]
     lookup_url_kwarg = "course_id"
+
+    """
+    Allow course teachers to add or update participants.
+    """
 
     def post(self, request, *args, **kwargs):
         course = self.get_course()
@@ -67,6 +75,10 @@ class CourseParticipantsUpdateView(generics.GenericAPIView):
 
 
 class CourseSelfEnrollView(generics.GenericAPIView):
+    """
+    Allow authenticated users to self-enroll in open courses.
+    Returns 400 if user already enrolled and 403 if the course is closed.
+    """
     permission_classes = [permissions.IsAuthenticated]
     lookup_url_kwarg = "course_id"
 
