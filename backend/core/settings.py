@@ -54,7 +54,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'channels',
     'django_reverse_js',
-    'runner',
+    'runner.apps.RunnerConfig',
     'rest_framework',
     'corsheaders'
 ]
@@ -163,7 +163,7 @@ RUNTIME_VM_NET_ALLOWLIST = tuple(
     item.strip() for item in _runtime_vm_allowlist.split(",") if item.strip()
 )
 RUNTIME_VM_ROOT = Path(os.environ.get("RUNTIME_VM_ROOT", str(BASE_DIR / "media" / "notebook_sessions")))
-RUNTIME_EXECUTION_BACKEND = os.environ.get("RUNTIME_EXECUTION_BACKEND", "legacy")
+RUNTIME_EXECUTION_BACKEND = os.environ.get("RUNTIME_EXECUTION_BACKEND", "jupyter")
 # To use jupyter interface, set RUNTIME_EXECUTION_BACKEND to "jupyter"
 
 # Default primary key field type
@@ -175,6 +175,10 @@ CELERY_BROKER_URL = "redis://localhost:6379/0"
 CELERY_RESULT_BACKEND = "redis://localhost:6379/1"
 
 STATIC_ROOT = BASE_DIR / "staticfiles"
+
+STATICFILES_DIRS = [
+    BASE_DIR / "runner" / "static",
+]
 
 RUNNER_USE_CELERY_QUEUE = os.environ.get("RUNNER_USE_CELERY_QUEUE", "0").lower() in {"1", "true", "yes"}
 CELERY_TASK_ALWAYS_EAGER = False  # для реального async

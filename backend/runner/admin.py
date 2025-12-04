@@ -74,14 +74,17 @@ class ContestAdmin(admin.ModelAdmin):
         "title",
         "course",
         "is_published",
+        "is_rated",
+        "scoring",
+        "registration_type",
         "status",
         "start_time",
         "duration_minutes",
         "created_by",
         "created_at",
     )
-    list_filter = ("is_published", "status", "course")
-    search_fields = ("title", "course__title", "created_by__username")
+    list_filter = ("is_published", "is_rated", "scoring", "registration_type", "status", "course")
+    search_fields = ("title", "course__title", "created_by__username", "source")
     filter_horizontal = ("problems",)
 
 

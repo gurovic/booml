@@ -26,13 +26,12 @@ def _handle_shell_commands(code: str, workdir: Path, stdout_buffer: io.StringIO,
     
     for line in lines:
         stripped = line.lstrip()
-        if stripped.startswith('!pip install '):
-            pip_cmd = stripped[1:]
+        if stripped.startswith('!'):
+            shell_cmd = stripped[1:]
             try:
-                parts = pip_cmd.split()[2:]
-                cmd = [str(python_exec or 'python'), '-m', 'pip', 'install'] + parts + ['--disable-pip-version-check']
                 result = subprocess.run(
-                    cmd,
+                    shell_cmd,
+                    shell=True,
                     capture_output=True,
                     text=True,
                     cwd=str(workdir),
@@ -40,9 +39,10 @@ def _handle_shell_commands(code: str, workdir: Path, stdout_buffer: io.StringIO,
                     env={**os.environ, 'PIP_ROOT_USER_ACTION': 'ignore'}
                 )
                 stdout_buffer.write(result.stdout)
-                stdout_buffer.write(result.stderr)
+                if result.stderr:
+                    stderr_buffer.write(result.stderr)
             except Exception as e:
-                stdout_buffer.write(f"Error executing {pip_cmd}: {str(e)}\n")
+                stderr_buffer.write(f"Error executing shell command '{shell_cmd}': {str(e)}\n")
         else:
             filtered_lines.append(line)
     
