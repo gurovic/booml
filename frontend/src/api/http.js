@@ -52,5 +52,7 @@ export async function apiPost(endpoint, data = {}) {
     throw new Error(`API Error: ${res.status} — ${errorText}`)
   }
 
-  return await res.json()
+  const result = await res.json();
+  console.log(result);
+  return result;
 }
