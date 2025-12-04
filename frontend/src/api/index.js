@@ -1,5 +1,6 @@
-import { apiGet } from './http'
+import * as courseMock from './mock/course'
+import * as courseReal from './real/course'
 
-export function getStartMessage() {
-  return apiGet('/start')
-}
+const useMock = (process.env.VUE_APP_USE_MOCK ?? 'false') == 'true'
+
+export const courseApi = useMock ? courseMock : courseReal
