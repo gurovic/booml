@@ -5,9 +5,9 @@
         <h1 class="header__title">Booml</h1>
         <button 
           class="header__button button button--secondary"
-          @click="handle_button"
+          @click="handleButton"
         >
-          {{ is_authorized ? "Выйти" : "Войти" }}
+          {{ isAuthorized ? "Выйти" : "Войти" }}
         </button>
       </div>
     </div>
@@ -21,14 +21,14 @@ import { useRouter } from 'vue-router'
 const router = useRouter()
 let user = ref(null)
 
-let is_authorized = computed(() => user.value != null)
+let isAuthorized = computed(() => user.value != null)
 
 onMounted(async () => {
   // getting user from storage
 })
 
-const handle_button = () => {
-  if (is_authorized.value) {
+const handleButton = () => {
+  if (isAuthorized.value) {
     router.push('/logout')
   } else {
     router.push('/login')
