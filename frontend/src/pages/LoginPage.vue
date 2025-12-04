@@ -236,7 +236,8 @@ const handleSubmit = async () => {
                 username: formData.username,
                 email: formData.email,
                 password1: formData.password,
-                password2: formData.password2
+                password2: formData.password2,
+                role: 'student',
             })
         }
 

@@ -23,7 +23,8 @@ class AuthorizationViewsTestCase(TestCase):
             'username': 'newuser',
             'email': 'newuser@example.com',
             'password1': 'StrongPass123',
-            'password2': 'StrongPass123'
+            'password2': 'StrongPass123',
+            'role': 'student',
         }
 
         self.valid_login_data = {
