@@ -29,9 +29,9 @@ onMounted(async () => {
 
 const handle_button = () => {
   if (is_authorized.value) {
-    router.push('logout')
+    router.push('/logout')
   } else {
-    router.push('login')
+    router.push('/login')
   }
 }
 </script>
