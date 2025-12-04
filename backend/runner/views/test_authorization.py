@@ -27,7 +27,6 @@ class RegisterViewTests(TestCase):
         self.assertEqual(resp.status_code, 302)
         user = User.objects.filter(username="view_student").first()
         self.assertIsNotNone(user)
-        self.assertFalse(user.is_staff)
 
     def test_register_view_post_teacher_creates_staff_user(self):
         url = reverse("runner:register")

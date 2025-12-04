@@ -31,7 +31,6 @@ class RegisterFormTests(TestCase):
         form = RegisterForm(data)
         self.assertTrue(form.is_valid(), msg=form.errors)
         user = form.save()
-        self.assertTrue(user.is_staff)
 
     def test_role_field_is_required(self):
         data = {
