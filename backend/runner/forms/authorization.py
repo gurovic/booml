@@ -14,6 +14,20 @@ class RegisterForm(forms.ModelForm):
         widget=forms.PasswordInput(attrs={'placeholder': 'Повторите пароль'}),
     )
 
+    ROLE_STUDENT = "student"
+    ROLE_TEACHER = "teacher"
+    ROLE_CHOICES = (
+        (ROLE_STUDENT, "Студент/Ученик"),
+        (ROLE_TEACHER, "Учитель"),
+    )
+
+    role = forms.ChoiceField(
+        label="Роль",
+        choices=ROLE_CHOICES,
+        initial=ROLE_STUDENT,
+        widget=forms.RadioSelect,
+    )
+
     class Meta:
         model = User
         fields = ['username', 'email']
@@ -38,6 +52,9 @@ class RegisterForm(forms.ModelForm):
     def save(self, commit=True):
         user = super().save(commit=False)
         user.set_password(self.cleaned_data['password1'])
+        # Optionally, handle teacher role assignment here (e.g., add to group), but do NOT set is_staff.
+        role_value = self.cleaned_data.get('role', self.ROLE_STUDENT)
+        # user.is_staff = (role_value == self.ROLE_TEACHER)  # Removed for security
         if commit:
             user.save()
         return user
