@@ -2,6 +2,7 @@ from django.urls import path
 from .views import (
     SubmissionCreateView,
     MySubmissionsListView,
+    CourseTreeView,
     CreateNotebookSessionView,
     ResetSessionView,
     RunCellView,
@@ -11,6 +12,7 @@ from .views import (
 )
 
 urlpatterns = [
+    path("courses/tree/", CourseTreeView.as_view(), name="course-tree"),
     path("submissions/", SubmissionCreateView.as_view(), name="submission-create"),
     path("submissions/mine/", MySubmissionsListView.as_view(), name="submission-list-mine"),
     path("sessions/notebook/", CreateNotebookSessionView.as_view(), name="notebook-session-create"),

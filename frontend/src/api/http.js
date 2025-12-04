@@ -1,6 +1,6 @@
 export async function apiGet(endpoint, params = {}) {
   const queryString = new URLSearchParams(params).toString()
-  const url = `/backend/${endpoint}${queryString ? `?${queryString}` : ''}`
+  const url = `/${endpoint}${queryString ? `?${queryString}` : ''}`
 
   const res = await fetch(url, {
     method: 'GET',
@@ -35,7 +35,7 @@ function getCookie(name) {
 
 export async function apiPost(endpoint, data = {}) {
   const csrftoken = getCookie('csrftoken');
-  const res = await fetch(`/backend/${endpoint}`, {
+  const res = await fetch(`/${endpoint}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
