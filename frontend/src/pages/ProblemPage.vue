@@ -39,7 +39,9 @@ onMounted(async () => {
   } catch (err) {
     console.log(err)
   } finally {
-    problem.value.rendered_statement = md.render(problem.value.statement)
+    if (problem.value != null) {
+      problem.value.rendered_statement = md.render(problem.value.statement)
+    }
   }
 })
 </script>
