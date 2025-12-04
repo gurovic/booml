@@ -24,7 +24,7 @@ import mkKatex from 'markdown-it-katex'
 import UiHeader from '@/components/ui/UiHeader.vue'
 
 const md = new MarkdownIt({
-  html: true,
+  html: false,
   breaks: true,
 }).use(mkKatex)
 
@@ -39,7 +39,9 @@ onMounted(async () => {
   } catch (err) {
     console.log(err)
   } finally {
-    problem.value.rendered_statement = md.render(problem.value.statement)
+    if (problem.value != null) {
+      problem.value.rendered_statement = md.render(problem.value.statement)
+    }
   }
 })
 </script>

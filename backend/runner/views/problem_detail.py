@@ -124,4 +124,4 @@ def problem_detail_api(request):
         "statement": problem.statement,
     }
 
-    return JsonResponse(response, safe=False)
+    return JsonResponse(response)
