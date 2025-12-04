@@ -10,15 +10,19 @@ User = get_user_model()
 
 
 def _resolve_users(user_ids: Iterable[int], field_name: str) -> list[User]:
-    users: list[User] = []
-    for user_id in user_ids:
-        try:
-            users.append(User.objects.get(pk=user_id))
-        except User.DoesNotExist as exc:
-            raise serializers.ValidationError({field_name: f"User {user_id} not found"}) from exc
-    return users
+    user_ids_list = list(user_ids)
+    users = list(User.objects.filter(pk__in=user_ids_list))
 
+    if len(users) != len(user_ids_list):
+        found_ids = {u.pk for u in users}
+        missing_ids = set(user_ids_list) - found_ids
+        raise serializers.ValidationError(
+            {field_name: f"Users not found: {sorted(missing_ids)}"}
+        )
 
+    # Preserve original order
+    user_map = {u.pk: u for u in users}
+    return [user_map[uid] for uid in user_ids_list]
 class CourseReadSerializer(serializers.ModelSerializer):
     parent_id = serializers.IntegerField(source="parent.id", allow_null=True, read_only=True)
     owner_username = serializers.CharField(source="owner.username", read_only=True)
