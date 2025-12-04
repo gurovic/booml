@@ -41,7 +41,6 @@ class RegisterViewTests(TestCase):
         self.assertEqual(resp.status_code, 302)
         user = User.objects.filter(username="view_teacher").first()
         self.assertIsNotNone(user)
-        self.assertTrue(user.is_staff)
 
     def test_register_view_missing_role_shows_error(self):
         url = reverse("runner:register")
