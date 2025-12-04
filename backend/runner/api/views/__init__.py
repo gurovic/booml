@@ -9,4 +9,5 @@ from .sessions import (
     extract_notebook_id,
     ensure_notebook_access,
 )
+from .courses import CourseCreateView, CourseParticipantsUpdateView, CourseSelfEnrollView
 from .run_cell import RunCellView
