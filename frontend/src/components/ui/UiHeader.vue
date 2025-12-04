@@ -5,7 +5,7 @@
         <h1 class="header__title">Booml</h1>
         <button 
           class="header__button button button--secondary"
-          @click=handle_button
+          @click="handle_button"
         >
           {{ is_authorized ? "Выйти" : "Войти" }}
         </button>
