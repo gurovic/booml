@@ -1,5 +1,4 @@
 from .submissions import build_descriptor_from_problem, SubmissionCreateView, MySubmissionsListView
-from .courses import CourseTreeView
 from .sessions import (
     CreateNotebookSessionView,
     ResetSessionView,
@@ -10,4 +9,5 @@ from .sessions import (
     extract_notebook_id,
     ensure_notebook_access,
 )
+from .courses import CourseCreateView, CourseParticipantsUpdateView, CourseSelfEnrollView, CourseTreeView
 from .run_cell import RunCellView

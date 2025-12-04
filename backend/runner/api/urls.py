@@ -1,8 +1,11 @@
 from django.urls import path
 from .views import (
+    CourseCreateView,
+    CourseParticipantsUpdateView,
+    CourseSelfEnrollView,
+    CourseTreeView,
     SubmissionCreateView,
     MySubmissionsListView,
-    CourseTreeView,
     CreateNotebookSessionView,
     ResetSessionView,
     RunCellView,
@@ -12,7 +15,6 @@ from .views import (
 )
 
 urlpatterns = [
-    path("courses/tree/", CourseTreeView.as_view(), name="course-tree"),
     path("submissions/", SubmissionCreateView.as_view(), name="submission-create"),
     path("submissions/mine/", MySubmissionsListView.as_view(), name="submission-list-mine"),
     path("sessions/notebook/", CreateNotebookSessionView.as_view(), name="notebook-session-create"),
@@ -21,4 +23,16 @@ urlpatterns = [
     path("sessions/files/", SessionFilesView.as_view(), name="session-files"),
     path("sessions/file/", SessionFileDownloadView.as_view(), name="session-file-download"),
     path("cells/run/", RunCellView.as_view(), name="run-cell"),
+    path("courses/", CourseCreateView.as_view(), name="course-create"),
+    path("courses/tree/", CourseTreeView.as_view(), name="course-tree"),
+    path(
+        "courses/<int:course_id>/participants/",
+        CourseParticipantsUpdateView.as_view(),
+        name="course-participants-update",
+    ),
+    path(
+        "courses/<int:course_id>/enroll/",
+        CourseSelfEnrollView.as_view(),
+        name="course-self-enroll",
+    ),
 ]

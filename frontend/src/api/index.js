@@ -7,5 +7,5 @@ const useMock = (process.env.VUE_APP_USE_MOCK ?? 'false') == 'true'
 export const courseApi = useMock ? courseMock : courseReal
 
 export async function getStartMessage() {
-  return apiGet('api/start/')
+  return apiGet('start/')
 }

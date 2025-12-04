@@ -1,12 +1,22 @@
-export async function apiGet(endpoint, params = {}) {
+const API_BASE_RAW = process.env.VUE_APP_API_BASE || '/api'
+// Normalize base and strip trailing slash to avoid double slashes.
+const API_BASE = API_BASE_RAW.replace(/\/+$/, '')
+
+const buildUrl = (endpoint, params = {}) => {
+  const cleanEndpoint = endpoint.replace(/^\/+/, '')
   const queryString = new URLSearchParams(params).toString()
-  const url = `/${endpoint}${queryString ? `?${queryString}` : ''}`
+  return `${API_BASE}/${cleanEndpoint}${queryString ? `?${queryString}` : ''}`
+}
+
+export async function apiGet(endpoint, params = {}) {
+  const url = buildUrl(endpoint, params)
 
   const res = await fetch(url, {
     method: 'GET',
     headers: {
       'Content-Type': 'application/json'
-    }
+    },
+    credentials: 'include',
   })
 
   if (!res.ok) {
@@ -35,7 +45,8 @@ function getCookie(name) {
 
 export async function apiPost(endpoint, data = {}) {
   const csrftoken = getCookie('csrftoken');
-  const res = await fetch(`/${endpoint}`, {
+  const url = buildUrl(endpoint)
+  const res = await fetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
