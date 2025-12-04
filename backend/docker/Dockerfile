@@ -9,6 +9,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     && rm -rf /var/lib/apt/lists/*
 
+# Copy and install base Python packages
+COPY docker_requirements.txt /tmp/docker_requirements.txt
+RUN pip install --no-cache-dir -r /tmp/docker_requirements.txt && \
+    rm /tmp/docker_requirements.txt
+
 WORKDIR /workspace
 
 # Контейнер держится живым; агент стартует через docker exec.
