@@ -3,6 +3,7 @@ import StartPage from '@/pages/StartPage.vue'
 import HomePage from '@/pages/HomePage.vue'
 import SectionPage from '@/pages/SectionPage.vue'
 import CoursePage from '@/pages/CoursePage.vue'
+import LoginPage from '@/pages/LoginPage.vue'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -26,7 +27,11 @@ const router = createRouter({
       path: '/course/:id',
       name: 'course',
       component: CoursePage,
-    },
+    },{
+      path: '/login',
+      name: 'login',
+      component: LoginPage,
+    }
   ],
 })
 
