@@ -89,6 +89,12 @@ class CourseParticipantsUpdateView(generics.GenericAPIView):
         course_id = self.kwargs.get(self.lookup_url_kwarg)
         return get_object_or_404(Course, pk=course_id)
 
+    def _ensure_teacher(self, user, course: Course) -> None:
+        if not CourseParticipant.objects.filter(
+            course=course, user=user, role=CourseParticipant.Role.TEACHER
+        ).exists():
+            raise PermissionDenied("Only course teachers can manage participants")
+
 
 class CourseTreeView(APIView):
     permission_classes = [permissions.AllowAny]
@@ -97,12 +103,6 @@ class CourseTreeView(APIView):
         courses = Course.objects.select_related("parent").all()
         tree = _build_course_tree(list(courses))
         return Response(tree)
-
-    def _ensure_teacher(self, user, course: Course) -> None:
-        if not CourseParticipant.objects.filter(
-            course=course, user=user, role=CourseParticipant.Role.TEACHER
-        ).exists():
-            raise PermissionDenied("Only course teachers can manage participants")
 
 
 class CourseSelfEnrollView(generics.GenericAPIView):
