@@ -9,6 +9,7 @@ from ..models.problem_desriptor import ProblemDescriptor
 from ..models.submission import Submission
 from ..services import enqueue_submission_for_evaluation, validation_service
 from .submissions import submission_list
+from django.http import JsonResponse
 
 
 def _report_is_valid(report) -> bool:
@@ -105,3 +106,22 @@ def problem_detail(request, problem_id):
         "result": context_submissions_list["result"]
     }
     return render(request, "runner/problem_detail.html", context)
+
+
+def problem_detail_api(request):
+    problem_id = request.GET.get('problem_id')
+
+    if problem_id is None:
+        return JsonResponse({'error': 'problem_id is required'}, status=400)
+
+    problem = get_object_or_404(Problem, id=problem_id)
+    problem_data = ProblemData.objects.filter(problem=problem).first()
+    descriptor = ProblemDescriptor.objects.filter(problem=problem).first()
+
+    response = {
+        "id": problem.id,
+        "title": problem.title,
+        "statement": problem.statement,
+    }
+
+    return JsonResponse(response)
