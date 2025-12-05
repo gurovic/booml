@@ -1,55 +1,58 @@
 ﻿<template>
   <div class="home">
-    <div v-for="section in sections" :key="section.id" class="section-card">
-      <button type="button" class="section-header" @click="toggleSection(section.id)">
-        <span class="triangle" :class="{ 'triangle--open': isSectionOpen(section.id) }"></span>
-        <h2 class="section-title">{{ section.title }}</h2>
-      </button>
+    <UiHeader />
+    <div class="home__content">
+      <div v-for="section in sections" :key="section.id" class="section-card">
+        <button type="button" class="section-header" @click="toggleSection(section.id)">
+          <span class="triangle" :class="{ 'triangle--open': isSectionOpen(section.id) }"></span>
+          <h2 class="section-title">{{ section.title }}</h2>
+        </button>
 
-      <ul v-if="isSectionOpen(section.id)" class="course-list">
-        <li
-          v-for="child in orderedChildren(section)"
-          :key="child.id"
-          class="course-item"
-        >
-          <template v-if="hasChildren(child)">
-            <button type="button" class="section-header section-header--inline" @click="toggleNested(child.id)">
-              <span class="triangle triangle--nested" :class="{ 'triangle--open': isNestedOpen(child.id) }"></span>
-              <h3 class="course-title course-title--section">{{ child.title }}</h3>
-            </button>
-            <div v-if="isNestedOpen(child.id) && (child.children || []).length" class="badge-list">
-              <button
-                v-for="grand in child.children"
-                :key="grand.id"
-                type="button"
-                class="badge"
-                @click="goToCourse(grand)"
-              >
-                {{ grand.title }}
+        <ul v-if="isSectionOpen(section.id)" class="course-list">
+          <li
+            v-for="child in orderedChildren(section)"
+            :key="child.id"
+            class="course-item"
+          >
+            <template v-if="hasChildren(child)">
+              <button type="button" class="section-header section-header--inline" @click="toggleNested(child.id)">
+                <span class="triangle triangle--nested" :class="{ 'triangle--open': isNestedOpen(child.id) }"></span>
+                <h3 class="course-title course-title--section">{{ child.title }}</h3>
               </button>
-            </div>
-          </template>
-          <template v-else>
-            <button type="button" class="course-link" @click="goToCourse(child)">
-              {{ child.title }}
-            </button>
-          </template>
-        </li>
-      </ul>
-    </div>
+              <div v-if="isNestedOpen(child.id) && (child.children || []).length" class="badge-list">
+                <button
+                  v-for="grand in child.children"
+                  :key="grand.id"
+                  type="button"
+                  class="badge"
+                  @click="goToCourse(grand)"
+                >
+                  {{ grand.title }}
+                </button>
+              </div>
+            </template>
+            <template v-else>
+              <button type="button" class="course-link" @click="goToCourse(child)">
+                {{ child.title }}
+              </button>
+            </template>
+          </li>
+        </ul>
+      </div>
 
-    <div v-if="standalone.length" class="section-card">
-      <button type="button" class="section-header" @click="standaloneOpen = !standaloneOpen">
-        <span class="triangle" :class="{ 'triangle--open': standaloneOpen }"></span>
-        <h2 class="section-title">Курсы без раздела</h2>
-      </button>
-      <ul v-if="standaloneOpen" class="course-list">
-        <li v-for="course in standalone" :key="course.id" class="course-item">
-          <button type="button" class="course-link" @click="goToCourse(course)">
-            {{ course.title }}
-          </button>
-        </li>
-      </ul>
+      <div v-if="standalone.length" class="section-card">
+        <button type="button" class="section-header" @click="standaloneOpen = !standaloneOpen">
+          <span class="triangle" :class="{ 'triangle--open': standaloneOpen }"></span>
+          <h2 class="section-title">Курсы без раздела</h2>
+        </button>
+        <ul v-if="standaloneOpen" class="course-list">
+          <li v-for="course in standalone" :key="course.id" class="course-item">
+            <button type="button" class="course-link" @click="goToCourse(course)">
+              {{ course.title }}
+            </button>
+          </li>
+        </ul>
+      </div>
     </div>
   </div>
 </template>
@@ -58,6 +61,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { courseApi } from '@/api'
+import UiHeader from '@/components/ui/UiHeader.vue'
 
 const courses = ref([])
 const openSections = ref({})
@@ -110,13 +114,19 @@ onMounted(load)
 <style scoped>
 .home {
   min-height: 100vh;
-  padding: 24px 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
+  padding: 0 0 24px;
   font-family: var(--font-default);
   color: var(--color-text-primary);
   background: var(--color-bg-default);
+}
+
+.home__content {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 24px 16px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
 
 .section-card {
@@ -222,6 +232,6 @@ onMounted(load)
 }
 
 @media (min-width: 900px) {
-  .home { padding: 28px 32px; }
+  .home__content { padding: 28px 32px 0; }
 }
 </style>
