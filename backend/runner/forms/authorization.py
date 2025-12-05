@@ -52,9 +52,10 @@ class RegisterForm(forms.ModelForm):
     def save(self, commit=True):
         user = super().save(commit=False)
         user.set_password(self.cleaned_data['password1'])
-        # Optionally, handle teacher role assignment here (e.g., add to group), but do NOT set is_staff.
         role_value = self.cleaned_data.get('role', self.ROLE_STUDENT)
-        if commit:  
+        if role_value == self.ROLE_TEACHER:
+            user.is_staff = True  # ставим учителя в staff
+        if commit:
             user.save()
         return user
 
