@@ -3,6 +3,7 @@ from .views import (
     CourseCreateView,
     CourseParticipantsUpdateView,
     CourseSelfEnrollView,
+    CourseTreeView,
     SubmissionCreateView,
     MySubmissionsListView,
     CreateNotebookSessionView,
@@ -23,6 +24,7 @@ urlpatterns = [
     path("sessions/file/", SessionFileDownloadView.as_view(), name="session-file-download"),
     path("cells/run/", RunCellView.as_view(), name="run-cell"),
     path("courses/", CourseCreateView.as_view(), name="course-create"),
+    path("courses/tree/", CourseTreeView.as_view(), name="course-tree"),
     path(
         "courses/<int:course_id>/participants/",
         CourseParticipantsUpdateView.as_view(),
