@@ -36,6 +36,7 @@ Django==5.2.8
 django-cors-headers==4.9.0
 django-reverse-js==0.1.8
 djangorestframework==3.16.1
+djangorestframework_simplejwt==5.5.1
 executing==2.2.1
 fastjsonschema==2.21.2
 fqdn==1.5.1

@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import StartPage from '@/pages/StartPage.vue'
 import ProblemPage from '@/pages/ProblemPage.vue'
+import LoginPage from '@/pages/LoginPage.vue'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -15,6 +16,11 @@ const router = createRouter({
       name: 'problem',
       component: ProblemPage,
     },
+    {
+      path: '/login',
+      name: 'login',
+      component: LoginPage,
+    }
   ],
 })
 

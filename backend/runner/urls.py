@@ -1,9 +1,11 @@
 from django.urls import path
 from .views.submissions import submission_list, submission_detail, submission_compare, recent_submissions
 from .views.main_page import main_page
-from .views.authorization import register_view, login_view, logout_view
 from .views.problem_detail import problem_detail, problem_detail_api
+from .views.authorization import register_view, login_view, logout_view, backend_register, backend_login, \
+    backend_logout, backend_current_user, backend_check_auth, get_csrf_token
 from .views.problems import problem_list
+from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
 from .views.notebook_list import notebook_list
 from .views.create_notebook import create_notebook
@@ -71,6 +73,14 @@ urlpatterns = [
     path('polygon/problem/<int:problem_id>/', edit_problem_polygon, name='polygon_edit_problem'),
     path('polygon/problem/<int:problem_id>/publish/', publish_problem_polygon, name='polygon_publish_problem'),
 
-    path('backend/start/', start_api),
     path('backend/problem/', problem_detail_api),
+    path('backend/start/', start_api),
+    path('backend/register/', backend_register, name='backend_register'),
+    path('backend/login/', backend_login, name='backend_login'),
+    path('backend/logout/', backend_logout, name='backend_logout'),
+    path('backend/user/', backend_current_user, name='backend_current_user'),
+    path('backend/check-auth/', backend_check_auth, name='backend_check_auth'),
+    path('backend/csrf-token/', get_csrf_token, name='backend_csrf_token'),
+    path('backend/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
+    path('backend/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
 ]
