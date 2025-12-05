@@ -2,6 +2,7 @@ from django.shortcuts import get_object_or_404
 from rest_framework import generics, permissions
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from ...models import Course, CourseParticipant
 from ...services import add_users_to_course
@@ -11,6 +12,27 @@ from ..serializers import (
     CourseParticipantsUpdateSerializer,
     CourseReadSerializer,
 )
+
+
+def _build_course_tree(courses):
+    by_parent = {}
+    for course in courses:
+        by_parent.setdefault(course.parent_id, []).append(course)
+
+    def build(parent_id):
+        nodes = []
+        for course in by_parent.get(parent_id, []):
+            nodes.append(
+                {
+                    "id": course.id,
+                    "title": course.title,
+                    "description": course.description,
+                    "children": build(course.id),
+                }
+            )
+        return nodes
+
+    return build(None)
 
 
 class CourseCreateView(generics.CreateAPIView):
@@ -72,6 +94,15 @@ class CourseParticipantsUpdateView(generics.GenericAPIView):
             course=course, user=user, role=CourseParticipant.Role.TEACHER
         ).exists():
             raise PermissionDenied("Only course teachers can manage participants")
+
+
+class CourseTreeView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request):
+        courses = Course.objects.select_related("parent").all()
+        tree = _build_course_tree(list(courses))
+        return Response(tree)
 
 
 class CourseSelfEnrollView(generics.GenericAPIView):
