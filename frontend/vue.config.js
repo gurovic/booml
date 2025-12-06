@@ -3,10 +3,10 @@ module.exports = defineConfig({
   transpileDependencies: true,
   devServer: {
     port: 3000,
-    host: "localhost",
+    host: "0.0.0.0",
     proxy: {
       '/api': {
-        target: 'http://127.0.0.1:8000/',
+        target: process.env.VUE_APP_BACKEND_URL || 'http://127.0.0.1:8000/',
         changeOrigin: true,
       },
     },
