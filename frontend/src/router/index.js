@@ -4,6 +4,7 @@ import HomePage from '@/pages/HomePage.vue'
 import SectionPage from '@/pages/SectionPage.vue'
 import CoursePage from '@/pages/CoursePage.vue'
 import LoginPage from '@/pages/LoginPage.vue'
+import RegisterPage from '@/pages/RegisterPage.vue'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -31,6 +32,10 @@ const router = createRouter({
       path: '/login',
       name: 'login',
       component: LoginPage,
+    },{
+      path: '/register',
+      name: 'register',
+      component: RegisterPage,
     }
   ],
 })
