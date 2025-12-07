@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import StartPage from '@/pages/StartPage.vue'
+import ProblemPage from '@/pages/ProblemPage.vue'
 import HomePage from '@/pages/HomePage.vue'
 import SectionPage from '@/pages/SectionPage.vue'
 import CoursePage from '@/pages/CoursePage.vue'
@@ -18,6 +19,11 @@ const router = createRouter({
       path: '/start-page',
       name: 'start',
       component: StartPage,
+    },
+    {
+      path: '/problem/:id',
+      name: 'problem',
+      component: ProblemPage,
     },
     {
       path: '/section/:id',
