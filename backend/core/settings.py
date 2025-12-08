@@ -49,10 +49,14 @@ if MODE	== "prod":
 
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:8101",
+    "http://booml.veconomics.ru",
+    "https://booml.veconomics.ru",
 ]
 
 CSRF_TRUSTED_ORIGINS = [
     "http://localhost:8101",
+    "http://booml.veconomics.ru",
+    "https://booml.veconomics.ru",
 ]
 
 # Application definition
