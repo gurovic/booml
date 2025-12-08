@@ -3,7 +3,7 @@ import { apiPost } from '@/api/http'
 export const authService = {
     async login(credentials) {
         try {
-            const response = await apiPost('login/', credentials)
+            const response = await apiPost('backend/login/', credentials)
 
             if (response.success) {
                 const { user, tokens } = response
@@ -30,7 +30,7 @@ export const authService = {
 
     async register(userData) {
         try {
-            const response = await apiPost('register/', userData)
+            const response = await apiPost('backend/register/', userData)
 
             if (response.success) {
                 const { user, tokens } = response
@@ -57,7 +57,7 @@ export const authService = {
 
     async logout() {
         try {
-            await apiPost('logout/')
+            await apiPost('backend/logout/')
         } catch (error) {
             console.error('Logout error:', error)
         } finally {
@@ -68,7 +68,7 @@ export const authService = {
 
     async getCurrentUser() {
         try {
-            const response = await apiPost('user/')
+            const response = await apiPost('backend/user/')
             return response
         } catch (error) {
             const storedUser = localStorage.getItem('user')
@@ -78,7 +78,7 @@ export const authService = {
 
     async checkAuth() {
         try {
-            const response = await apiPost('check-auth/')
+            const response = await apiPost('backend/check-auth/')
             return response
         } catch (error) {
             return { is_authenticated: false }

@@ -1,9 +1,9 @@
 from django.urls import path
 from .views.submissions import submission_list, submission_detail, submission_compare, recent_submissions
 from .views.main_page import main_page
+from .views.problem_detail import problem_detail, problem_detail_api
 from .views.authorization import register_view, login_view, logout_view, backend_register, backend_login, \
     backend_logout, backend_current_user, backend_check_auth, get_csrf_token
-from .views.problem_detail import problem_detail
 from .views.problems import problem_list
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
@@ -72,6 +72,8 @@ urlpatterns = [
     path('polygon/new/', create_problem_polygon, name='polygon_create_problem'),
     path('polygon/problem/<int:problem_id>/', edit_problem_polygon, name='polygon_edit_problem'),
     path('polygon/problem/<int:problem_id>/publish/', publish_problem_polygon, name='polygon_publish_problem'),
+
+    path('backend/problem/', problem_detail_api),
     path('backend/start/', start_api),
     path('backend/register/', backend_register, name='backend_register'),
     path('backend/login/', backend_login, name='backend_login'),
