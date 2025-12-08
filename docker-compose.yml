@@ -21,7 +21,7 @@ services:
       SECRET_KEY: dev-secret-key
       DEBUG: "1"
       MODE: dev
-      ALLOWED_HOSTS: backend,localhost,127.0.0.1
+      ALLOWED_HOSTS: backend,localhost,127.0.0.1,"booml.veconomics.ru","backend.booml.veconomics.ru"
       CSRF_TRUSTED_ORIGINS: http://localhost:8101,http://frontend:8101
       RUNTIME_EXECUTION_BACKEND: jupyter
       RUNTIME_VM_BACKEND: local
