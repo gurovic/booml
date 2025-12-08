@@ -1,11 +1,11 @@
-const API_BASE_RAW = process.env.VUE_APP_API_BASE || '/api'
+// const API_BASE_RAW = process.env.VUE_APP_API_BASE || '/api'
 // Normalize base and strip trailing slash to avoid double slashes.
-const API_BASE = API_BASE_RAW.replace(/\/+$/, '')
+// const API_BASE = API_BASE_RAW.replace(/\/+$/, '')
 
 const buildUrl = (endpoint, params = {}) => {
   const cleanEndpoint = endpoint.replace(/^\/+/, '')
   const queryString = new URLSearchParams(params).toString()
-  return `${API_BASE}/${cleanEndpoint}${queryString ? `?${queryString}` : ''}`
+  return `/${cleanEndpoint}${queryString ? `?${queryString}` : ''}`
 }
 
 export async function apiGet(endpoint, params = {}) {
@@ -45,7 +45,7 @@ function getCookie(name) {
 
 export async function apiPost(endpoint, data = {}) {
   const csrftoken = getCookie('csrftoken');
-  const url = buildUrl(endpoint)
+  const url = endpoint
   const res = await fetch(url, {
     method: 'POST',
     headers: {

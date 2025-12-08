@@ -9,6 +9,10 @@ module.exports = defineConfig({
         target: process.env.VUE_APP_BACKEND_URL || 'http://127.0.0.1:8000/',
         changeOrigin: true,
       },
+      '/backend': {
+        target: process.env.VUE_APP_BACKEND_URL || 'http://127.0.0.1:8000',
+        changeOrigin: true,
+      },
     },
   }
 })

@@ -2,7 +2,7 @@
   <div class="header">
     <div class="container">
       <div class="header__inner">
-        <h1 class="header__title">Booml</h1>
+        <a class="header__title" href="/"><h1>Booml</h1></a>
         <button 
           class="header__button button button--secondary"
           @click="handleButton"
