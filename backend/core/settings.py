@@ -39,11 +39,11 @@ if MODE	== "prod":
     SESSION_COOKIE_SECURE = True
 
 CORS_ALLOWED_ORIGINS = [
-    "http://localhost:3000",
+    "http://localhost:8101",
 ]
 
 CSRF_TRUSTED_ORIGINS = [
-    "http://localhost:3000",
+    "http://localhost:8101",
 ]
 
 # Application definition

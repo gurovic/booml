@@ -17,6 +17,6 @@ RUN pip install -r /tmp/requirements.txt && rm /tmp/requirements.txt
 
 # Application source is bind-mounted by docker compose, so we do not copy it here.
 
-EXPOSE 8000
+EXPOSE 8100
 
-CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]
+CMD ["python", "manage.py", "runserver", "0.0.0.0:8100"]

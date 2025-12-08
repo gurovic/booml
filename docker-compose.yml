@@ -9,20 +9,20 @@ services:
     command: >
       sh -c "
         python manage.py migrate &&
-        python manage.py runserver 0.0.0.0:8000
+        python manage.py runserver 0.0.0.0:8100
       "
     working_dir: /app
     volumes:
       - ./backend:/app
     ports:
-      - "8000:8000"
+      - "8100:8100"
     environment:
       DJANGO_SETTINGS_MODULE: core.settings
       SECRET_KEY: dev-secret-key
       DEBUG: "1"
       MODE: dev
       ALLOWED_HOSTS: backend,localhost,127.0.0.1
-      CSRF_TRUSTED_ORIGINS: http://localhost:3000,http://frontend:3000
+      CSRF_TRUSTED_ORIGINS: http://localhost:8101,http://frontend:8101
       RUNTIME_EXECUTION_BACKEND: jupyter
       RUNTIME_VM_BACKEND: local
       RUNNER_USE_CELERY_QUEUE: "0"
@@ -34,16 +34,16 @@ services:
     command: >
       sh -c "
         npm install &&
-        npm run serve -- --host 0.0.0.0 --port 3000
+        npm run serve -- --host 0.0.0.0 --port 8101
       "
     volumes:
       - ./frontend:/app
       - frontend-node-modules:/app/node_modules
     environment:
       VUE_APP_API_BASE: /api
-      VUE_APP_BACKEND_URL: http://backend:8000/
+      VUE_APP_BACKEND_URL: http://backend:8100/
     ports:
-      - "3000:3000"
+      - "8101:8101"
     depends_on:
       - backend
 
