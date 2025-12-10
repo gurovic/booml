@@ -57,6 +57,8 @@ CSRF_TRUSTED_ORIGINS = [
     "http://localhost:8101",
     "http://booml.veconomics.ru",
     "https://booml.veconomics.ru",
+    "http://backend.booml.veconomics.ru",
+    "https://backend.booml.veconomics.ru",
 ]
 
 # Application definition
