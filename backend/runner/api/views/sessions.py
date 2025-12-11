@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from django.http import FileResponse, Http404
 from django.shortcuts import get_object_or_404
 from rest_framework import permissions, status
@@ -22,6 +24,7 @@ from ..serializers import (
     SessionResetSerializer,
     SessionFilesQuerySerializer,
     SessionFileDownloadSerializer,
+    SessionFileUploadSerializer,
 )
 
 NOTEBOOK_SESSION_PREFIX = "notebook:"
@@ -136,6 +139,59 @@ class SessionFilesView(APIView):
         if vm_payload:
             body["vm"] = vm_payload
         return Response(body, status=status.HTTP_200_OK)
+
+
+class SessionFileUploadView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        serializer = SessionFileUploadSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        session_id = serializer.validated_data["session_id"]
+        upload = serializer.validated_data["file"]
+        relative_override = serializer.validated_data.get("path")
+
+        session = get_session(session_id, touch=False)
+        if session is None:
+            raise Http404("Session not found")
+
+        notebook_id = extract_notebook_id(session_id)
+        if notebook_id is not None:
+            notebook = get_object_or_404(Notebook, pk=notebook_id)
+            ensure_notebook_access(request.user, notebook)
+
+        filename = Path(getattr(upload, "name", "") or "uploaded.file").name
+        raw_path = (relative_override or "").strip()
+        relative_path = Path(raw_path) if raw_path else Path(filename)
+        if raw_path.endswith(("/", "\\")) or relative_path.name in ("", "."):
+            relative_path = relative_path / filename
+        if relative_path.is_absolute():
+            return Response(
+                {"detail": "Path must be relative to the session"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        base_dir = session.workdir.resolve()
+        target_path = (base_dir / relative_path).resolve()
+        try:
+            target_path.relative_to(base_dir)
+        except ValueError:
+            raise Http404("File outside sandbox")
+
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        with target_path.open("wb") as destination:
+            for chunk in upload.chunks():
+                destination.write(chunk)
+
+        stat = target_path.stat()
+        return Response(
+            {
+                "session_id": session_id,
+                "path": str(target_path.relative_to(base_dir)),
+                "size": stat.st_size,
+            },
+            status=status.HTTP_201_CREATED,
+        )
 
 
 class SessionFileDownloadView(APIView):
