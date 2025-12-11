@@ -160,6 +160,7 @@ def _build_docker_image(image: str, dockerfile: Path) -> None:
     Uses docker_build.py if available, otherwise runs docker build directly.
     """
     docker_build_script = BACKEND_DIR / "docker" / "docker_build.py"
+    context = BACKEND_DIR if dockerfile.parent == BACKEND_DIR / "docker" else dockerfile.parent
     
     if docker_build_script.exists():
         # Use docker_build.py script
@@ -170,7 +171,7 @@ def _build_docker_image(image: str, dockerfile: Path) -> None:
     else:
         # Fallback: use docker build directly
         result = subprocess.run(
-            ["docker", "build", "-t", image, "-f", str(dockerfile), str(dockerfile.parent)],
+            ["docker", "build", "-t", image, "-f", str(dockerfile), str(context)],
             cwd=str(BACKEND_DIR),
         )
     
