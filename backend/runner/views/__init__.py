@@ -1,6 +1,14 @@
 from .main_page import main_page
 from .authorization import register_view, login_view
-from .contest_draft import create_contest, contest_success, list_contests
+from .contest_draft import (
+    create_contest,
+    contest_success,
+    contest_detail,
+    course_detail,
+    list_contests,
+    set_contest_access,
+    manage_contest_participants,
+)
 from .problems import problem_list
 from .get_reports_list import get_reports_list
 from .receive_test_result import receive_test_result

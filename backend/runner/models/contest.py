@@ -1,3 +1,5 @@
+import uuid
+
 from django.conf import settings
 from django.db import models
 
@@ -52,6 +54,29 @@ class Contest(models.Model):
         default=Registration.OPEN,
         help_text="Who can register / how participants join the contest",
     )
+    class AccessType(models.TextChoices):
+        PUBLIC = "public", "Public"
+        PRIVATE = "private", "Private"
+        LINK = "link", "By link"
+
+    access_type = models.CharField(
+        max_length=20,
+        choices=AccessType.choices,
+        default=AccessType.PUBLIC,
+        help_text="Controls who can see and join the contest",
+    )
+    access_token = models.CharField(
+        max_length=64,
+        blank=True,
+        default="",
+        help_text="Token for link-based access",
+    )
+    allowed_participants = models.ManyToManyField(
+        settings.AUTH_USER_MODEL,
+        blank=True,
+        related_name="allowed_contests",
+        help_text="Users explicitly allowed to access a private contest",
+    )
     is_rated = models.BooleanField(
         default=False,
         help_text="If true, contest results affect participant rating",
@@ -84,11 +109,36 @@ class Contest(models.Model):
 
     def is_visible_to(self, user):
         """
-        Teachers of linked courses see drafts; published contests visible to course participants.
+        Teachers of linked courses always see the contest.
+        Drafts are hidden from non-teachers.
+        Visibility for others depends on access_type and explicit allows.
         """
-        if self.is_published:
-            return self.course.participants.filter(user=user).exists()
-        return self.course.participants.filter(
+        if not user.is_authenticated:
+            return False
+
+        is_teacher = self.course and self.course.participants.filter(
             user=user,
             role=CourseParticipant.Role.TEACHER,
         ).exists()
+        if is_teacher:
+            return True
+
+        if not self.is_published:
+            return False
+
+        if self.access_type == self.AccessType.PRIVATE:
+            return self.allowed_participants.filter(pk=user.pk).exists()
+
+        if self.access_type == self.AccessType.LINK:
+            if self.allowed_participants.filter(pk=user.pk).exists():
+                return True
+
+        if self.course:
+            return self.course.participants.filter(user=user).exists()
+        return False
+
+    def ensure_access_token(self):
+        if not self.access_token:
+            self.access_token = uuid.uuid4().hex
+            self.save(update_fields=["access_token"])
+        return self.access_token
