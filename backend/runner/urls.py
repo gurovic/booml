@@ -24,8 +24,10 @@ from .views.get_reports_list import get_reports_list
 from .views.receive_test_result import receive_test_result
 from .views.contest_draft import (
     add_problem_to_contest,
+    contest_detail,
     create_contest,
     contest_success,
+    course_detail,
     list_contests,
     manage_contest_participants,
     set_contest_access,
@@ -56,7 +58,9 @@ urlpatterns = [
     path('problem/<int:problem_id>/compare/', submission_compare, name="submission_compare"),
     path("problems/<int:problem_id>/", problem_detail, name="problem_detail"),
     path("problems/", problem_list, name="problem_list"),
+    path('course/<int:course_id>/', course_detail, name='course_detail'),
     path('contest/', list_contests, name='contest_list'),
+    path('contest/<int:contest_id>/', contest_detail, name='contest_detail'),
     path('contest/new/', create_contest, name='create_contest'),
     path('contest/<int:contest_id>/access/', set_contest_access, name='contest_set_access'),
     path('contest/<int:contest_id>/participants/', manage_contest_participants, name='contest_manage_participants'),

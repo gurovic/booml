@@ -3,6 +3,8 @@ from .authorization import register_view, login_view
 from .contest_draft import (
     create_contest,
     contest_success,
+    contest_detail,
+    course_detail,
     list_contests,
     set_contest_access,
     manage_contest_participants,
