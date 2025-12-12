@@ -32,3 +32,9 @@ class SessionFilesQuerySerializer(serializers.Serializer):
 class SessionFileDownloadSerializer(serializers.Serializer):
     session_id = serializers.CharField(max_length=255, allow_blank=False)
     path = serializers.CharField(max_length=1000, allow_blank=False)
+
+
+class SessionFileUploadSerializer(serializers.Serializer):
+    session_id = serializers.CharField(max_length=255, allow_blank=False)
+    file = serializers.FileField()
+    path = serializers.CharField(max_length=1000, allow_blank=True, required=False, allow_null=True)

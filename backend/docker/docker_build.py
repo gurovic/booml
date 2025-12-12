@@ -41,7 +41,7 @@ def main() -> int:
     if not dockerfile.exists():
         print(f"ERROR: Dockerfile {dockerfile} не найден.", file=sys.stderr)
         return 1
-    context = dockerfile.parent
+    context = BACKEND_DIR if dockerfile.parent == BACKEND_DIR / "docker" else dockerfile.parent
     cmd = ["docker", "build", "-t", args.image, "-f", str(dockerfile), str(context)]
     print(f"[docker-build] Building {args.image} from {dockerfile}")
     try:
