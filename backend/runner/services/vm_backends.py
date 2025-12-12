@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 import time
@@ -10,6 +11,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict
 
+from django.conf import settings
 from django.utils import timezone
 
 from .vm_agent_server import VM_AGENT_SERVER_SOURCE
@@ -174,6 +176,9 @@ class DockerVmBackend(VmBackend):
     def __init__(self, root: Path):
         self.root = Path(root)
         self.root.mkdir(parents=True, exist_ok=True)
+        host_root = os.environ.get("RUNTIME_VM_HOST_ROOT")
+        self._host_root = Path(host_root).expanduser().resolve() if host_root else None
+        self._container_base = Path(getattr(settings, "BASE_DIR", self.root.parent)).resolve()
 
     def create_vm(
         self,
@@ -265,6 +270,8 @@ class DockerVmBackend(VmBackend):
         vm_dir: Path,
         workspace: Path,
     ) -> None:
+        source_vm_dir = self._map_to_host(vm_dir.resolve())
+        source_workspace = self._map_to_host(workspace.resolve())
         args = [
             "create",
             "--name",
@@ -278,9 +285,9 @@ class DockerVmBackend(VmBackend):
             "--pids-limit",
             "512",
             "--mount",
-            f"type=bind,source={vm_dir.resolve()},target=/vm",
+            f"type=bind,source={source_vm_dir},target=/vm",
             "--mount",
-            f"type=bind,source={workspace.resolve()},target=/workspace",
+            f"type=bind,source={source_workspace},target=/workspace",
         ]
         if spec.network.outbound == "deny":
             args += ["--network", "none"]
@@ -290,6 +297,20 @@ class DockerVmBackend(VmBackend):
         args += [spec.image, "sleep", "infinity"]
         self._run_docker(tuple(args))
         self._run_docker(("start", container_name))
+
+    def _map_to_host(self, container_path: Path) -> str:
+        """
+        When backend itself runs inside Docker, container paths like /app/...
+        are not valid bind sources for the host daemon. If RUNTIME_VM_HOST_ROOT
+        is set to the host directory corresponding to BASE_DIR, rewrite paths.
+        """
+        if self._host_root is None:
+            return str(container_path)
+        try:
+            relative = container_path.relative_to(self._container_base)
+        except Exception:
+            return str(container_path)
+        return str((self._host_root / relative).resolve())
 
     def _start_agent(self, container_name: str) -> None:
         self._run_docker(

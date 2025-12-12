@@ -26,6 +26,8 @@ services:
       CSRF_TRUSTED_ORIGINS: http://localhost:8101,http://frontend:8101,http://booml.veconomics.ru,https://booml.veconomics.ru,http://backend.booml.veconomics.ru,https://backend.booml.veconomics.ru
       RUNTIME_EXECUTION_BACKEND: jupyter
       RUNTIME_VM_BACKEND: auto
+      # Host path corresponding to /app inside container; used for Docker VM bind mounts.
+      RUNTIME_VM_HOST_ROOT: ${PWD}/backend
       RUNNER_USE_CELERY_QUEUE: "0"
 
   frontend:
