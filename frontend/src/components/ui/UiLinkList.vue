@@ -1,6 +1,6 @@
 <template>
   <div class="menu-list">
-    <h1 class="menu-list__title">{{ title }}</h1>
+    <h2>{{ title }}</h2>
 
     <ul class="menu-list__items">
       <li v-for="item in items" :key="item.text" class="menu-list__item">
@@ -36,15 +36,7 @@ export default {
   padding: 14px 16px 16px;
   box-shadow: 0 3px 10px var(--color-surface-shadow);
   border: 1px solid var(--color-surface-border);
-  font-family: var(--font-default);
   color: var(--color-text-primary);
-}
-
-.menu-list__title {
-  margin-bottom: 12px;
-  font-size: 18px;
-  font-weight: 400;
-  color: var(--color-text-title);
 }
 
 .menu-list__items {
@@ -74,8 +66,6 @@ export default {
   width: 100%;
   padding: 8px 10px;
   color: var(--color-text-primary);
-  font-size: 14px;
-  line-height: 1.4;
   border-radius: 8px;
 }
 </style>
