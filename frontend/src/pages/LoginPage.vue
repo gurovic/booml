@@ -2,32 +2,14 @@
     <div class="auth-page">
         <div class="auth-page__container">
             <div class="auth-card">
-                <div class="auth-card__tabs">
-                    <button
-                        @click="switchToLogin"
-                        :class="[
-                            'auth-card__tab',
-                            { 'auth-card__tab--active': activeTab === 'login' }
-                        ]"
-                    >
-                        Вход
-                    </button>
-                    <button
-                        @click="switchToRegister"
-                        :class="[
-                            'auth-card__tab',
-                            { 'auth-card__tab--active': activeTab === 'register' }
-                        ]"
-                    >
-                        Регистрация
-                    </button>
+                <div class="auth-card__header">
+                    <h2 class="auth-card__title">Вход в аккаунт</h2>
+                    <p class="auth-card__subtitle">
+                        Введите свои данные для входа в систему
+                    </p>
                 </div>
 
                 <form @submit.prevent="handleSubmit" class="auth-card__form">
-                    <h2 class="auth-card__title">
-                        {{ activeTab === 'login' ? 'Вход в аккаунт' : 'Создание аккаунта' }}
-                    </h2>
-
                     <div
                         v-if="formErrors.general"
                         class="auth-card__error auth-card__error--general"
@@ -37,7 +19,7 @@
 
                     <div class="form-group">
                         <label for="username" class="form-group__label">
-                            Имя пользователя *
+                            Имя пользователя
                         </label>
                         <input
                             type="text"
@@ -47,8 +29,9 @@
                                 'form-group__input',
                                 { 'form-group__input--error': formErrors.username }
                             ]"
-                            placeholder="Ваше имя пользователя"
+                            placeholder="Введите имя пользователя"
                             required
+                            :disabled="loading"
                         >
                         <div
                             v-if="formErrors.username"
@@ -58,32 +41,9 @@
                         </div>
                     </div>
 
-                    <div v-if="activeTab === 'register'" class="form-group">
-                        <label for="email" class="form-group__label">
-                            Email *
-                        </label>
-                        <input
-                            type="email"
-                            id="email"
-                            v-model="formData.email"
-                            :class="[
-                                'form-group__input',
-                                { 'form-group__input--error': formErrors.email }
-                            ]"
-                            placeholder="Ваш email"
-                            required
-                        >
-                        <div
-                            v-if="formErrors.email"
-                            class="form-group__error"
-                        >
-                            {{ formErrors.email }}
-                        </div>
-                    </div>
-
                     <div class="form-group">
                         <label for="password" class="form-group__label">
-                            Пароль *
+                            Пароль
                         </label>
                         <input
                             type="password"
@@ -93,43 +53,15 @@
                                 'form-group__input',
                                 { 'form-group__input--error': formErrors.password }
                             ]"
-                            :placeholder="activeTab === 'login' ? 'Введите пароль' : 'Придумайте пароль'"
+                            placeholder="Введите пароль"
                             required
+                            :disabled="loading"
                         >
                         <div
                             v-if="formErrors.password"
                             class="form-group__error"
                         >
                             {{ formErrors.password }}
-                        </div>
-                        <small
-                            v-if="activeTab === 'register'"
-                            class="form-group__hint"
-                        >
-                            Минимум 8 символов
-                        </small>
-                    </div>
-
-                    <div v-if="activeTab === 'register'" class="form-group">
-                        <label for="password2" class="form-group__label">
-                            Подтверждение пароля *
-                        </label>
-                        <input
-                            type="password"
-                            id="password2"
-                            v-model="formData.password2"
-                            :class="[
-                                'form-group__input',
-                                { 'form-group__input--error': formErrors.password2 }
-                            ]"
-                            placeholder="Повторите пароль"
-                            required
-                        >
-                        <div
-                            v-if="formErrors.password2"
-                            class="form-group__error"
-                        >
-                            {{ formErrors.password2 }}
                         </div>
                     </div>
 
@@ -146,26 +78,17 @@
                             class="auth-card__spinner"
                         ></span>
                         <span class="auth-card__submit-text">
-                            {{ activeTab === 'login' ? 'Войти' : 'Зарегистрироваться' }}
+                            Войти
                         </span>
                     </button>
                 </form>
 
-                <div class="auth-card__switch">
-                    <p class="auth-card__switch-text">
-                        <span v-if="activeTab === 'login'">
-                            Нет аккаунта?
-                        </span>
-                        <span v-else>
-                            Уже есть аккаунт?
-                        </span>
-                        <a
-                            href="#"
-                            @click.prevent="activeTab === 'login' ? switchToRegister() : switchToLogin()"
-                            class="auth-card__switch-link"
-                        >
-                            {{ activeTab === 'login' ? 'Зарегистрируйтесь' : 'Войдите' }}
-                        </a>
+                <div class="auth-card__footer">
+                    <p class="auth-card__footer-text">
+                        Нет аккаунта?
+                        <router-link to="/register" class="auth-card__footer-link">
+                            Зарегистрируйтесь
+                        </router-link>
                     </p>
                 </div>
             </div>
@@ -174,44 +97,18 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed } from 'vue'
+import { ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { authService } from '@/services/auth'
 
 const router = useRouter()
 
-const activeTab = ref('login')
 const loading = ref(false)
 const formData = reactive({
     username: '',
-    email: '',
-    password: '',
-    password2: ''
+    password: ''
 })
 const formErrors = reactive({})
-
-const isLoginMode = computed(() => activeTab.value === 'login')
-
-const switchToLogin = () => {
-    activeTab.value = 'login'
-    resetForm()
-    clearErrors()
-}
-
-const switchToRegister = () => {
-    activeTab.value = 'register'
-    resetForm()
-    clearErrors()
-}
-
-const resetForm = () => {
-    Object.assign(formData, {
-        username: '',
-        email: '',
-        password: '',
-        password2: ''
-    })
-}
 
 const clearErrors = () => {
     Object.keys(formErrors).forEach(key => {
@@ -224,22 +121,10 @@ const handleSubmit = async () => {
     clearErrors()
 
     try {
-        let result
-
-        if (isLoginMode.value) {
-            result = await authService.login({
-                username: formData.username,
-                password: formData.password
-            })
-        } else {
-            result = await authService.register({
-                username: formData.username,
-                email: formData.email,
-                password1: formData.password,
-                password2: formData.password2,
-                role: 'student',
-            })
-        }
+        const result = await authService.login({
+            username: formData.username,
+            password: formData.password
+        })
 
         if (result.success) {
             await router.push('/')
@@ -247,7 +132,7 @@ const handleSubmit = async () => {
             handleErrors(result.error)
         }
     } catch (error) {
-        console.error('Auth error:', error)
+        console.error('Login error:', error)
         formErrors.general = 'Произошла ошибка. Попробуйте позже.'
     } finally {
         loading.value = false
@@ -263,14 +148,7 @@ const handleErrors = (error) => {
             if (fieldWithLabel && message) {
                 const field = fieldWithLabel.trim()
                 const cleanMessage = message.trim()
-
-                const fieldMap = {
-                    'password1': 'password',
-                    'password2': 'password2'
-                }
-
-                const vueField = fieldMap[field] || field
-                formErrors[vueField] = cleanMessage
+                formErrors[field] = cleanMessage
             }
         })
     } else {
@@ -279,5 +157,224 @@ const handleErrors = (error) => {
 }
 </script>
 
-<style lang="scss" scoped>
+<style scoped>
+.auth-page {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: #f8f9fa;
+    padding: 20px;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.auth-page__container {
+    width: 100%;
+    max-width: 440px;
+    margin: 0 auto;
+}
+
+.auth-card {
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+    padding: 40px;
+}
+
+.auth-card__header {
+    text-align: center;
+    margin-bottom: 32px;
+}
+
+.auth-card__title {
+    color: #2c3e50;
+    font-size: 26px;
+    font-weight: 600;
+    margin: 0 0 10px 0;
+    line-height: 1.2;
+}
+
+.auth-card__subtitle {
+    color: #7f8c8d;
+    font-size: 15px;
+    margin: 0;
+    line-height: 1.5;
+}
+
+.auth-card__form {
+    margin-bottom: 24px;
+}
+
+.auth-card__error--general {
+    background-color: #fef2f2;
+    border: 1px solid #fee2e2;
+    color: #dc2626;
+    padding: 12px 16px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    font-size: 14px;
+    text-align: center;
+}
+
+.form-group {
+    margin-bottom: 24px;
+}
+
+.form-group__label {
+    display: block;
+    color: #374151;
+    font-weight: 500;
+    font-size: 14px;
+    margin-bottom: 8px;
+}
+
+.form-group__label::after {
+    content: " *";
+    color: #ef4444;
+}
+
+.form-group__input {
+    width: 100%;
+    padding: 14px 16px;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    font-size: 16px;
+    color: #111827;
+    background-color: #fff;
+    transition: border-color 0.15s ease;
+    box-sizing: border-box;
+}
+
+.form-group__input:focus {
+    outline: none;
+    border-color: #144EEC;
+    box-shadow: 0 0 0 3px rgba(20, 78, 236, 0.1);
+}
+
+.form-group__input--error {
+    border-color: #ef4444;
+    background-color: #fffafa;
+}
+
+.form-group__input--error:focus {
+    border-color: #ef4444;
+    box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1);
+}
+
+.form-group__input:disabled {
+    background-color: #f9fafb;
+    cursor: not-allowed;
+    opacity: 0.7;
+}
+
+.form-group__error {
+    color: #ef4444;
+    font-size: 13px;
+    margin-top: 6px;
+}
+
+.auth-card__submit {
+    width: 100%;
+    background-color: #144EEC;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    padding: 16px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+    height: 52px;
+    margin-top: 8px;
+}
+
+.auth-card__submit:hover:not(:disabled) {
+    background-color: #0d3ec8;
+}
+
+.auth-card__submit:active:not(:disabled) {
+    background-color: #0a32a8;
+}
+
+.auth-card__submit:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.auth-card__submit--loading {
+    opacity: 0.8;
+}
+
+.auth-card__spinner {
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-radius: 50%;
+    border-top-color: white;
+    animation: spin 0.8s linear infinite;
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+}
+
+.auth-card__submit-text {
+    opacity: 1;
+    transition: opacity 0.15s ease;
+}
+
+.auth-card__submit--loading .auth-card__submit-text {
+    opacity: 0;
+}
+
+@keyframes spin {
+    to {
+        transform: translate(-50%, -50%) rotate(360deg);
+    }
+}
+
+.auth-card__footer {
+    text-align: center;
+    padding-top: 24px;
+    border-top: 1px solid #e5e7eb;
+}
+
+.auth-card__footer-text {
+    color: #6b7280;
+    font-size: 15px;
+    margin: 0;
+}
+
+.auth-card__footer-link {
+    color: #144EEC;
+    text-decoration: none;
+    font-weight: 600;
+    margin-left: 4px;
+    transition: color 0.15s ease;
+}
+
+.auth-card__footer-link:hover {
+    color: #0d3ec8;
+    text-decoration: underline;
+}
+
+@media (max-width: 480px) {
+    .auth-card {
+        padding: 32px 24px;
+    }
+
+    .auth-card__title {
+        font-size: 24px;
+    }
+
+    .auth-card__subtitle {
+        font-size: 14px;
+    }
+
+    .form-group__input {
+        padding: 12px 14px;
+        font-size: 15px;
+    }
+}
 </style>
