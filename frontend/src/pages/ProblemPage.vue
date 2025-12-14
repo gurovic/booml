@@ -8,7 +8,7 @@
           <div class="problem__text" v-html="problem.rendered_statement"></div>
         </div>
         <div class="problem__menu">
-          <div class="problem__files">
+          <div class="problem__files" v-if="availableFiles.length > 0">
             <h2 class="problem__files-title">Файлы</h2>
             <ul class="problem__files-list">
               <li
