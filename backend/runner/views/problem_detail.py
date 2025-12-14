@@ -118,10 +118,32 @@ def problem_detail_api(request):
     problem_data = ProblemData.objects.filter(problem=problem).first()
     descriptor = ProblemDescriptor.objects.filter(problem=problem).first()
 
+    def get_file_url(file):
+        file_url = None
+        if file:
+            file_url = request.build_absolute_uri(
+                file.url
+            )
+        return file_url
+    
+    file_urls = {
+        "train": None,
+        "test": None,
+        "sample_submission": None
+    }
+
+    if problem_data:
+        file_urls = {
+            "train": get_file_url(problem_data.train_file),
+            "test": get_file_url(problem_data.test_file),
+            "sample_submission": get_file_url(problem_data.sample_submission_file)
+        }
+
     response = {
         "id": problem.id,
         "title": problem.title,
         "statement": problem.statement,
+        "files": file_urls
     }
 
     return JsonResponse(response)
