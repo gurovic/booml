@@ -14,7 +14,7 @@
               <li
                 class="problem__file"
                 v-for="file in availableFiles"
-                :key="file.id"
+                :key="file.name"
               >
                 <a class="problem__file-href button button--secondary" :href="file.url" :download="file.name">{{ file.name }}</a>
             </li>
