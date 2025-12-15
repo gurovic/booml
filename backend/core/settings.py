@@ -189,8 +189,8 @@ RUNTIME_EXECUTION_BACKEND = os.environ.get("RUNTIME_EXECUTION_BACKEND", "legacy"
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-CELERY_BROKER_URL = "redis://localhost:6379/0"
-CELERY_RESULT_BACKEND = "redis://localhost:6379/1"
+CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", "redis://localhost:6379/0")
+CELERY_RESULT_BACKEND = os.getenv("CELERY_RESULT_BACKEND", "redis://localhost:6379/1")
 
 STATIC_ROOT = BASE_DIR / "staticfiles"
 
@@ -202,8 +202,17 @@ RUNNER_USE_CELERY_QUEUE = os.environ.get("RUNNER_USE_CELERY_QUEUE", "0").lower()
 CELERY_TASK_ALWAYS_EAGER = False  # для реального async
 CELERY_TASK_EAGER_PROPAGATES = True
 
-CHANNEL_LAYERS = {
-    "default": {
-        "BACKEND": "channels.layers.InMemoryChannelLayer",
+CHANNEL_LAYER_REDIS_URL = os.getenv("CHANNEL_LAYER_REDIS_URL", "").strip()
+if CHANNEL_LAYER_REDIS_URL:
+    CHANNEL_LAYERS = {
+        "default": {
+            "BACKEND": "channels_redis.core.RedisChannelLayer",
+            "CONFIG": {"hosts": [CHANNEL_LAYER_REDIS_URL]},
+        }
     }
-}
+else:
+    CHANNEL_LAYERS = {
+        "default": {
+            "BACKEND": "channels.layers.InMemoryChannelLayer",
+        }
+    }

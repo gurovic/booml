@@ -1,6 +1,15 @@
 version: "3.9"
 
 services:
+  redis:
+    container_name: booml-redis
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    ports:
+      - "6379:6379"
+
   backend:
     container_name: booml-backend
     build:
@@ -17,6 +26,8 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
     ports:
       - "8100:8100"
+    depends_on:
+      - redis
     environment:
       DJANGO_SETTINGS_MODULE: core.settings
       SECRET_KEY: dev-secret-key
@@ -28,7 +39,35 @@ services:
       RUNTIME_VM_BACKEND: auto
       # Host path corresponding to /app inside container; used for Docker VM bind mounts.
       RUNTIME_VM_HOST_ROOT: ${PWD}/backend
-      RUNNER_USE_CELERY_QUEUE: "0"
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      CHANNEL_LAYER_REDIS_URL: redis://redis:6379/2
+      RUNNER_USE_CELERY_QUEUE: ${RUNNER_USE_CELERY_QUEUE:-1}
+
+  celery:
+    container_name: booml-celery
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: >
+      sh -c "
+        celery -A runner.celery:app worker -l info
+      "
+    working_dir: /app
+    volumes:
+      - ./backend:/app
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      - redis
+    environment:
+      DJANGO_SETTINGS_MODULE: core.settings
+      SECRET_KEY: dev-secret-key
+      DEBUG: "True"
+      MODE: dev
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      CHANNEL_LAYER_REDIS_URL: redis://redis:6379/2
+      RUNNER_USE_CELERY_QUEUE: ${RUNNER_USE_CELERY_QUEUE:-1}
 
   frontend:
     container_name: booml-frontend
@@ -73,3 +112,4 @@ services:
 
 volumes:
   frontend-node-modules:
+  redis-data:
