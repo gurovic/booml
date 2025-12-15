@@ -149,8 +149,13 @@ def _docker_available() -> bool:
 def _resolve_dockerfile() -> Path | None:
     override = os.environ.get("RUNTIME_VM_DOCKERFILE")
     if override:
-        path = Path(override).expanduser().resolve()
-        return path if path.exists() else None
+        path = Path(override).expanduser()
+        if not path.is_absolute():
+            path = (BACKEND_DIR / path).resolve()
+        else:
+            path = path.resolve()
+        if path.exists():
+            return path
     return DEFAULT_DOCKERFILE if DEFAULT_DOCKERFILE.exists() else None
 
 
