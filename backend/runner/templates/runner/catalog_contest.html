@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>{{ contest.title }} — контест</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background: #f5f6f8; color: #0f172a; }
+        header { margin-bottom: 16px; }
+        a { color: #2563eb; text-decoration: none; }
+        .card { background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 16px; box-shadow: 0 6px 18px rgba(15, 23, 42, 0.08); margin-bottom: 14px; }
+        .list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 10px; }
+        .list-item { display: flex; justify-content: space-between; gap: 12px; align-items: center; }
+        .badge { background: #e0f2fe; border-radius: 999px; padding: 4px 8px; font-size: 12px; color: #0f172a; }
+    </style>
+</head>
+<body>
+    <header>
+        <a href="{% url 'runner:catalog_tree' %}">← Ко всем разделам</a> ·
+        <a href="{% url 'runner:catalog_course' contest.course.id %}">К курсу {{ contest.course.title }}</a>
+    </header>
+
+    <div class="card">
+        <p style="margin:0; color:#475569;">Контест</p>
+        <h1 style="margin: 4px 0 6px;">{{ contest.title }}</h1>
+        <p style="margin:0; color:#475569;">{{ contest.description|default:"Описание контеста появится позже." }}</p>
+        <p style="margin-top: 8px; color:#475569;">Состояние: {% if contest.is_published %}опубликован{% else %}черновик{% endif %}</p>
+    </div>
+
+    <div class="card">
+        <div style="display:flex; justify-content: space-between; align-items: center;">
+            <h2>Задачи</h2>
+            <span class="badge">{{ problems|length }}</span>
+        </div>
+        {% if problems %}
+            <ul class="list">
+            {% for problem in problems %}
+                <li class="list-item">
+                    <div>
+                        <strong>{{ problem.title }}</strong>
+                    </div>
+                    <a href="{% url 'runner:problem_detail' problem.id %}">Открыть</a>
+                </li>
+            {% endfor %}
+            </ul>
+        {% else %}
+            <p>В этом контесте пока нет задач.</p>
+        {% endif %}
+    </div>
+</body>
+</html>

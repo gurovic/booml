@@ -3,7 +3,7 @@ from typing import Iterable
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
 
-from ...models import Course, CourseParticipant
+from ...models import Course, CourseParticipant, Section
 from ...services import CourseCreateInput, create_course
 
 User = get_user_model()
@@ -27,7 +27,7 @@ def _resolve_users(user_ids: Iterable[int], field_name: str) -> list[User]:
 
 
 class CourseReadSerializer(serializers.ModelSerializer):
-    parent_id = serializers.IntegerField(source="parent.id", allow_null=True, read_only=True)
+    section_id = serializers.IntegerField(source="section.id", allow_null=True, read_only=True)
     owner_username = serializers.CharField(source="owner.username", read_only=True)
 
     class Meta:
@@ -37,7 +37,7 @@ class CourseReadSerializer(serializers.ModelSerializer):
             "title",
             "description",
             "is_open",
-            "parent_id",
+            "section_id",
             "owner",
             "owner_username",
             "created_at",
@@ -50,7 +50,7 @@ class CourseCreateSerializer(serializers.Serializer):
     title = serializers.CharField(max_length=255)
     description = serializers.CharField(required=False, allow_blank=True, default="")
     is_open = serializers.BooleanField(default=False)
-    parent_id = serializers.IntegerField(required=False, allow_null=True)
+    section_id = serializers.IntegerField(required=True)
     teacher_ids = serializers.ListField(
         child=serializers.IntegerField(min_value=1),
         required=False,
@@ -64,16 +64,21 @@ class CourseCreateSerializer(serializers.Serializer):
         default=list,
     )
 
-    def validate_parent_id(self, value: int | None) -> Course | None:
+    def validate_section_id(self, value: int | None) -> Section | None:
         if value is None:
-            return None
+            raise serializers.ValidationError("Section is required")
         try:
-            return Course.objects.get(pk=value)
-        except Course.DoesNotExist as exc:
-            raise serializers.ValidationError("Parent course not found") from exc
+            return Section.objects.get(pk=value)
+        except Section.DoesNotExist as exc:
+            raise serializers.ValidationError("Section not found") from exc
 
     def validate(self, data):
-        data["parent"] = data.pop("parent_id", None)
+        data["section"] = data.pop("section_id", None)
+        request_user = self.context.get("request").user  # type: ignore[attr-defined]
+        if data["section"] and request_user and data["section"].owner_id != request_user.id:
+            raise serializers.ValidationError(
+                {"section_id": "Курс может создавать только владелец выбранного раздела."}
+            )
         data["teacher_objs"] = _resolve_users(data.get("teacher_ids") or [], "teacher_ids")
         data["student_objs"] = _resolve_users(data.get("student_ids") or [], "student_ids")
         return data
@@ -85,7 +90,7 @@ class CourseCreateSerializer(serializers.Serializer):
             description=validated_data.get("description", ""),
             is_open=validated_data.get("is_open", False),
             owner=owner,
-            parent=validated_data.get("parent"),
+            section=validated_data.get("section"),
             teachers=validated_data.get("teacher_objs"),
             students=validated_data.get("student_objs"),
         )
@@ -120,3 +125,18 @@ class CourseParticipantSummarySerializer(serializers.ModelSerializer):
     class Meta:
         model = CourseParticipant
         fields = ["user_id", "username", "role", "is_owner", "added_at"]
+
+
+class SectionCreateSerializer(serializers.ModelSerializer):
+    def create(self, validated_data):
+        owner = self.context["request"].user
+        validated_data["owner"] = owner
+        section = Section(**validated_data)
+        section.full_clean()
+        section.save()
+        return section
+
+    class Meta:
+        model = Section
+        fields = ["id", "title", "description", "is_public", "parent"]
+        read_only_fields = ["id"]

@@ -102,7 +102,9 @@ def contest_detail(request, contest_id):
         return JsonResponse({"detail": "Authentication required"}, status=401)
 
     contest = get_object_or_404(
-        Contest.objects.select_related("course").annotate(problems_count=Count("problems")),
+        Contest.objects.select_related("course")
+        .prefetch_related("problems")
+        .annotate(problems_count=Count("problems")),
         pk=contest_id,
     )
     if not contest.is_visible_to(request.user):
@@ -117,6 +119,14 @@ def contest_detail(request, contest_id):
         allowed_participants = list(
             contest.allowed_participants.values("id", "username")
         )
+
+    problems = [
+        {
+            "id": problem.id,
+            "title": problem.title,
+        }
+        for problem in contest.problems.all()
+    ]
 
     return JsonResponse(
         {
@@ -136,6 +146,7 @@ def contest_detail(request, contest_id):
             "start_time": contest.start_time.isoformat() if contest.start_time else None,
             "problems_count": contest.problems_count,
             "allowed_participants": allowed_participants,
+            "problems": problems,
         },
         status=200,
     )

@@ -26,3 +26,9 @@ from .receive_test_result import receive_test_result
 from .problem_detail import problem_detail
 from .contest_draft import create_contest
 from .contest_draft import contest_success
+from .catalog import (
+    catalog_tree,
+    catalog_section,
+    catalog_course,
+    catalog_contest,
+)

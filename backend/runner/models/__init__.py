@@ -11,3 +11,4 @@ from .notebook import Notebook
 from .problem import Problem
 from .tag import Tag
 from .course import Course, CourseParticipant
+from .section import Section

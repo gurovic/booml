@@ -1,8 +1,8 @@
 from django.contrib.auth import get_user_model
-from django.test import TestCase
 from django.core.exceptions import ValidationError
+from django.test import TestCase
 
-from runner.models import Course, CourseParticipant
+from runner.models import Course, CourseParticipant, Section
 from runner.services.course_service import (
     CourseCreateInput,
     add_users_to_course,
@@ -15,9 +15,7 @@ User = get_user_model()
 class CreateCourseTests(TestCase):
     def setUp(self):
         self.owner = User.objects.create_user(username="owner", password="pass")
-        self.parent_course = create_course(
-            CourseCreateInput(title="Parent", owner=self.owner)
-        )
+        self.section = Section.objects.create(title="Авторское", owner=self.owner)
 
     def test_create_course_adds_owner_as_teacher(self):
         course = create_course(
@@ -26,14 +24,14 @@ class CreateCourseTests(TestCase):
                 description="Basics",
                 is_open=True,
                 owner=self.owner,
-                parent=self.parent_course,
+                section=self.section,
             )
         )
 
         self.assertEqual(course.title, "Intro to ML")
         self.assertTrue(course.is_open)
         self.assertEqual(course.owner, self.owner)
-        self.assertEqual(course.parent, self.parent_course)
+        self.assertEqual(course.section, self.section)
 
         membership = CourseParticipant.objects.get(course=course, user=self.owner)
         self.assertEqual(membership.role, CourseParticipant.Role.TEACHER)
@@ -47,6 +45,7 @@ class CreateCourseTests(TestCase):
             CourseCreateInput(
                 title="Course with team",
                 owner=self.owner,
+                section=self.section,
                 teachers=[co_teacher, self.owner],
                 students=[student, co_teacher],
             )
@@ -72,11 +71,35 @@ class CreateCourseTests(TestCase):
                 CourseCreateInput(
                     title="Ghost course",
                     owner=unsaved_user,
+                    section=self.section,
+                )
+            )
+
+    def test_course_requires_section_owner(self):
+        outsider = User.objects.create_user(username="outsider", password="pass")
+        with self.assertRaises(ValueError):
+            create_course(
+                CourseCreateInput(
+                    title="NoPermission",
+                    owner=outsider,
+                    section=self.section,
+                )
+            )
+
+    def test_course_requires_section(self):
+        with self.assertRaises(ValueError):
+            create_course(
+                CourseCreateInput(
+                    title="NoSection",
+                    owner=self.owner,
+                    section=None,
                 )
             )
 
     def test_add_users_to_course_adds_teacher_and_student(self):
-        course = create_course(CourseCreateInput(title="Child", owner=self.owner))
+        course = create_course(
+            CourseCreateInput(title="Child", owner=self.owner, section=self.section)
+        )
         co_teacher = User.objects.create_user(username="teacher2", password="pass")
         student = User.objects.create_user(username="student1", password="pass")
 
@@ -95,7 +118,9 @@ class CreateCourseTests(TestCase):
         self.assertEqual(len(result["created"]), 2)  # co_teacher + student
 
     def test_add_users_updates_role_to_teacher(self):
-        course = create_course(CourseCreateInput(title="Child2", owner=self.owner))
+        course = create_course(
+            CourseCreateInput(title="Child2", owner=self.owner, section=self.section)
+        )
         user = User.objects.create_user(username="upgrade", password="pass")
         add_users_to_course(course, students=[user])
 
@@ -107,7 +132,9 @@ class CreateCourseTests(TestCase):
         self.assertFalse(participant.is_owner)
 
     def test_owner_cannot_be_downgraded_to_student(self):
-        course = create_course(CourseCreateInput(title="Child3", owner=self.owner))
+        course = create_course(
+            CourseCreateInput(title="Child3", owner=self.owner, section=self.section)
+        )
 
         result = add_users_to_course(course, students=[self.owner])
         participant = CourseParticipant.objects.get(course=course, user=self.owner)
@@ -117,7 +144,9 @@ class CreateCourseTests(TestCase):
         self.assertEqual(len(result["updated"]), 0)
 
     def test_add_users_respects_allow_role_update_false(self):
-        course = create_course(CourseCreateInput(title="NoUpdate", owner=self.owner))
+        course = create_course(
+            CourseCreateInput(title="NoUpdate", owner=self.owner, section=self.section)
+        )
         user = User.objects.create_user(username="student-teacher", password="pass")
         add_users_to_course(course, students=[user])
 
@@ -130,7 +159,9 @@ class CreateCourseTests(TestCase):
         self.assertEqual(len(result["updated"]), 0)
 
     def test_add_users_fixes_owner_flag_even_when_updates_disabled(self):
-        course = create_course(CourseCreateInput(title="FixOwner", owner=self.owner))
+        course = create_course(
+            CourseCreateInput(title="FixOwner", owner=self.owner, section=self.section)
+        )
         CourseParticipant.objects.filter(course=course, user=self.owner).update(
             is_owner=False
         )
@@ -144,18 +175,30 @@ class CreateCourseTests(TestCase):
         self.assertEqual(len(result["updated"]), 1)
 
     def test_add_users_rejects_unsaved_course(self):
-        unsaved_course = Course(title="tmp", owner=self.owner)
+        unsaved_course = Course(title="tmp", owner=self.owner, section=self.section)
         with self.assertRaises(ValueError):
             add_users_to_course(unsaved_course, students=[self.owner])
 
     def test_add_users_rejects_unsaved_users(self):
-        course = create_course(CourseCreateInput(title="Child4", owner=self.owner))
+        course = create_course(
+            CourseCreateInput(title="Child4", owner=self.owner, section=self.section)
+        )
         unsaved_user = User(username="ghost2")
         with self.assertRaises(ValueError):
             add_users_to_course(course, students=[unsaved_user])
 
-    def test_cycle_validation_on_course_clean(self):
-        parent = create_course(CourseCreateInput(title="ParentCycle", owner=self.owner))
-        parent.parent = parent
+    def test_section_owner_mismatch_is_forbidden(self):
+        other = User.objects.create_user(username="other", password="pass")
+        section = Section.objects.create(title="Олимпиады", owner=other)
+        with self.assertRaises(ValueError):
+            create_course(
+                CourseCreateInput(
+                    title="Mismatch",
+                    owner=self.owner,
+                    section=section,
+                )
+            )
+
+    def test_direct_course_save_requires_section(self):
         with self.assertRaises(ValidationError):
-            parent.full_clean()
+            Course.objects.create(title="No section", owner=self.owner)

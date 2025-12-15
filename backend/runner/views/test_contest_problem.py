@@ -3,7 +3,7 @@ import json
 from django.contrib.auth import get_user_model
 from django.test import RequestFactory, TestCase
 
-from runner.models import Contest, Course, CourseParticipant, Problem
+from runner.models import Contest, Course, CourseParticipant, Problem, Section
 from runner.views.contest_draft import add_problem_to_contest
 
 User = get_user_model()
@@ -15,7 +15,8 @@ class AddProblemToContestViewTests(TestCase):
         self.owner = User.objects.create_user(username="owner", password="pass")
         self.teacher = User.objects.create_user(username="teacher", password="pass")
         self.student = User.objects.create_user(username="student", password="pass")
-        self.course = Course.objects.create(title="Course A", owner=self.owner)
+        self.section = Section.objects.create(title="Авторское", owner=self.owner)
+        self.course = Course.objects.create(title="Course A", owner=self.owner, section=self.section)
         CourseParticipant.objects.create(
             course=self.course,
             user=self.teacher,

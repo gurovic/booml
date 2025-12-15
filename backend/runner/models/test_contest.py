@@ -1,7 +1,8 @@
 from django.contrib.auth import get_user_model
+from django.core.exceptions import ValidationError
 from django.test import TestCase
 
-from runner.models import Contest, Course, CourseParticipant
+from runner.models import Contest, Course, CourseParticipant, Section
 
 User = get_user_model()
 
@@ -12,9 +13,11 @@ class ContestVisibilityTests(TestCase):
         self.student = User.objects.create_user(username="student", password="pass")
         self.outsider = User.objects.create_user(username="outsider", password="pass")
 
+        self.section = Section.objects.create(title="Авторское", owner=self.teacher)
         self.course = Course.objects.create(
             title="Course A",
             owner=self.teacher,
+            section=self.section,
         )
         CourseParticipant.objects.create(
             course=self.course,
@@ -89,3 +92,10 @@ class ContestVisibilityTests(TestCase):
 
         self.assertTrue(contest.is_visible_to(self.student))
         self.assertFalse(contest.is_visible_to(self.outsider))
+
+    def test_contest_cannot_be_saved_without_course(self):
+        with self.assertRaises(ValidationError):
+            Contest.objects.create(
+                title="Orphan",
+                created_by=self.teacher,
+            )

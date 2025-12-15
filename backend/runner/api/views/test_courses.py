@@ -2,7 +2,7 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
 
-from ...models import CourseParticipant
+from ...models import CourseParticipant, Section
 from ...services.course_service import CourseCreateInput, create_course
 
 User = get_user_model()
@@ -11,7 +11,10 @@ User = get_user_model()
 class CourseSelfEnrollTests(TestCase):
     def setUp(self):
         self.teacher = User.objects.create_user(username="teacher", password="pass")
-        self.course = create_course(CourseCreateInput(title="Open", owner=self.teacher, is_open=True))
+        self.section = Section.objects.create(title="Авторское", owner=self.teacher)
+        self.course = create_course(
+            CourseCreateInput(title="Open", owner=self.teacher, section=self.section, is_open=True)
+        )
         self.enroll_url = reverse("course-self-enroll", kwargs={"course_id": self.course.id})
 
     def test_self_enroll_open_course(self):
@@ -63,31 +66,39 @@ class CourseCreateTests(TestCase):
         self.user = User.objects.create_user(username="creator", password="pass")
         self.client.login(username="creator", password="pass")
         self.url = reverse("course-create")
+        self.section = Section.objects.create(title="Авторское", owner=self.user)
 
     def test_course_create_success(self):
-        resp = self.client.post(self.url, {"title": "Physics"})
+        resp = self.client.post(self.url, {"title": "Physics", "section_id": self.section.id})
         self.assertEqual(resp.status_code, 201)
         self.assertEqual(resp.json()["title"], "Physics")
+        self.assertEqual(resp.json()["section_id"], self.section.id)
 
-    def test_course_create_invalid_parent(self):
-        resp = self.client.post(self.url, {"title": "Physics", "parent_id": 999999})
+    def test_course_create_requires_section_ownership(self):
+        foreign_owner = User.objects.create_user(username="other", password="pass")
+        foreign_section = Section.objects.create(title="Олимпиады", owner=foreign_owner)
+
+        resp = self.client.post(self.url, {"title": "Physics", "section_id": foreign_section.id})
         self.assertEqual(resp.status_code, 400)
-        self.assertIn("parent_id", resp.json())
+        self.assertIn("section_id", resp.json())
 
 
 class CourseParticipantsTests(TestCase):
     def setUp(self):
         self.teacher = User.objects.create_user(username="teacher", password="pass")
         self.student = User.objects.create_user(username="student", password="pass")
-        self.course = create_course(CourseCreateInput(title="Open", owner=self.teacher, is_open=True))
+        self.section = Section.objects.create(title="Авторское", owner=self.teacher)
+        self.course = create_course(
+            CourseCreateInput(title="Open", owner=self.teacher, section=self.section, is_open=True)
+        )
         self.url = reverse("course-participants-update", kwargs={"course_id": self.course.id})
 
-    def test_non_teacher_forbidden(self):
+    def test_non_owner_forbidden(self):
         self.client.login(username="student", password="pass")
         resp = self.client.post(self.url, {"student_ids": [self.student.id]})
         self.assertEqual(resp.status_code, 403)
 
-    def test_teacher_can_add_student(self):
+    def test_owner_can_add_student(self):
         self.client.login(username="teacher", password="pass")
         resp = self.client.post(self.url, {"student_ids": [self.student.id]})
         self.assertEqual(resp.status_code, 200)

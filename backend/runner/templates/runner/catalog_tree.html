@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Структура обучения</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background: #f5f6f8; color: #0f172a; }
+        header { margin-bottom: 20px; }
+        a { color: #2563eb; text-decoration: none; }
+        .card { background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 16px; box-shadow: 0 6px 18px rgba(15, 23, 42, 0.08); }
+        .node-line { display: flex; align-items: center; gap: 10px; }
+        .tag { padding: 3px 8px; border-radius: 999px; background: #e0f2fe; color: #0f172a; font-size: 12px; }
+        ul.tree { list-style: none; padding-left: 16px; }
+        ul.tree > li { margin: 8px 0; }
+    </style>
+</head>
+<body>
+    <header>
+        <a href="{% url 'runner:main_page' %}">Главная</a> ·
+        <strong>Структура разделов/курсов/контестов</strong>
+    </header>
+
+    <div class="card">
+        <h1>Дерево: разделы → курсы → контесты → задачи</h1>
+        {% if tree %}
+            <ul class="tree">
+                {% for node in tree %}
+                    {% include "runner/catalog_tree_node.html" with node=node %}
+                {% endfor %}
+            </ul>
+        {% else %}
+            <p>Пока нет разделов.</p>
+        {% endif %}
+    </div>
+</body>
+</html>

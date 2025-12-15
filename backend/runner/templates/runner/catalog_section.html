@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>{{ section.title }} — раздел</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background: #f5f6f8; color: #0f172a; }
+        header { margin-bottom: 16px; }
+        a { color: #2563eb; text-decoration: none; }
+        .card { background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 16px; box-shadow: 0 6px 18px rgba(15, 23, 42, 0.08); margin-bottom: 14px; }
+        .list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 10px; }
+        .list-item { display: flex; justify-content: space-between; gap: 12px; align-items: center; }
+        .badge { background: #e0f2fe; border-radius: 999px; padding: 4px 8px; font-size: 12px; color: #0f172a; }
+    </style>
+</head>
+<body>
+    <header>
+        <a href="{% url 'runner:catalog_tree' %}">← Ко всем разделам</a>
+    </header>
+
+    <div class="card">
+        <div style="display:flex; justify-content: space-between; align-items: center;">
+            <div>
+                <p style="margin:0; color:#475569;">Раздел</p>
+                <h1 style="margin: 4px 0 6px;">{{ section.title }}</h1>
+                <p style="margin:0; color:#475569;">{{ section.description|default:"Описание появится позже." }}</p>
+            </div>
+            {% if ancestors %}
+                <div class="badge">
+                    {% for ancestor in ancestors %}
+                        <a href="{% url 'runner:catalog_section' ancestor.id %}">{{ ancestor.title }}</a>{% if not forloop.last %} / {% endif %}
+                    {% endfor %}
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>Подразделы</h2>
+        {% if section.children.all %}
+            <ul class="list">
+            {% for child in section.children.all %}
+                <li class="list-item">
+                    <div>
+                        <strong>{{ child.title }}</strong><br>
+                        <small style="color:#475569;">{{ child.description|default:"Без описания" }}</small>
+                    </div>
+                    <a href="{% url 'runner:catalog_section' child.id %}">Открыть</a>
+                </li>
+            {% endfor %}
+            </ul>
+        {% else %}
+            <p>Нет дочерних разделов.</p>
+        {% endif %}
+    </div>
+
+    <div class="card">
+        <h2>Курсы в разделе</h2>
+        {% if section.courses.all %}
+            <ul class="list">
+            {% for course in section.courses.all %}
+                <li class="list-item">
+                    <div>
+                        <strong>{{ course.title }}</strong><br>
+                        <small style="color:#475569;">{{ course.description|default:"Без описания" }}</small>
+                    </div>
+                    <span class="badge">{{ course.contests.count }} контестов</span>
+                    <a href="{% url 'runner:catalog_course' course.id %}">Перейти</a>
+                </li>
+            {% endfor %}
+            </ul>
+        {% else %}
+            <p>В разделе пока нет курсов.</p>
+        {% endif %}
+    </div>
+</body>
+</html>

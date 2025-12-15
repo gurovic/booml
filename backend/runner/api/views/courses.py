@@ -4,35 +4,23 @@ from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from ...models import Course, CourseParticipant
+from ...models import Course, CourseParticipant, Section
 from ...services import add_users_to_course
+from ...services.section_service import build_section_tree, ensure_root_sections
 from ..serializers import (
     CourseCreateSerializer,
     CourseParticipantSummarySerializer,
     CourseParticipantsUpdateSerializer,
     CourseReadSerializer,
+    SectionCreateSerializer,
 )
 
 
-def _build_course_tree(courses):
-    by_parent = {}
-    for course in courses:
-        by_parent.setdefault(course.parent_id, []).append(course)
-
-    def build(parent_id):
-        nodes = []
-        for course in by_parent.get(parent_id, []):
-            nodes.append(
-                {
-                    "id": course.id,
-                    "title": course.title,
-                    "description": course.description,
-                    "children": build(course.id),
-                }
-            )
-        return nodes
-
-    return build(None)
+def _assert_section_owner(user, section: Section | None) -> None:
+    if section is None:
+        raise PermissionDenied("Курс или раздел должны принадлежать разделу.")
+    if section.owner_id != getattr(user, "id", None):
+        raise PermissionDenied("Только создатель раздела может управлять его содержимым.")
 
 
 class CourseCreateView(generics.CreateAPIView):
@@ -46,6 +34,7 @@ class CourseCreateView(generics.CreateAPIView):
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        _assert_section_owner(request.user, serializer.validated_data.get("section"))
         course = serializer.save()
         data = CourseReadSerializer(course, context={"request": request}).data
         return Response(data, status=201)
@@ -56,13 +45,9 @@ class CourseParticipantsUpdateView(generics.GenericAPIView):
     permission_classes = [permissions.IsAuthenticated]
     lookup_url_kwarg = "course_id"
 
-    """
-    Allow course teachers to add or update participants.
-    """
-
     def post(self, request, *args, **kwargs):
         course = self.get_course()
-        self._ensure_teacher(request.user, course)
+        _assert_section_owner(request.user, course.section)
 
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -89,19 +74,37 @@ class CourseParticipantsUpdateView(generics.GenericAPIView):
         course_id = self.kwargs.get(self.lookup_url_kwarg)
         return get_object_or_404(Course, pk=course_id)
 
-    def _ensure_teacher(self, user, course: Course) -> None:
-        if not CourseParticipant.objects.filter(
-            course=course, user=user, role=CourseParticipant.Role.TEACHER
-        ).exists():
-            raise PermissionDenied("Only course teachers can manage participants")
 
+class SectionCreateView(generics.CreateAPIView):
+    serializer_class = SectionCreateSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    """
+    Создать дочерний раздел внутри уже существующего раздела.
+    Корневые разделы создаются автоматически и не создаются через API.
+    """
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        parent: Section | None = serializer.validated_data.get("parent")
+        ensure_root_sections(request.user)
+
+        if parent is None:
+            raise PermissionDenied("Корневые разделы создаются автоматически и неизменяемы.")
+
+        _assert_section_owner(request.user, parent)
+
+        section = serializer.save()
+        data = SectionCreateSerializer(section).data
+        return Response(data, status=201)
 
 class CourseTreeView(APIView):
     permission_classes = [permissions.AllowAny]
 
     def get(self, request):
-        courses = Course.objects.select_related("parent").all()
-        tree = _build_course_tree(list(courses))
+        ensure_root_sections(request.user if request.user.is_authenticated else None)
+        tree = build_section_tree()
         return Response(tree)
 
 

@@ -1,0 +1,62 @@
+{% with children=None %}
+    {% if node.type == "section" %}
+        {% with node.children as children %}
+            <li>
+                <div class="node-line">
+                    <span><strong>{{ node.title }}</strong></span>
+                    <span class="tag">Раздел</span>
+                    <a href="{% url 'runner:catalog_section' node.id %}">Открыть</a>
+                </div>
+                {% if children %}
+                    <ul class="tree">
+                        {% for child in children %}
+                            {% include "runner/catalog_tree_node.html" with node=child only %}
+                        {% endfor %}
+                    </ul>
+                {% endif %}
+            </li>
+        {% endwith %}
+    {% elif node.type == "course" %}
+        {% with node.contests as children %}
+            <li>
+                <div class="node-line">
+                    <span><strong>{{ node.title }}</strong></span>
+                    <span class="tag">Курс</span>
+                    <a href="{% url 'runner:catalog_course' node.id %}">Открыть</a>
+                </div>
+                {% if children %}
+                    <ul class="tree">
+                        {% for child in children %}
+                            {% include "runner/catalog_tree_node.html" with node=child only %}
+                        {% endfor %}
+                    </ul>
+                {% endif %}
+            </li>
+        {% endwith %}
+    {% elif node.type == "contest" %}
+        {% with node.problems as children %}
+            <li>
+                <div class="node-line">
+                    <span><strong>{{ node.title }}</strong></span>
+                    <span class="tag">Контест</span>
+                    <a href="{% url 'runner:catalog_contest' node.id %}">Открыть</a>
+                </div>
+                {% if children %}
+                    <ul class="tree">
+                        {% for child in children %}
+                            {% include "runner/catalog_tree_node.html" with node=child only %}
+                        {% endfor %}
+                    </ul>
+                {% endif %}
+            </li>
+        {% endwith %}
+    {% elif node.type == "problem" %}
+        <li>
+            <div class="node-line">
+                <span>{{ node.title }}</span>
+                <span class="tag">Задача</span>
+                <a href="{% url 'runner:problem_detail' node.id %}">Открыть</a>
+            </div>
+        </li>
+    {% endif %}
+{% endwith %}

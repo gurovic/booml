@@ -32,6 +32,12 @@ from .views.contest_draft import (
     manage_contest_participants,
     set_contest_access,
 )
+from .views.catalog import (
+    catalog_tree,
+    catalog_section,
+    catalog_course,
+    catalog_contest,
+)
 from .views.run_code import run_code
 from .views.list_of_problems_polygon import problem_list_polygon
 from .views.create_problem_polygon import create_problem_polygon
@@ -58,6 +64,10 @@ urlpatterns = [
     path('problem/<int:problem_id>/compare/', submission_compare, name="submission_compare"),
     path("problems/<int:problem_id>/", problem_detail, name="problem_detail"),
     path("problems/", problem_list, name="problem_list"),
+    path("catalog/", catalog_tree, name="catalog_tree"),
+    path("catalog/sections/<int:section_id>/", catalog_section, name="catalog_section"),
+    path("catalog/courses/<int:course_id>/", catalog_course, name="catalog_course"),
+    path("catalog/contests/<int:contest_id>/", catalog_contest, name="catalog_contest"),
     path('course/<int:course_id>/', course_detail, name='course_detail'),
     path('contest/', list_contests, name='contest_list'),
     path('contest/<int:contest_id>/', contest_detail, name='contest_detail'),

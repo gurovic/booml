@@ -1,6 +1,7 @@
 import uuid
 
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import models
 
 from .course import Course, CourseParticipant
@@ -106,6 +107,16 @@ class Contest(models.Model):
 
     def __str__(self):
         return f"{self.title} ({self.course})"
+
+    def clean(self):
+        if self.course is None:
+            raise ValidationError("Contest must belong to a course.")
+        super().clean()
+
+    def save(self, *args, **kwargs):
+        # Guard against orphan contests even when bypassing forms/services.
+        self.full_clean()
+        return super().save(*args, **kwargs)
 
     def is_visible_to(self, user):
         """

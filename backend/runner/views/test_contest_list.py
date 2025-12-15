@@ -4,7 +4,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AnonymousUser
 from django.test import RequestFactory, TestCase
 
-from runner.models import Contest, Course, CourseParticipant
+from runner.models import Contest, Course, CourseParticipant, Section
 from runner.views.contest_draft import list_contests
 
 User = get_user_model()
@@ -18,7 +18,10 @@ class ContestListViewTests(TestCase):
         self.outsider = User.objects.create_user(username="outsider", password="pass")
         self.other_teacher = User.objects.create_user(username="other", password="pass")
 
-        self.course = Course.objects.create(title="Course A", owner=self.teacher)
+        self.section = Section.objects.create(title="Авторское", owner=self.teacher)
+        self.other_section = Section.objects.create(title="Олимпиады", owner=self.other_teacher)
+
+        self.course = Course.objects.create(title="Course A", owner=self.teacher, section=self.section)
         CourseParticipant.objects.create(
             course=self.course,
             user=self.teacher,
@@ -31,7 +34,11 @@ class ContestListViewTests(TestCase):
             role=CourseParticipant.Role.STUDENT,
         )
 
-        self.other_course = Course.objects.create(title="Course B", owner=self.other_teacher)
+        self.other_course = Course.objects.create(
+            title="Course B",
+            owner=self.other_teacher,
+            section=self.other_section,
+        )
         CourseParticipant.objects.create(
             course=self.other_course,
             user=self.other_teacher,

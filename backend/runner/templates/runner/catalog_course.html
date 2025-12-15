@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>{{ course.title }} — курс</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background: #f5f6f8; color: #0f172a; }
+        header { margin-bottom: 16px; }
+        a { color: #2563eb; text-decoration: none; }
+        .card { background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 16px; box-shadow: 0 6px 18px rgba(15, 23, 42, 0.08); margin-bottom: 14px; }
+        .list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 10px; }
+        .list-item { display: flex; justify-content: space-between; gap: 12px; align-items: center; }
+        .badge { background: #e0f2fe; border-radius: 999px; padding: 4px 8px; font-size: 12px; color: #0f172a; }
+    </style>
+</head>
+<body>
+    <header>
+        <a href="{% url 'runner:catalog_tree' %}">← Ко всем разделам</a> ·
+        <a href="{% url 'runner:catalog_section' course.section.id %}">К разделу {{ course.section.title }}</a>
+    </header>
+
+    <div class="card">
+        <p style="margin:0; color:#475569;">Курс</p>
+        <h1 style="margin: 4px 0 6px;">{{ course.title }}</h1>
+        <p style="margin:0; color:#475569;">{{ course.description|default:"Описание курса появится позже." }}</p>
+        <p style="margin-top: 8px; color:#475569;">Владелец: {{ course.owner.username }}</p>
+    </div>
+
+    <div class="card">
+        <div style="display:flex; justify-content: space-between; align-items: center;">
+            <h2>Контесты</h2>
+            <span class="badge">{{ contests|length }}</span>
+        </div>
+        {% if contests %}
+            <ul class="list">
+            {% for contest in contests %}
+                <li class="list-item">
+                    <div>
+                        <strong>{{ contest.title }}</strong><br>
+                        <small style="color:#475569;">{{ contest.description|default:"Без описания" }}</small>
+                    </div>
+                    <span class="badge">{{ contest.problems.count }} задач</span>
+                    <a href="{% url 'runner:catalog_contest' contest.id %}">Открыть</a>
+                </li>
+            {% endfor %}
+            </ul>
+        {% else %}
+            <p>В курсе пока нет контестов.</p>
+        {% endif %}
+    </div>
+</body>
+</html>

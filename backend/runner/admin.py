@@ -16,6 +16,12 @@ from .models import (
     Tag
 )
 
+
+class CourseParticipantInline(admin.TabularInline):
+    model = CourseParticipant
+    extra = 0
+    fk_name = "course"
+
 @admin.register(Report)  # Регистрируем модель в админке
 class ReportAdmin(admin.ModelAdmin):
     # Какие поля показывать в списке
@@ -123,9 +129,10 @@ class ProblemDescriptorAdmin(admin.ModelAdmin):
 
 @admin.register(Course)
 class CourseAdmin(admin.ModelAdmin):
-    list_display = ("id", "title", "owner", "parent", "is_open", "created_at")
-    list_filter = ("is_open", "created_at")
-    search_fields = ("title", "owner__username")
+    list_display = ("id", "title", "owner", "section", "is_open", "created_at")
+    list_filter = ("is_open", "created_at", "section")
+    search_fields = ("title", "owner__username", "section__title")
+    inlines = [CourseParticipantInline]
 
 
 @admin.register(CourseParticipant)
@@ -133,6 +140,14 @@ class CourseParticipantAdmin(admin.ModelAdmin):
     list_display = ("id", "course", "user", "role", "is_owner", "added_at")
     list_filter = ("role", "is_owner")
     search_fields = ("course__title", "user__username")
+
+
+@admin.register(Section)
+class SectionAdmin(admin.ModelAdmin):
+    list_display = ("id", "title", "owner", "parent", "is_public", "created_at")
+    list_filter = ("is_public", "created_at")
+    search_fields = ("title", "owner__username")
+
 
 @admin.register(Tag)
 class TagAdmin(admin.ModelAdmin):

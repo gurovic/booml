@@ -3,7 +3,7 @@ import json
 from django.contrib.auth import get_user_model
 from django.test import RequestFactory, TestCase
 
-from runner.models import Contest, Course, CourseParticipant
+from runner.models import Contest, Course, CourseParticipant, Problem, Section
 from runner.views.contest_draft import contest_detail, course_detail
 
 User = get_user_model()
@@ -15,7 +15,8 @@ class ContestDetailViewTests(TestCase):
         self.teacher = User.objects.create_user(username="teacher", password="pass")
         self.student = User.objects.create_user(username="student", password="pass")
         self.outsider = User.objects.create_user(username="outsider", password="pass")
-        self.course = Course.objects.create(title="Course A", owner=self.teacher)
+        self.section = Section.objects.create(title="Авторское", owner=self.teacher)
+        self.course = Course.objects.create(title="Course A", owner=self.teacher, section=self.section)
         CourseParticipant.objects.create(
             course=self.course,
             user=self.teacher,
@@ -34,6 +35,8 @@ class ContestDetailViewTests(TestCase):
             created_by=self.teacher,
             is_published=True,
         )
+        self.problem = Problem.objects.create(title="Two Sum", statement="add numbers")
+        self.contest.problems.add(self.problem)
         self.private_contest = Contest.objects.create(
             title="Private",
             course=self.course,
@@ -61,6 +64,8 @@ class ContestDetailViewTests(TestCase):
         self.assertEqual(payload["access_type"], "link")
         self.assertEqual(payload["access_token"], "token123")
         self.assertEqual(payload["allowed_participants"], [])
+        self.assertEqual(len(payload["problems"]), 1)
+        self.assertEqual(payload["problems"][0]["id"], self.problem.id)
 
     def test_student_sees_public_contest_without_token_or_allowed(self):
         request = self.factory.get("/")
@@ -72,6 +77,7 @@ class ContestDetailViewTests(TestCase):
         payload = json.loads(response.content.decode())
         self.assertIsNone(payload["access_token"])
         self.assertEqual(payload["allowed_participants"], [])
+        self.assertEqual(len(payload["problems"]), 1)
 
     def test_private_contest_access_denied_for_not_allowed_student(self):
         request = self.factory.get("/")
@@ -91,6 +97,7 @@ class ContestDetailViewTests(TestCase):
         payload = json.loads(response.content.decode())
         self.assertEqual(payload["title"], "Private")
         self.assertEqual(payload["allowed_participants"], [])
+        self.assertEqual(payload["problems"], [])
 
 
 class CourseDetailViewTests(TestCase):
@@ -99,7 +106,13 @@ class CourseDetailViewTests(TestCase):
         self.teacher = User.objects.create_user(username="teacher", password="pass")
         self.student = User.objects.create_user(username="student", password="pass")
         self.outsider = User.objects.create_user(username="outsider", password="pass")
-        self.course = Course.objects.create(title="Course A", description="Desc", owner=self.teacher)
+        self.section = Section.objects.create(title="Авторское", owner=self.teacher)
+        self.course = Course.objects.create(
+            title="Course A",
+            description="Desc",
+            owner=self.teacher,
+            section=self.section,
+        )
         CourseParticipant.objects.create(
             course=self.course,
             user=self.teacher,
