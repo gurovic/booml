@@ -3,8 +3,9 @@ import json
 from django.contrib.auth import get_user_model
 from django.test import RequestFactory, TestCase
 
-from runner.models import Contest, Course, CourseParticipant
-from runner.views.contest_draft import contest_detail, course_detail
+from runner.models import Contest, Course, CourseParticipant, Problem
+from runner.views.contest_draft import contest_detail
+from runner.views.course import course_detail
 
 User = get_user_model()
 
@@ -44,6 +45,8 @@ class ContestDetailViewTests(TestCase):
             approval_status=Contest.ApprovalStatus.APPROVED,
         )
         self.private_contest.allowed_participants.add(self.student)
+        self.problem = Problem.objects.create(title="P1", statement="S")
+        self.contest.problems.add(self.problem)
 
     def test_teacher_sees_allowed_participants_and_token(self):
         self.contest.access_type = Contest.AccessType.LINK
@@ -63,6 +66,7 @@ class ContestDetailViewTests(TestCase):
         self.assertEqual(payload["access_type"], "link")
         self.assertEqual(payload["access_token"], "token123")
         self.assertEqual(payload["allowed_participants"], [])
+        self.assertEqual(payload["problems"], [{"id": self.problem.id, "title": "P1"}])
 
     def test_student_sees_public_contest_without_token_or_allowed(self):
         request = self.factory.get("/")
@@ -74,6 +78,7 @@ class ContestDetailViewTests(TestCase):
         payload = json.loads(response.content.decode())
         self.assertIsNone(payload["access_token"])
         self.assertEqual(payload["allowed_participants"], [])
+        self.assertEqual(payload["problems"], [{"id": self.problem.id, "title": "P1"}])
 
     def test_private_contest_access_denied_for_not_allowed_student(self):
         request = self.factory.get("/")
