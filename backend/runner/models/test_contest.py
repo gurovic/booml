@@ -34,6 +34,7 @@ class ContestVisibilityTests(TestCase):
             title="Contest 1",
             created_by=self.teacher,
             is_published=True,
+            approval_status=Contest.ApprovalStatus.APPROVED,
         )
 
         self.assertTrue(contest.is_visible_to(self.teacher))
@@ -63,3 +64,31 @@ class ContestVisibilityTests(TestCase):
         self.assertEqual(contest.scoring, Contest.Scoring.IOI)
         self.assertEqual(contest.registration_type, Contest.Registration.OPEN)
         self.assertFalse(contest.is_rated)
+
+    def test_private_contest_visibility_requires_allow_list(self):
+        contest = Contest.objects.create(
+            course=self.course,
+            title="Private",
+            created_by=self.teacher,
+            is_published=True,
+            access_type=Contest.AccessType.PRIVATE,
+            approval_status=Contest.ApprovalStatus.APPROVED,
+        )
+        contest.allowed_participants.add(self.student)
+
+        self.assertTrue(contest.is_visible_to(self.teacher))
+        self.assertTrue(contest.is_visible_to(self.student))
+        self.assertFalse(contest.is_visible_to(self.outsider))
+
+    def test_link_contest_allows_course_participants(self):
+        contest = Contest.objects.create(
+            course=self.course,
+            title="Link",
+            created_by=self.teacher,
+            is_published=True,
+            access_type=Contest.AccessType.LINK,
+            approval_status=Contest.ApprovalStatus.APPROVED,
+        )
+
+        self.assertTrue(contest.is_visible_to(self.student))
+        self.assertFalse(contest.is_visible_to(self.outsider))
