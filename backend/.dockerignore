@@ -1,0 +1,20 @@
+# Keep notebook runner image contexts small and insulated from other project assets.
+.git
+.venv
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+*.so
+*.db
+*.sqlite3
+db.sqlite3
+media
+node_modules
+frontend
+data
+tests
+tmp
+*.log
+Dockerfile
+docker-compose.yml
