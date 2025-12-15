@@ -9,6 +9,15 @@ services:
       - redis-data:/data
     ports:
       - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks:
+      default:
+        aliases:
+          - redis
 
   backend:
     container_name: booml-backend
@@ -27,7 +36,8 @@ services:
     ports:
       - "8100:8100"
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
     environment:
       DJANGO_SETTINGS_MODULE: core.settings
       SECRET_KEY: dev-secret-key
@@ -58,7 +68,8 @@ services:
       - ./backend:/app
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
     environment:
       DJANGO_SETTINGS_MODULE: core.settings
       SECRET_KEY: dev-secret-key
