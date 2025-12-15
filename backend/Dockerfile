@@ -9,6 +9,10 @@ WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential \
+        gfortran \
+        pkg-config \
+        libopenblas-dev \
+        liblapack-dev \
         curl \
         docker.io \
     && rm -rf /var/lib/apt/lists/*
