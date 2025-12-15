@@ -2,10 +2,12 @@ import json
 import uuid
 
 from django.contrib.auth import get_user_model
+from django.db import transaction
 from django.db.models import Count
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
 from django.contrib.auth.decorators import login_required
+from django.utils import timezone
 
 from ..models import Contest, Course, CourseParticipant, Problem
 from ..forms.contest_draft import ContestForm
@@ -73,6 +75,7 @@ def list_contests(request):
             user=request.user,
             role=CourseParticipant.Role.TEACHER,
         ).exists()
+        is_admin = request.user.is_staff or request.user.is_superuser
         visible.append(
             {
                 "id": contest.id,
@@ -82,6 +85,7 @@ def list_contests(request):
                 "course_title": contest.course.title if contest.course else None,
                 "is_published": contest.is_published,
                 "access_type": contest.access_type,
+                "approval_status": contest.approval_status,
                 "status": contest.status,
                 "is_rated": contest.is_rated,
                 "scoring": contest.scoring,
@@ -89,7 +93,7 @@ def list_contests(request):
                 "duration_minutes": contest.duration_minutes,
                 "start_time": contest.start_time.isoformat() if contest.start_time else None,
                 "problems_count": contest.problems_count,
-                "access_token": contest.access_token if contest.access_type == Contest.AccessType.LINK and is_teacher else None,
+                "access_token": contest.access_token if contest.access_type == Contest.AccessType.LINK and (is_teacher or is_admin) else None,
             }
         )
 
@@ -112,8 +116,9 @@ def contest_detail(request, contest_id):
         user=request.user,
         role=CourseParticipant.Role.TEACHER,
     ).exists()
+    is_admin = request.user.is_staff or request.user.is_superuser
     allowed_participants = []
-    if is_teacher:
+    if is_teacher or is_admin:
         allowed_participants = list(
             contest.allowed_participants.values("id", "username")
         )
@@ -127,7 +132,8 @@ def contest_detail(request, contest_id):
             "course_title": contest.course.title if contest.course else None,
             "is_published": contest.is_published,
             "access_type": contest.access_type,
-            "access_token": contest.access_token if is_teacher and contest.access_type == Contest.AccessType.LINK else None,
+            "access_token": contest.access_token if (is_teacher or is_admin) and contest.access_type == Contest.AccessType.LINK else None,
+            "approval_status": contest.approval_status,
             "status": contest.status,
             "is_rated": contest.is_rated,
             "scoring": contest.scoring,
@@ -147,8 +153,9 @@ def course_detail(request, course_id):
         return JsonResponse({"detail": "Authentication required"}, status=401)
 
     course = get_object_or_404(Course.objects.prefetch_related("participants__user"), pk=course_id)
+    is_admin = request.user.is_staff or request.user.is_superuser
     is_member = course.owner_id == request.user.id or course.participants.filter(user=request.user).exists()
-    if not is_member:
+    if not (is_member or is_admin):
         return JsonResponse({"detail": "Forbidden"}, status=403)
 
     participants = [
@@ -171,6 +178,54 @@ def course_detail(request, course_id):
         status=200,
     )
 
+def course_contests(request, course_id):
+    if request.method != "GET":
+        return JsonResponse({"detail": "Method not allowed"}, status=405)
+    if not request.user.is_authenticated:
+        return JsonResponse({"detail": "Authentication required"}, status=401)
+
+    course = get_object_or_404(Course.objects.prefetch_related("participants__user"), pk=course_id)
+    is_admin = request.user.is_staff or request.user.is_superuser
+    is_member = course.owner_id == request.user.id or course.participants.filter(user=request.user).exists()
+    if not (is_member or is_admin):
+        return JsonResponse({"detail": "Forbidden"}, status=403)
+
+    contests = (
+        Contest.objects.filter(course=course)
+        .select_related("course")
+        .annotate(problems_count=Count("problems"))
+        .order_by("-created_at")
+    )
+    items = []
+    for contest in contests:
+        if not contest.is_visible_to(request.user):
+            continue
+        is_teacher = contest.course.participants.filter(
+            user=request.user,
+            role=CourseParticipant.Role.TEACHER,
+        ).exists()
+        items.append(
+            {
+                "id": contest.id,
+                "title": contest.title,
+                "description": contest.description,
+                "course": contest.course_id,
+                "course_title": contest.course.title if contest.course else None,
+                "is_published": contest.is_published,
+                "access_type": contest.access_type,
+                "approval_status": contest.approval_status,
+                "status": contest.status,
+                "is_rated": contest.is_rated,
+                "scoring": contest.scoring,
+                "registration_type": contest.registration_type,
+                "duration_minutes": contest.duration_minutes,
+                "start_time": contest.start_time.isoformat() if contest.start_time else None,
+                "problems_count": contest.problems_count,
+                "access_token": contest.access_token if contest.access_type == Contest.AccessType.LINK and (is_teacher or is_admin) else None,
+            }
+        )
+    return JsonResponse({"items": items}, status=200)
+
 @login_required
 def set_contest_access(request, contest_id):
     if request.method != "POST":
@@ -184,7 +239,8 @@ def set_contest_access(request, contest_id):
         user=request.user,
         role=CourseParticipant.Role.TEACHER,
     ).exists()
-    if not is_teacher:
+    is_admin = request.user.is_staff or request.user.is_superuser
+    if not (is_teacher or is_admin):
         return JsonResponse({"detail": "Only teachers can modify this contest"}, status=403)
 
     try:
@@ -206,6 +262,8 @@ def set_contest_access(request, contest_id):
         update_fields.append("access_type")
 
     if is_published is not None:
+        if bool(is_published) and not is_admin and contest.approval_status != Contest.ApprovalStatus.APPROVED:
+            return JsonResponse({"detail": "Contest must be approved before publishing"}, status=400)
         contest.is_published = bool(is_published)
         update_fields.append("is_published")
 
@@ -227,6 +285,85 @@ def set_contest_access(request, contest_id):
             "is_published": contest.is_published,
             "access_token": contest.access_token if contest.access_type == Contest.AccessType.LINK else None,
         }
+    )
+
+@login_required
+def list_pending_contests(request):
+    if request.method != "GET":
+        return JsonResponse({"detail": "Method not allowed"}, status=405)
+    if not (request.user.is_staff or request.user.is_superuser):
+        return JsonResponse({"detail": "Only admins can moderate contests"}, status=403)
+
+    contests = (
+        Contest.objects.filter(approval_status=Contest.ApprovalStatus.PENDING)
+        .select_related("course", "created_by")
+        .annotate(problems_count=Count("problems"))
+        .order_by("-created_at")
+    )
+    items = [
+        {
+            "id": contest.id,
+            "title": contest.title,
+            "description": contest.description,
+            "course": contest.course_id,
+            "course_title": contest.course.title if contest.course else None,
+            "creator": contest.created_by.username if contest.created_by else None,
+            "is_published": contest.is_published,
+            "access_type": contest.access_type,
+            "approval_status": contest.approval_status,
+            "problems_count": contest.problems_count,
+        }
+        for contest in contests
+    ]
+    return JsonResponse({"items": items}, status=200)
+
+@login_required
+@transaction.atomic
+def moderate_contest(request, contest_id):
+    if request.method != "POST":
+        return JsonResponse({"detail": "Method not allowed"}, status=405)
+    if not (request.user.is_staff or request.user.is_superuser):
+        return JsonResponse({"detail": "Only admins can moderate contests"}, status=403)
+
+    contest = get_object_or_404(Contest, pk=contest_id)
+
+    try:
+        payload = json.loads(request.body or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"detail": "Invalid JSON payload"}, status=400)
+
+    action = payload.get("action")
+    publish = bool(payload.get("publish", False))
+    valid_actions = {"approve", "reject"}
+    if action not in valid_actions:
+        return JsonResponse({"detail": "action must be 'approve' or 'reject'"}, status=400)
+
+    if action == "approve":
+        contest.approval_status = Contest.ApprovalStatus.APPROVED
+        if publish:
+            contest.is_published = True
+    else:
+        contest.approval_status = Contest.ApprovalStatus.REJECTED
+        contest.is_published = False
+
+    contest.approved_by = request.user
+    contest.approved_at = timezone.now()
+    contest.save(
+        update_fields=[
+            "approval_status",
+            "approved_by",
+            "approved_at",
+            "is_published",
+        ]
+    )
+
+    return JsonResponse(
+        {
+            "id": contest.id,
+            "approval_status": contest.approval_status,
+            "is_published": contest.is_published,
+        },
+        status=200,
     )
 
 @login_required

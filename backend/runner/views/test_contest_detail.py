@@ -33,6 +33,7 @@ class ContestDetailViewTests(TestCase):
             course=self.course,
             created_by=self.teacher,
             is_published=True,
+            approval_status=Contest.ApprovalStatus.APPROVED,
         )
         self.private_contest = Contest.objects.create(
             title="Private",
@@ -40,6 +41,7 @@ class ContestDetailViewTests(TestCase):
             created_by=self.teacher,
             is_published=True,
             access_type=Contest.AccessType.PRIVATE,
+            approval_status=Contest.ApprovalStatus.APPROVED,
         )
         self.private_contest.allowed_participants.add(self.student)
 
