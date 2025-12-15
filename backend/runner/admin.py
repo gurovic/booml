@@ -13,7 +13,8 @@ from .models import (
     PreValidation,
     Leaderboard,
     ProblemDescriptor,
-    Tag
+    Tag,
+    Section,
 )
 
 
