@@ -5,7 +5,10 @@ from .contest_draft import (
     contest_success,
     contest_detail,
     course_detail,
+    course_contests,
     list_contests,
+    list_pending_contests,
+    moderate_contest,
     set_contest_access,
     manage_contest_participants,
 )

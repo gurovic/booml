@@ -100,6 +100,25 @@ class Contest(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    class ApprovalStatus(models.TextChoices):
+        PENDING = "pending", "Pending"
+        APPROVED = "approved", "Approved"
+        REJECTED = "rejected", "Rejected"
+
+    approval_status = models.CharField(
+        max_length=20,
+        choices=ApprovalStatus.choices,
+        default=ApprovalStatus.PENDING,
+        help_text="Moderation status of the contest",
+    )
+    approved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="approved_contests",
+        null=True,
+        blank=True,
+    )
+    approved_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ["-created_at"]
@@ -120,10 +139,12 @@ class Contest(models.Model):
             user=user,
             role=CourseParticipant.Role.TEACHER,
         ).exists()
-        if is_teacher:
+        is_admin = getattr(user, "is_staff", False) or getattr(user, "is_superuser", False)
+        if is_teacher or is_admin:
             return True
 
-        if not self.is_published:
+        # Only approved & published contests are visible to non-teachers.
+        if not self.is_published or self.approval_status != self.ApprovalStatus.APPROVED:
             return False
 
         if self.access_type == self.AccessType.PRIVATE:
