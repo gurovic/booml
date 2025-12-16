@@ -1,14 +1,31 @@
 :root {
-  /* TEXT */
-  --color-text-primary: #2C2C2C;
-  --color-text-title: #1F1F1F;
+  /* ===== Brand / Primary ===== */
+  --color-primary: #27346A;
 
-  /* BACKGROUND */
-  --color-bg-default: #F4F8FD;
+  /* ===== Backgrounds ===== */
+  --color-background: #FBFAFF;
+  --color-bg-default: #FBFAFF;
+  --color-bg-card: #FFFFFF;
 
-  /* BUTTON */
-  --color-button-primary: #144EEC;
-  --color-button-secondary: #EFF6FF;
+  /* ===== Text ===== */
+  --color-title-text: #30343F;
+  --color-text-primary: #1E264A;
+  --color-text-secondary: #5C6282;
+  --color-text-inverse: #FFFFFF;
+
+  /* ===== Buttons ===== */
+  --color-button-primary: #27346A;
   --color-button-text-primary: #FFFFFF;
-  --color-button-text-secondary: #000000;
+
+  --color-button-secondary: #E4DAFF;
+  --color-button-text-secondary: #27346A;
+
+  /* ===== Borders / UI ===== */
+  --color-border-default: #E0E3F0;
+  --color-border-light: #EEF0FA;
+
+  /* ===== States ===== */
+  --color-success: #2ECC71;
+  --color-error: #E74C3C;
+  --color-warning: #F1C40F;
 }
