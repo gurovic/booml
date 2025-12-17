@@ -1,3 +1,5 @@
+import uuid
+
 from django.conf import settings
 from django.db import models
 
@@ -30,6 +32,55 @@ class Contest(models.Model):
         blank=True,
         help_text="Contest duration in minutes",
     )
+    class Scoring(models.TextChoices):
+        ICPC = "icpc", "ICPC (penalty by time)"
+        IOI = "ioi", "IOI (sum of scores)"
+        PARTIAL = "partial", "Partial scoring"
+
+    scoring = models.CharField(
+        max_length=20,
+        choices=Scoring.choices,
+        default=Scoring.IOI,
+        help_text="How points are aggregated for the contest",
+    )
+    class Registration(models.TextChoices):
+        OPEN = "open", "Open"
+        APPROVAL = "approval", "By approval"
+        INVITE = "invite", "By invitation"
+
+    registration_type = models.CharField(
+        max_length=20,
+        choices=Registration.choices,
+        default=Registration.OPEN,
+        help_text="Who can register / how participants join the contest",
+    )
+    class AccessType(models.TextChoices):
+        PUBLIC = "public", "Public"
+        PRIVATE = "private", "Private"
+        LINK = "link", "By link"
+
+    access_type = models.CharField(
+        max_length=20,
+        choices=AccessType.choices,
+        default=AccessType.PUBLIC,
+        help_text="Controls who can see and join the contest",
+    )
+    access_token = models.CharField(
+        max_length=64,
+        blank=True,
+        default="",
+        help_text="Token for link-based access",
+    )
+    allowed_participants = models.ManyToManyField(
+        settings.AUTH_USER_MODEL,
+        blank=True,
+        related_name="allowed_contests",
+        help_text="Users explicitly allowed to access a private contest",
+    )
+    is_rated = models.BooleanField(
+        default=False,
+        help_text="If true, contest results affect participant rating",
+    )
     is_published = models.BooleanField(
         default=False,
         help_text=(
@@ -49,6 +100,25 @@ class Contest(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    class ApprovalStatus(models.TextChoices):
+        PENDING = "pending", "Pending"
+        APPROVED = "approved", "Approved"
+        REJECTED = "rejected", "Rejected"
+
+    approval_status = models.CharField(
+        max_length=20,
+        choices=ApprovalStatus.choices,
+        default=ApprovalStatus.PENDING,
+        help_text="Moderation status of the contest",
+    )
+    approved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="approved_contests",
+        null=True,
+        blank=True,
+    )
+    approved_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ["-created_at"]
@@ -58,11 +128,38 @@ class Contest(models.Model):
 
     def is_visible_to(self, user):
         """
-        Teachers of linked courses see drafts; published contests visible to course participants.
+        Teachers of linked courses always see the contest.
+        Drafts are hidden from non-teachers.
+        Visibility for others depends on access_type and explicit allows.
         """
-        if self.is_published:
-            return self.course.participants.filter(user=user).exists()
-        return self.course.participants.filter(
+        if not user.is_authenticated:
+            return False
+
+        is_teacher = self.course and self.course.participants.filter(
             user=user,
             role=CourseParticipant.Role.TEACHER,
         ).exists()
+        is_admin = getattr(user, "is_staff", False) or getattr(user, "is_superuser", False)
+        if is_teacher or is_admin:
+            return True
+
+        # Only approved & published contests are visible to non-teachers.
+        if not self.is_published or self.approval_status != self.ApprovalStatus.APPROVED:
+            return False
+
+        if self.access_type == self.AccessType.PRIVATE:
+            return self.allowed_participants.filter(pk=user.pk).exists()
+
+        if self.access_type == self.AccessType.LINK:
+            if self.allowed_participants.filter(pk=user.pk).exists():
+                return True
+
+        if self.course:
+            return self.course.participants.filter(user=user).exists()
+        return False
+
+    def ensure_access_token(self):
+        if not self.access_token:
+            self.access_token = uuid.uuid4().hex
+            self.save(update_fields=["access_token"])
+        return self.access_token

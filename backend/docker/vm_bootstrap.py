@@ -41,17 +41,35 @@ def ensure_vm_environment() -> None:
 
     if requested in ("docker", "auto") and docker_available:
         os.environ["RUNTIME_VM_BACKEND"] = "docker"
+        # Clean up old session containers on startup
+        _cleanup_old_sessions()
         image = os.environ.setdefault("RUNTIME_VM_IMAGE", DEFAULT_IMAGE)
         if not _docker_image_exists(image):
             dockerfile = _resolve_dockerfile()
-            hint = "python docker/docker_build.py"
             if dockerfile:
-                hint += f" --dockerfile {dockerfile}"
-            print(
-                f"[vm-bootstrap] Docker image '{image}' не найден. "
-                f"Выполните `{hint}` чтобы его собрать.",
-                file=sys.stderr,
-            )
+                print(
+                    f"[vm-bootstrap] Docker image '{image}' не найден. "
+                    f"Попытка сборки образа...",
+                    file=sys.stderr,
+                )
+                try:
+                    _build_docker_image(image, dockerfile)
+                    print(
+                        f"[vm-bootstrap] Образ '{image}' успешно собран!",
+                        file=sys.stderr,
+                    )
+                    return
+                except Exception as exc:
+                    print(
+                        f"[vm-bootstrap] Не удалось собрать образ: {exc}",
+                        file=sys.stderr,
+                    )
+                    hint = "python docker/docker_build.py"
+                    hint += f" --dockerfile {dockerfile}"
+                    print(
+                        f"[vm-bootstrap] Попробуйте вручную: `{hint}`",
+                        file=sys.stderr,
+                    )
             if requested == "auto":
                 os.environ["RUNTIME_VM_BACKEND"] = "local"
             return
@@ -131,9 +149,74 @@ def _docker_available() -> bool:
 def _resolve_dockerfile() -> Path | None:
     override = os.environ.get("RUNTIME_VM_DOCKERFILE")
     if override:
-        path = Path(override).expanduser().resolve()
-        return path if path.exists() else None
+        path = Path(override).expanduser()
+        if not path.is_absolute():
+            path = (BACKEND_DIR / path).resolve()
+        else:
+            path = path.resolve()
+        if path.exists():
+            return path
     return DEFAULT_DOCKERFILE if DEFAULT_DOCKERFILE.exists() else None
+
+
+def _build_docker_image(image: str, dockerfile: Path) -> None:
+    """
+    Build Docker image from Dockerfile.
+    Uses docker_build.py if available, otherwise runs docker build directly.
+    """
+    docker_build_script = BACKEND_DIR / "docker" / "docker_build.py"
+    context = BACKEND_DIR if dockerfile.parent == BACKEND_DIR / "docker" else dockerfile.parent
+    
+    if docker_build_script.exists():
+        # Use docker_build.py script
+        result = subprocess.run(
+            [sys.executable, str(docker_build_script), "--dockerfile", str(dockerfile)],
+            cwd=str(BACKEND_DIR),
+        )
+    else:
+        # Fallback: use docker build directly
+        result = subprocess.run(
+            ["docker", "build", "-t", image, "-f", str(dockerfile), str(context)],
+            cwd=str(BACKEND_DIR),
+        )
+    
+    if result.returncode != 0:
+        raise RuntimeError(f"Docker build failed with return code {result.returncode}")
+
+
+def _cleanup_old_sessions() -> None:
+    """
+    Remove old session containers (runner-*) on startup.
+    This ensures no orphaned containers remain from previous runs.
+    """
+    try:
+        # Get all containers with name pattern runner-*
+        result = subprocess.run(
+            ["docker", "ps", "-a", "--filter", "name=^runner-", "--format", "{{.ID}}"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        
+        if result.returncode == 0 and result.stdout.strip():
+            container_ids = result.stdout.strip().split("\n")
+            if container_ids:
+                print(
+                    f"[vm-bootstrap] Удаление {len(container_ids)} старых сессий...",
+                    file=sys.stderr,
+                )
+                # Remove all old session containers
+                subprocess.run(
+                    ["docker", "rm", "-f"] + container_ids,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    timeout=10,
+                )
+    except Exception as exc:
+        print(
+            f"[vm-bootstrap] Предупреждение: не удалось очистить старые сессии: {exc}",
+            file=sys.stderr,
+        )
 
 
 __all__ = ["ensure_vm_environment", "get_vm_settings"]

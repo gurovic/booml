@@ -2,12 +2,13 @@ from http import HTTPStatus
 from tempfile import TemporaryDirectory
 
 from django.contrib.auth import get_user_model
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from runner.models import Notebook
 from runner.services import vm_agent, vm_manager
-from runner.services.runtime import _sessions, create_session, get_session, run_code
+from runner.services.runtime import _sessions, create_session, get_session, reset_execution_backend, run_code
 
 User = get_user_model()
 
@@ -16,6 +17,7 @@ class NotebookSessionAPITests(TestCase):
     def setUp(self):
         self.sandbox_tmp = TemporaryDirectory()
         self.vm_tmp = TemporaryDirectory()
+        reset_execution_backend()
         self.override = override_settings(
             RUNTIME_SANDBOX_ROOT=self.sandbox_tmp.name,
             RUNTIME_VM_ROOT=self.vm_tmp.name,
@@ -32,9 +34,11 @@ class NotebookSessionAPITests(TestCase):
         self.stop_url = reverse("session-stop")
         self.files_url = reverse("session-files")
         self.download_url = reverse("session-file-download")
+        self.upload_url = reverse("session-file-upload")
         _sessions.clear()
 
     def tearDown(self):
+        reset_execution_backend()
         vm_manager.reset_vm_manager()
         vm_agent.reset_vm_agents()
         _sessions.clear()
@@ -121,6 +125,74 @@ class NotebookSessionAPITests(TestCase):
         create_session(session_id)
 
         resp = self.client.get(f"{self.download_url}?session_id={session_id}&path=../secret.txt")
+        self.assertEqual(resp.status_code, HTTPStatus.NOT_FOUND)
+
+    def test_session_file_upload(self):
+        session_id = f"notebook:{self.notebook.id}"
+        session = create_session(session_id)
+        payload = {
+            "session_id": session_id,
+            "file": SimpleUploadedFile("train.csv", b"col1\n1\n2\n", content_type="text/csv"),
+        }
+
+        resp = self.client.post(self.upload_url, payload)
+
+        self.assertEqual(resp.status_code, HTTPStatus.CREATED)
+        data = resp.json()
+        self.assertEqual(data["session_id"], session_id)
+        self.assertEqual(data["path"], "train.csv")
+        uploaded = session.workdir / "train.csv"
+        self.assertTrue(uploaded.exists())
+        with uploaded.open("rb") as fh:
+            self.assertEqual(fh.read(), b"col1\n1\n2\n")
+
+    def test_session_file_upload_nested_path(self):
+        session_id = f"notebook:{self.notebook.id}"
+        session = create_session(session_id)
+
+        resp = self.client.post(
+            self.upload_url,
+            {
+                "session_id": session_id,
+                "path": "datasets/",
+                "file": SimpleUploadedFile("data.txt", b"abc"),
+            },
+        )
+
+        self.assertEqual(resp.status_code, HTTPStatus.CREATED)
+        data = resp.json()
+        self.assertEqual(data["path"], "datasets/data.txt")
+        uploaded = session.workdir / "datasets" / "data.txt"
+        self.assertTrue(uploaded.exists())
+        with uploaded.open("rb") as fh:
+            self.assertEqual(fh.read(), b"abc")
+
+    def test_session_file_upload_prevents_escape(self):
+        session_id = f"notebook:{self.notebook.id}"
+        create_session(session_id)
+
+        resp = self.client.post(
+            self.upload_url,
+            {
+                "session_id": session_id,
+                "path": "../outside.txt",
+                "file": SimpleUploadedFile("outside.txt", b"nope"),
+            },
+        )
+
+        self.assertEqual(resp.status_code, HTTPStatus.NOT_FOUND)
+
+    def test_session_file_upload_missing_session_returns_404(self):
+        session_id = f"notebook:{self.notebook.id}"
+
+        resp = self.client.post(
+            self.upload_url,
+            {
+                "session_id": session_id,
+                "file": SimpleUploadedFile("file.txt", b"data"),
+            },
+        )
+
         self.assertEqual(resp.status_code, HTTPStatus.NOT_FOUND)
 
     def test_stop_session_success(self):

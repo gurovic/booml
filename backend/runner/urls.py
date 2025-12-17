@@ -1,9 +1,11 @@
 from django.urls import path
 from .views.submissions import submission_list, submission_detail, submission_compare, recent_submissions
 from .views.main_page import main_page
-from .views.authorization import register_view, login_view, logout_view
-from .views.problem_detail import problem_detail
+from .views.problem_detail import problem_detail, problem_detail_api
+from .views.authorization import register_view, login_view, logout_view, backend_register, backend_login, \
+    backend_logout, backend_current_user, backend_check_auth, get_csrf_token
 from .views.problems import problem_list
+from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
 from .views.notebook_list import notebook_list
 from .views.create_notebook import create_notebook
@@ -20,7 +22,19 @@ from .views.export_notebook import export_notebook
 from .views.reorder_cells import copy_cell, move_cell
 from .views.get_reports_list import get_reports_list
 from .views.receive_test_result import receive_test_result
-from .views.contest_draft import create_contest, contest_success
+from .views.contest_draft import (
+    add_problem_to_contest,
+    contest_detail,
+    create_contest,
+    contest_success,
+    course_detail,
+    course_contests,
+    list_contests,
+    manage_contest_participants,
+    list_pending_contests,
+    moderate_contest,
+    set_contest_access,
+)
 from .views.run_code import run_code
 from .views.list_of_problems_polygon import problem_list_polygon
 from .views.create_problem_polygon import create_problem_polygon
@@ -47,7 +61,16 @@ urlpatterns = [
     path('problem/<int:problem_id>/compare/', submission_compare, name="submission_compare"),
     path("problems/<int:problem_id>/", problem_detail, name="problem_detail"),
     path("problems/", problem_list, name="problem_list"),
+    path('course/<int:course_id>/', course_detail, name='course_detail'),
+    path('course/<int:course_id>/contests/', course_contests, name='course_contests'),
+    path('contest/', list_contests, name='contest_list'),
+    path('contest/<int:contest_id>/', contest_detail, name='contest_detail'),
     path('contest/new/', create_contest, name='create_contest'),
+    path('contest/<int:contest_id>/access/', set_contest_access, name='contest_set_access'),
+    path('contest/<int:contest_id>/participants/', manage_contest_participants, name='contest_manage_participants'),
+    path('contest/<int:contest_id>/problems/add/', add_problem_to_contest, name='contest_add_problem'),
+    path('contest/<int:contest_id>/moderate/', moderate_contest, name='contest_moderate'),
+    path('contests/pending/', list_pending_contests, name='contest_list_pending'),
     path('contest/success/', contest_success, name='contest_success'),
     path('notebook', notebook_list, name='notebook_list'),
     path('notebook/new/', create_notebook, name='create_notebook'),
@@ -69,5 +92,15 @@ urlpatterns = [
     path('polygon/new/', create_problem_polygon, name='polygon_create_problem'),
     path('polygon/problem/<int:problem_id>/', edit_problem_polygon, name='polygon_edit_problem'),
     path('polygon/problem/<int:problem_id>/publish/', publish_problem_polygon, name='polygon_publish_problem'),
-    path('api/start/', start_api)
+
+    path('backend/problem/', problem_detail_api),
+    path('backend/start/', start_api),
+    path('backend/register/', backend_register, name='backend_register'),
+    path('backend/login/', backend_login, name='backend_login'),
+    path('backend/logout/', backend_logout, name='backend_logout'),
+    path('backend/user/', backend_current_user, name='backend_current_user'),
+    path('backend/check-auth/', backend_check_auth, name='backend_check_auth'),
+    path('backend/csrf-token/', get_csrf_token, name='backend_csrf_token'),
+    path('backend/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
+    path('backend/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
 ]

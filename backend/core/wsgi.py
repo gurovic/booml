@@ -21,9 +21,9 @@ from vm_bootstrap import ensure_vm_environment
 ensure_vm_environment()
 
 from django.core.wsgi import get_wsgi_application  # noqa: E402
-from runner.services.runtime import register_runtime_shutdown_hooks  # noqa: E402
+#from runner.services.runtime import register_runtime_shutdown_hooks  # noqa: E402
 
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'core.settings')
-register_runtime_shutdown_hooks()
+#register_runtime_shutdown_hooks()
 
 application = get_wsgi_application()
