@@ -53,19 +53,11 @@ def list_contests(request):
     if not request.user.is_authenticated:
         return JsonResponse({"detail": "Authentication required"}, status=401)
 
-    course_id = request.GET.get("course_id")
-    try:
-        course_filter = int(course_id) if course_id not in (None, "") else None
-    except (TypeError, ValueError):
-        return JsonResponse({"detail": "course_id must be an integer"}, status=400)
-
     contests = (
         Contest.objects.select_related("course")
         .annotate(problems_count=Count("problems"))
         .order_by("-created_at")
     )
-    if course_filter is not None:
-        contests = contests.filter(course_id=course_filter)
 
     visible = []
     for contest in contests:

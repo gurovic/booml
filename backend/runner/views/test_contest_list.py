@@ -100,26 +100,6 @@ class ContestListViewTests(TestCase):
 
         self.assertEqual(response.status_code, 401)
 
-    def test_course_filter(self):
-        request = self.factory.get("/", {"course_id": str(self.course.id)})
-        request.user = self.teacher
-
-        response = list_contests(request)
-
-        self.assertEqual(response.status_code, 200)
-        payload = json.loads(response.content.decode())
-        titles = [item["title"] for item in payload["items"]]
-        self.assertEqual(set(titles), {"Published", "Draft"})
-        self.assertNotIn("Other Course", titles)
-
-    def test_invalid_course_filter_returns_bad_request(self):
-        request = self.factory.get("/", {"course_id": "abc"})
-        request.user = self.teacher
-
-        response = list_contests(request)
-
-        self.assertEqual(response.status_code, 400)
-
     def test_private_contest_visible_only_to_allowed(self):
         private_contest = Contest.objects.create(
             title="Private",
