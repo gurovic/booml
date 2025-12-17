@@ -39,7 +39,6 @@
             </li>
           </ul>
         </aside>
-
       </div>
 
       <div v-else class="problem-empty">
@@ -164,7 +163,6 @@ const availableFiles = computed(() => {
   display: flex;
   flex-direction: column;
   gap: 12px;
-}
 
 .problem-files__link {
   width: 100%;

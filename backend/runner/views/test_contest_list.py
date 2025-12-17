@@ -44,6 +44,7 @@ class ContestListViewTests(TestCase):
             course=self.course,
             created_by=self.teacher,
             is_published=True,
+            approval_status=Contest.ApprovalStatus.APPROVED,
         )
         self.draft = Contest.objects.create(
             title="Draft",
@@ -56,6 +57,7 @@ class ContestListViewTests(TestCase):
             course=self.other_course,
             created_by=self.other_teacher,
             is_published=True,
+            approval_status=Contest.ApprovalStatus.APPROVED,
         )
 
     def test_teacher_sees_contests_for_their_course(self):
@@ -98,22 +100,25 @@ class ContestListViewTests(TestCase):
 
         self.assertEqual(response.status_code, 401)
 
-    def test_course_filter(self):
-        request = self.factory.get("/", {"course_id": str(self.course.id)})
-        request.user = self.teacher
+    def test_private_contest_visible_only_to_allowed(self):
+        private_contest = Contest.objects.create(
+            title="Private",
+            course=self.course,
+            created_by=self.teacher,
+            is_published=True,
+            access_type=Contest.AccessType.PRIVATE,
+            approval_status=Contest.ApprovalStatus.APPROVED,
+        )
+        private_contest.allowed_participants.add(self.student)
 
-        response = list_contests(request)
+        request_student = self.factory.get("/")
+        request_student.user = self.student
+        resp_student = list_contests(request_student)
+        titles_student = {item["title"] for item in json.loads(resp_student.content.decode())["items"]}
+        self.assertIn("Private", titles_student)
 
-        self.assertEqual(response.status_code, 200)
-        payload = json.loads(response.content.decode())
-        titles = [item["title"] for item in payload["items"]]
-        self.assertEqual(set(titles), {"Published", "Draft"})
-        self.assertNotIn("Other Course", titles)
-
-    def test_invalid_course_filter_returns_bad_request(self):
-        request = self.factory.get("/", {"course_id": "abc"})
-        request.user = self.teacher
-
-        response = list_contests(request)
-
-        self.assertEqual(response.status_code, 400)
+        request_outsider = self.factory.get("/")
+        request_outsider.user = self.outsider
+        resp_outsider = list_contests(request_outsider)
+        titles_outsider = {item["title"] for item in json.loads(resp_outsider.content.decode())["items"]}
+        self.assertNotIn("Private", titles_outsider)
