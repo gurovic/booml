@@ -161,6 +161,7 @@
             <input type="file" id="import-file-input" accept=".json" style="display: none;" data-import-url="{% url 'runner:import_notebook' %}">
             <button data-action="create-cell">➕ Новая ячейка кода</button>
             <button data-action="create-latex-cell">➕ Новая LaTeX-ячейка</button>
+            <button onclick="runAll()">Запустить все ячейки с кодом</button>
             <button data-action="paste-at-end" data-paste-button disabled>📋 Вставить в конец</button>
             <span class="clipboard-indicator" data-clipboard-indicator data-state="empty">Буфер пуст</span>
         </div>
@@ -176,21 +177,5 @@
     </div>
 
     {% csrf_token %}
-
-    <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            notebookDetail.init({
-                notebookId: {{ notebook.id }},
-                csrfToken: '{{ csrf_token }}',
-                runCellUrl: '{% url "run-cell" %}',
-                sessionCreateUrl: '{% url "notebook-session-create" %}',
-                sessionResetUrl: '{% url "session-reset" %}',
-                sessionFilesUrl: '{% url "session-files" %}',
-                sessionFileUploadUrl: '{% url "session-file-upload" %}',
-                sessionFileDownloadUrl: '{% url "session-file-download" %}',
-                sessionStopUrl: '{% url "session-stop" %}'
-            });
-        });
-    </script>
 </body>
 </html>
