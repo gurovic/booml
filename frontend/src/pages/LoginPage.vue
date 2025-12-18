@@ -1,18 +1,18 @@
 <template>
     <div class="auth-page">
         <div class="auth-page__container container">
-            <div class="auth-card">
-                <div class="auth-card__header">
-                    <h2 class="auth-card__title">Вход в аккаунт</h2>
-                    <p class="auth-card__subtitle">
+            <div class="card">
+                <div class="card__header">
+                    <h2 class="card__title">Вход в аккаунт</h2>
+                    <p class="card__subtitle">
                         Введите свои данные для входа в систему
                     </p>
                 </div>
 
-                <form @submit.prevent="handleSubmit" class="auth-card__form">
+                <form @submit.prevent="handleSubmit" class="card__form">
                     <div
                         v-if="formErrors.general"
-                        class="auth-card__error auth-card__error--general"
+                        class="card__error card__error--general"
                     >
                         {{ formErrors.general }}
                     </div>
@@ -68,25 +68,25 @@
                     <button
                         type="submit"
                         :class="[
-                            'auth-card__submit button button--primary',
-                            { 'auth-card__submit--loading': loading }
+                            'card__submit button button--primary',
+                            { 'card__submit--loading': loading }
                         ]"
                         :disabled="loading"
                     >
                         <span
                             v-if="loading"
-                            class="auth-card__spinner"
+                            class="card__spinner"
                         ></span>
-                        <span class="auth-card__submit-text">
+                        <span class="card__submit-text">
                             Войти
                         </span>
                     </button>
                 </form>
 
-                <div class="auth-card__footer">
-                    <p class="auth-card__footer-text">
+                <div class="card__footer">
+                    <p class="card__footer-text">
                         Нет аккаунта?
-                        <router-link to="/register" class="auth-card__footer-link">
+                        <router-link to="/register" class="card__footer-link">
                             Зарегистрируйтесь
                         </router-link>
                     </p>
@@ -173,194 +173,9 @@ const handleErrors = (error) => {
     margin: 0 auto;
 }
 
-.auth-card {
-    background: white;
-    border-radius: 12px;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
-    padding: 40px;
-}
-
-.auth-card__header {
-    text-align: center;
-    margin-bottom: 32px;
-}
-
-.auth-card__title {
-    color: var(--color-text-title);
-    font-size: 28px;
-    font-weight: 400;
-    margin: 0 0 10px 0;
-    line-height: 1.2;
-}
-
-.auth-card__subtitle {
-    color: var(--color-text-primary);
-    opacity: 0.7;
-    margin: 0;
-}
-
-.auth-card__form {
-    margin-bottom: 24px;
-}
-
-.auth-card__error--general {
-    background-color: #fef2f2;
-    border: 1px solid #fee2e2;
-    color: #dc2626;
-    padding: 12px 16px;
-    border-radius: 8px;
-    margin-bottom: 20px;
-    font-size: 14px;
-    text-align: center;
-}
-
-.form-group {
-    margin-bottom: 24px;
-}
-
-.form-group__label {
-    display: block;
-    color: var(--color-text-primary);
-    font-weight: 400;
-    font-size: 16px;
-    margin-bottom: 8px;
-}
-
-.form-group__input {
-    width: 100%;
-    padding: 14px 16px;
-    border: 1px solid #d1d5db;
-    border-radius: 8px;
-    font-size: 16px;
-    color: var(--color-text-primary);
-    background-color: #fff;
-    transition: border-color 0.15s ease;
-    box-sizing: border-box;
-    font-family: var(--font-default);
-}
-
-.form-group__input:focus {
-    outline: none;
-    border-color: var(--color-button-primary);
-    box-shadow: 0 0 0 3px rgba(20, 78, 236, 0.1);
-}
-
-.form-group__input--error {
-    border-color: #ef4444;
-    background-color: #fffafa;
-}
-
-.form-group__input--error:focus {
-    border-color: #ef4444;
-    box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1);
-}
-
-.form-group__input:disabled {
-    background-color: #f9fafb;
-    cursor: not-allowed;
-    opacity: 0.7;
-}
-
-.form-group__error {
-    color: #ef4444;
-    font-size: 13px;
-    margin-top: 6px;
-}
-
-.auth-card__submit {
-    width: 100%;
-    height: 52px;
-    margin-top: 8px;
-    font-size: 20px;
-    border-radius: 10px;
-    position: relative;
-    transition: background-color 0.15s ease;
-}
-
-.auth-card__submit:hover:not(:disabled) {
-    background-color: #0d3ec8;
-}
-
-.auth-card__submit:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-}
-
-.auth-card__submit--loading {
-    opacity: 0.8;
-}
-
-.auth-card__spinner {
-    display: inline-block;
-    width: 20px;
-    height: 20px;
-    border: 2px solid rgba(255, 255, 255, 0.3);
-    border-radius: 50%;
-    border-top-color: white;
-    animation: spin 0.8s linear infinite;
-    position: absolute;
-    left: 50%;
-    top: 50%;
-    transform: translate(-50%, -50%);
-}
-
-.auth-card__submit-text {
-    opacity: 1;
-    transition: opacity 0.15s ease;
-}
-
-.auth-card__submit--loading .auth-card__submit-text {
-    opacity: 0;
-}
-
 @keyframes spin {
     to {
         transform: translate(-50%, -50%) rotate(360deg);
-    }
-}
-
-.auth-card__footer {
-    text-align: center;
-    padding-top: 24px;
-    border-top: 1px solid #e5e7eb;
-}
-
-.auth-card__footer-text {
-    color: var(--color-text-primary);
-    opacity: 0.7;
-    margin: 0;
-}
-
-.auth-card__footer-link {
-    color: var(--color-button-primary);
-    text-decoration: none;
-    font-weight: 600;
-    margin-left: 4px;
-    transition: color 0.15s ease;
-}
-
-.auth-card__footer-link:hover {
-    color: #0d3ec8;
-    text-decoration: underline;
-}
-
-@media (max-width: 480px) {
-    .auth-card {
-        padding: 32px 24px;
-    }
-
-    .auth-card__title {
-        font-size: 24px;
-    }
-
-    .form-group__input {
-        padding: 12px 14px;
-        font-size: 15px;
-    }
-
-    .auth-card__submit {
-        height: 48px;
-        font-size: 18px;
     }
 }
 </style>

@@ -1,18 +1,18 @@
 <template>
     <div class="auth-page">
         <div class="auth-page__container container">
-            <div class="auth-card">
-                <div class="auth-card__header">
-                    <h2 class="auth-card__title">Создание аккаунта</h2>
-                    <p class="auth-card__subtitle">
+            <div class="card">
+                <div class="card__header">
+                    <h2 class="card__title">Создание аккаунта</h2>
+                    <p class="card__subtitle">
                         Заполните форму для регистрации нового пользователя
                     </p>
                 </div>
 
-                <form @submit.prevent="handleSubmit" class="auth-card__form">
+                <form @submit.prevent="handleSubmit" class="card__form">
                     <div
                         v-if="formErrors.general"
-                        class="auth-card__error auth-card__error--general"
+                        class="card__error card__error--general"
                     >
                         {{ formErrors.general }}
                     </div>
@@ -118,24 +118,24 @@
 
                     <div class="form-group">
                         <label class="form-group__label">Роль</label>
-                        <div class="role-options">
+                        <div class="options">
                             <label
                                 v-for="role in roles"
                                 :key="role.value"
-                                class="role-option"
-                                :class="{ 'role-option--selected': formData.role === role.value }"
+                                class="option"
+                                :class="{ 'option--selected': formData.role === role.value }"
                             >
                                 <input
                                     type="radio"
                                     :value="role.value"
                                     v-model="formData.role"
                                     :disabled="loading"
-                                    class="role-option__input"
+                                    class="option__input"
                                 >
-                                <span class="role-option__custom"></span>
-                                <div class="role-option__content">
-                                    <span class="role-option__label">{{ role.label }}</span>
-                                    <span class="role-option__description">{{ role.description }}</span>
+                                <span class="option__custom"></span>
+                                <div class="option__content">
+                                    <span class="option__label">{{ role.label }}</span>
+                                    <span class="option__description">{{ role.description }}</span>
                                 </div>
                             </label>
                         </div>
@@ -147,7 +147,7 @@
                         </div>
                     </div>
 
-                    <div class="form-group form-group--terms">
+                    <div class="form-group form-group--checkbox">
                         <label class="checkbox-label">
                             <input
                                 type="checkbox"
@@ -158,9 +158,9 @@
                             <span class="checkbox-custom"></span>
                             <span class="checkbox-text">
                                 Я согласен с
-                                <a href="#" class="terms-link">условиями использования</a>
+                                <a href="#" class="link">условиями использования</a>
                                 и
-                                <a href="#" class="terms-link">политикой конфиденциальности</a>
+                                <a href="#" class="link">политикой конфиденциальности</a>
                             </span>
                         </label>
                     </div>
@@ -168,25 +168,25 @@
                     <button
                         type="submit"
                         :class="[
-                            'auth-card__submit button button--primary',
-                            { 'auth-card__submit--loading': loading }
+                            'card__submit button button--primary',
+                            { 'card__submit--loading': loading }
                         ]"
                         :disabled="loading || !acceptTerms"
                     >
                         <span
                             v-if="loading"
-                            class="auth-card__spinner"
+                            class="card__spinner"
                         ></span>
-                        <span class="auth-card__submit-text">
+                        <span class="card__submit-text">
                             Зарегистрироваться
                         </span>
                     </button>
                 </form>
 
-                <div class="auth-card__footer">
-                    <p class="auth-card__footer-text">
+                <div class="card__footer">
+                    <p class="card__footer-text">
                         Уже есть аккаунт?
-                        <router-link to="/login" class="auth-card__footer-link">
+                        <router-link to="/login" class="card__footer-link">
                             Войдите
                         </router-link>
                     </p>
@@ -306,390 +306,9 @@ const handleErrors = (error) => {
     margin: 0 auto;
 }
 
-.auth-card {
-    background: white;
-    border-radius: 12px;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
-    padding: 40px;
-}
-
-.auth-card__header {
-    text-align: center;
-    margin-bottom: 32px;
-}
-
-.auth-card__title {
-    color: var(--color-text-title);
-    font-size: 28px;
-    font-weight: 400;
-    margin: 0 0 10px 0;
-    line-height: 1.2;
-}
-
-.auth-card__subtitle {
-    color: var(--color-text-primary);
-    opacity: 0.7;
-    margin: 0;
-}
-
-.auth-card__form {
-    margin-bottom: 24px;
-}
-
-.auth-card__error--general {
-    background-color: #fef2f2;
-    border: 1px solid #fee2e2;
-    color: #dc2626;
-    padding: 12px 16px;
-    border-radius: 8px;
-    margin-bottom: 20px;
-    font-size: 14px;
-    text-align: center;
-}
-
-.form-group {
-    margin-bottom: 24px;
-}
-
-.form-group__label {
-    display: block;
-    color: var(--color-text-primary);
-    font-weight: 400;
-    font-size: 16px;
-    margin-bottom: 8px;
-}
-
-.form-group__label::after {
-    content: " *";
-    color: #ef4444;
-}
-
-.form-group__input {
-    width: 100%;
-    padding: 14px 16px;
-    border: 1px solid #d1d5db;
-    border-radius: 8px;
-    font-size: 16px;
-    color: var(--color-text-primary);
-    background-color: #fff;
-    transition: border-color 0.15s ease;
-    box-sizing: border-box;
-    font-family: var(--font-default);
-}
-
-.form-group__input:focus {
-    outline: none;
-    border-color: var(--color-button-primary);
-    box-shadow: 0 0 0 3px rgba(20, 78, 236, 0.1);
-}
-
-.form-group__input--error {
-    border-color: #ef4444;
-    background-color: #fffafa;
-}
-
-.form-group__input--error:focus {
-    border-color: #ef4444;
-    box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1);
-}
-
-.form-group__input:disabled {
-    background-color: #f9fafb;
-    cursor: not-allowed;
-    opacity: 0.7;
-}
-
-.form-group__error {
-    color: #ef4444;
-    font-size: 13px;
-    margin-top: 6px;
-}
-
-.form-group__hint {
-    display: block;
-    color: var(--color-text-primary);
-    opacity: 0.6;
-    font-size: 12px;
-    margin-top: 6px;
-}
-
-/* Стили для выбора роли */
-.role-options {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-}
-
-.role-option {
-    display: flex;
-    align-items: flex-start;
-    padding: 16px;
-    border: 1px solid #d1d5db;
-    border-radius: 8px;
-    cursor: pointer;
-    transition: all 0.15s ease;
-    position: relative;
-}
-
-.role-option:hover {
-    border-color: #9ca3af;
-    background-color: #f9fafb;
-}
-
-.role-option--selected {
-    border-color: var(--color-button-primary);
-    background-color: rgba(20, 78, 236, 0.05);
-}
-
-.role-option--selected:hover {
-    border-color: var(--color-button-primary);
-    background-color: rgba(20, 78, 236, 0.08);
-}
-
-.role-option__input {
-    position: absolute;
-    opacity: 0;
-    width: 0;
-    height: 0;
-}
-
-.role-option__custom {
-    display: inline-block;
-    width: 18px;
-    height: 18px;
-    border: 2px solid #9ca3af;
-    border-radius: 50%;
-    margin-right: 16px;
-    margin-top: 2px;
-    position: relative;
-    flex-shrink: 0;
-    transition: all 0.15s ease;
-}
-
-.role-option--selected .role-option__custom {
-    border-color: var(--color-button-primary);
-}
-
-.role-option--selected .role-option__custom::after {
-    content: '';
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    width: 8px;
-    height: 8px;
-    background-color: var(--color-button-primary);
-    border-radius: 50%;
-}
-
-.role-option__content {
-    flex: 1;
-    margin-left: 2px;
-}
-
-.role-option__label {
-    font-weight: 600;
-    color: var(--color-text-primary);
-    font-size: 15px;
-    margin-bottom: 6px;
-    display: block;
-    line-height: 1.3;
-}
-
-.role-option__description {
-    color: var(--color-text-primary);
-    opacity: 0.7;
-    font-size: 14px;
-    line-height: 1.4;
-    display: block;
-    padding-left: 0;
-    margin-left: 0;
-}
-
-/* Стили для чекбокса с условиями */
-.form-group--terms {
-    padding-top: 8px;
-}
-
-.checkbox-label {
-    display: flex;
-    align-items: flex-start;
-    cursor: pointer;
-    position: relative;
-}
-
-.checkbox-label input[type="checkbox"] {
-    position: absolute;
-    opacity: 0;
-    width: 0;
-    height: 0;
-}
-
-.checkbox-custom {
-    display: inline-block;
-    width: 18px;
-    height: 18px;
-    border: 2px solid #d1d5db;
-    border-radius: 4px;
-    margin-right: 12px;
-    margin-top: 2px;
-    flex-shrink: 0;
-    transition: all 0.15s ease;
-    position: relative;
-}
-
-.checkbox-label:hover .checkbox-custom {
-    border-color: #9ca3af;
-}
-
-.checkbox-label input[type="checkbox"]:checked + .checkbox-custom {
-    border-color: var(--color-button-primary);
-    background-color: var(--color-button-primary);
-}
-
-.checkbox-label input[type="checkbox"]:checked + .checkbox-custom::after {
-    content: '✓';
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    color: white;
-    font-size: 12px;
-    font-weight: bold;
-}
-
-.checkbox-text {
-    color: var(--color-text-primary);
-    font-size: 14px;
-    line-height: 1.5;
-}
-
-.terms-link {
-    color: var(--color-button-primary);
-    text-decoration: none;
-    font-weight: 500;
-    transition: color 0.15s ease;
-}
-
-.terms-link:hover {
-    color: #0d3ec8;
-    text-decoration: underline;
-}
-
-/* Стили для кнопки */
-.auth-card__submit {
-    width: 100%;
-    height: 52px;
-    margin-top: 8px;
-    font-size: 20px;
-    border-radius: 10px;
-    position: relative;
-    transition: background-color 0.15s ease;
-}
-
-.auth-card__submit:hover:not(:disabled) {
-    background-color: #0d3ec8;
-}
-
-.auth-card__submit:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-    background-color: #9ca3af;
-}
-
-.auth-card__submit--loading {
-    opacity: 0.8;
-}
-
-.auth-card__spinner {
-    display: inline-block;
-    width: 20px;
-    height: 20px;
-    border: 2px solid rgba(255, 255, 255, 0.3);
-    border-radius: 50%;
-    border-top-color: white;
-    animation: spin 0.8s linear infinite;
-    position: absolute;
-    left: 50%;
-    top: 50%;
-    transform: translate(-50%, -50%);
-}
-
-.auth-card__submit-text {
-    opacity: 1;
-    transition: opacity 0.15s ease;
-}
-
-.auth-card__submit--loading .auth-card__submit-text {
-    opacity: 0;
-}
-
 @keyframes spin {
     to {
         transform: translate(-50%, -50%) rotate(360deg);
-    }
-}
-
-.auth-card__footer {
-    text-align: center;
-    padding-top: 24px;
-    border-top: 1px solid #e5e7eb;
-}
-
-.auth-card__footer-text {
-    color: var(--color-text-primary);
-    opacity: 0.7;
-    margin: 0;
-}
-
-.auth-card__footer-link {
-    color: var(--color-button-primary);
-    text-decoration: none;
-    font-weight: 600;
-    margin-left: 4px;
-    transition: color 0.15s ease;
-}
-
-.auth-card__footer-link:hover {
-    color: #0d3ec8;
-    text-decoration: underline;
-}
-
-@media (max-width: 480px) {
-    .auth-card {
-        padding: 32px 24px;
-    }
-
-    .auth-card__title {
-        font-size: 24px;
-    }
-
-    .form-group__input {
-        padding: 12px 14px;
-        font-size: 15px;
-    }
-
-    .role-option {
-        padding: 14px;
-    }
-
-    .role-option__custom {
-        margin-right: 14px;
-        margin-top: 1px;
-    }
-
-    .role-option__label {
-        font-size: 14px;
-        margin-bottom: 5px;
-    }
-
-    .role-option__description {
-        font-size: 13px;
-    }
-
-    .auth-card__submit {
-        height: 48px;
-        font-size: 18px;
     }
 }
 </style>

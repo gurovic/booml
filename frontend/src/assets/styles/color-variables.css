@@ -1,14 +1,16 @@
 :root {
   /* TEXT */
-  --color-text-primary: #2C2C2C;
-  --color-text-title: #1F1F1F;
+  --color-text-primary: #1E264A;
+  --color-text-title: #30343F;
 
   /* BACKGROUND */
-  --color-bg-default: #F4F8FD;
+  --color-bg-default: #FBFAFF;
 
   /* BUTTON */
-  --color-button-primary: #144EEC;
-  --color-button-secondary: #EFF6FF;
+  --color-button-primary: #27346A;
+  --color-button-secondary: #E4DAFF;
   --color-button-text-primary: #FFFFFF;
   --color-button-text-secondary: #000000;
+  --color-button-primary-hover: #1A274D;
+  --color-button-secondary-hover: #E4DAFF;
 }
