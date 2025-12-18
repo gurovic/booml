@@ -17,10 +17,11 @@
 <script setup>
 import { onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { authService } from '@/services/auth'
+import { useUserStore } from '@/stores/UserStore'
 
 const router = useRouter()
-let user = authService.getCurrentUser()
+const userStore = useUserStore()
+let user = userStore.getCurrentUser()
 
 let isAuthorized = computed(() => user.value != null)
 
@@ -30,7 +31,7 @@ onMounted(async () => {
 
 const handleButton = async () => {
   if (isAuthorized.value) {
-    await authService.logout()
+    await userStore.logoutUser()
     router.push('/')
   } else {
     router.push('/login')

@@ -1,6 +1,6 @@
 <template>
     <div class="auth-page">
-        <div class="auth-page__container">
+        <div class="auth-page__container container">
             <div class="auth-card">
                 <div class="auth-card__header">
                     <h2 class="auth-card__title">Создание аккаунта</h2>
@@ -168,7 +168,7 @@
                     <button
                         type="submit"
                         :class="[
-                            'auth-card__submit',
+                            'auth-card__submit button button--primary',
                             { 'auth-card__submit--loading': loading }
                         ]"
                         :disabled="loading || !acceptTerms"
@@ -199,9 +199,10 @@
 <script setup>
 import { ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
-import { authService } from '@/services/auth'
+import { useUserStore } from '@/stores/UserStore'
 
 const router = useRouter()
+const userStore = useUserStore()
 
 const loading = ref(false)
 const acceptTerms = ref(false)
@@ -238,20 +239,16 @@ const handleSubmit = async () => {
     clearErrors()
 
     try {
-        const result = await authService.register({
-            username: formData.username,
-            email: formData.email,
-            password1: formData.password,
-            password2: formData.password2,
-            role: formData.role
-        })
+        userStore.username = formData.username
+        userStore.email = formData.email
+        userStore.password = formData.password
+        userStore.password2 = formData.password2
+        userStore.role = formData.role
+
+        const result = await userStore.registerUser()
 
         if (result.success) {
-            // Автоматически логиним после успешной регистрации
-            const loginResult = await authService.login({
-                username: formData.username,
-                password: formData.password
-            })
+            const loginResult = await userStore.loginUser()
 
             if (loginResult.success) {
                 await router.push('/')
@@ -300,13 +297,11 @@ const handleErrors = (error) => {
     display: flex;
     align-items: center;
     justify-content: center;
-    background-color: #f8f9fa;
+    background-color: var(--color-bg-default);
     padding: 20px;
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 .auth-page__container {
-    width: 100%;
     max-width: 520px;
     margin: 0 auto;
 }
@@ -324,18 +319,17 @@ const handleErrors = (error) => {
 }
 
 .auth-card__title {
-    color: #2c3e50;
-    font-size: 26px;
-    font-weight: 600;
+    color: var(--color-text-title);
+    font-size: 28px;
+    font-weight: 400;
     margin: 0 0 10px 0;
     line-height: 1.2;
 }
 
 .auth-card__subtitle {
-    color: #7f8c8d;
-    font-size: 15px;
+    color: var(--color-text-primary);
+    opacity: 0.7;
     margin: 0;
-    line-height: 1.5;
 }
 
 .auth-card__form {
@@ -359,9 +353,9 @@ const handleErrors = (error) => {
 
 .form-group__label {
     display: block;
-    color: #374151;
-    font-weight: 500;
-    font-size: 14px;
+    color: var(--color-text-primary);
+    font-weight: 400;
+    font-size: 16px;
     margin-bottom: 8px;
 }
 
@@ -376,15 +370,16 @@ const handleErrors = (error) => {
     border: 1px solid #d1d5db;
     border-radius: 8px;
     font-size: 16px;
-    color: #111827;
+    color: var(--color-text-primary);
     background-color: #fff;
     transition: border-color 0.15s ease;
     box-sizing: border-box;
+    font-family: var(--font-default);
 }
 
 .form-group__input:focus {
     outline: none;
-    border-color: #144EEC;
+    border-color: var(--color-button-primary);
     box-shadow: 0 0 0 3px rgba(20, 78, 236, 0.1);
 }
 
@@ -412,11 +407,13 @@ const handleErrors = (error) => {
 
 .form-group__hint {
     display: block;
-    color: #6b7280;
+    color: var(--color-text-primary);
+    opacity: 0.6;
     font-size: 12px;
     margin-top: 6px;
 }
 
+/* Стили для выбора роли */
 .role-options {
     display: flex;
     flex-direction: column;
@@ -440,12 +437,12 @@ const handleErrors = (error) => {
 }
 
 .role-option--selected {
-    border-color: #144EEC;
+    border-color: var(--color-button-primary);
     background-color: rgba(20, 78, 236, 0.05);
 }
 
 .role-option--selected:hover {
-    border-color: #144EEC;
+    border-color: var(--color-button-primary);
     background-color: rgba(20, 78, 236, 0.08);
 }
 
@@ -470,7 +467,7 @@ const handleErrors = (error) => {
 }
 
 .role-option--selected .role-option__custom {
-    border-color: #144EEC;
+    border-color: var(--color-button-primary);
 }
 
 .role-option--selected .role-option__custom::after {
@@ -481,7 +478,7 @@ const handleErrors = (error) => {
     transform: translate(-50%, -50%);
     width: 8px;
     height: 8px;
-    background-color: #144EEC;
+    background-color: var(--color-button-primary);
     border-radius: 50%;
 }
 
@@ -492,7 +489,7 @@ const handleErrors = (error) => {
 
 .role-option__label {
     font-weight: 600;
-    color: #374151;
+    color: var(--color-text-primary);
     font-size: 15px;
     margin-bottom: 6px;
     display: block;
@@ -500,7 +497,8 @@ const handleErrors = (error) => {
 }
 
 .role-option__description {
-    color: #6b7280;
+    color: var(--color-text-primary);
+    opacity: 0.7;
     font-size: 14px;
     line-height: 1.4;
     display: block;
@@ -508,6 +506,7 @@ const handleErrors = (error) => {
     margin-left: 0;
 }
 
+/* Стили для чекбокса с условиями */
 .form-group--terms {
     padding-top: 8px;
 }
@@ -544,8 +543,8 @@ const handleErrors = (error) => {
 }
 
 .checkbox-label input[type="checkbox"]:checked + .checkbox-custom {
-    border-color: #144EEC;
-    background-color: #144EEC;
+    border-color: var(--color-button-primary);
+    background-color: var(--color-button-primary);
 }
 
 .checkbox-label input[type="checkbox"]:checked + .checkbox-custom::after {
@@ -560,13 +559,13 @@ const handleErrors = (error) => {
 }
 
 .checkbox-text {
-    color: #374151;
+    color: var(--color-text-primary);
     font-size: 14px;
     line-height: 1.5;
 }
 
 .terms-link {
-    color: #144EEC;
+    color: var(--color-button-primary);
     text-decoration: none;
     font-weight: 500;
     transition: color 0.15s ease;
@@ -577,27 +576,19 @@ const handleErrors = (error) => {
     text-decoration: underline;
 }
 
+/* Стили для кнопки */
 .auth-card__submit {
     width: 100%;
-    background-color: #144EEC;
-    color: white;
-    border: none;
-    border-radius: 8px;
-    padding: 16px;
-    font-size: 16px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: background-color 0.15s ease;
     height: 52px;
     margin-top: 8px;
+    font-size: 20px;
+    border-radius: 10px;
+    position: relative;
+    transition: background-color 0.15s ease;
 }
 
 .auth-card__submit:hover:not(:disabled) {
     background-color: #0d3ec8;
-}
-
-.auth-card__submit:active:not(:disabled) {
-    background-color: #0a32a8;
 }
 
 .auth-card__submit:disabled {
@@ -646,13 +637,13 @@ const handleErrors = (error) => {
 }
 
 .auth-card__footer-text {
-    color: #6b7280;
-    font-size: 15px;
+    color: var(--color-text-primary);
+    opacity: 0.7;
     margin: 0;
 }
 
 .auth-card__footer-link {
-    color: #144EEC;
+    color: var(--color-button-primary);
     text-decoration: none;
     font-weight: 600;
     margin-left: 4px;
@@ -671,10 +662,6 @@ const handleErrors = (error) => {
 
     .auth-card__title {
         font-size: 24px;
-    }
-
-    .auth-card__subtitle {
-        font-size: 14px;
     }
 
     .form-group__input {
@@ -698,6 +685,11 @@ const handleErrors = (error) => {
 
     .role-option__description {
         font-size: 13px;
+    }
+
+    .auth-card__submit {
+        height: 48px;
+        font-size: 18px;
     }
 }
 </style>
