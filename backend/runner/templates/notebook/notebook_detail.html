@@ -94,6 +94,7 @@
          data-session-create-url="{% url 'notebook-session-create' %}"
          data-session-reset-url="{% url 'session-reset' %}"
          data-session-files-url="{% url 'session-files' %}"
+         data-session-file-upload-url="{% url 'session-file-upload' %}"
          data-session-file-download-url="{% url 'session-file-download' %}"
          data-session-stop-url="{% url 'session-stop' %}"
          data-delete-url-template="{% url 'runner:delete_cell' notebook.id 0 %}"
@@ -136,7 +137,11 @@
         <aside class="notebook-files-panel" data-files-panel>
             <div class="files-panel-header">
                 <span>Файлы сессии</span>
-                <button type="button" data-action="refresh-files">Обновить</button>
+                <div class="files-panel-actions">
+                    <button type="button" data-action="refresh-files">Обновить</button>
+                    <button type="button" data-action="upload-file">Загрузить файл</button>
+                    <input type="file" data-upload-input multiple style="display: none;">
+                </div>
             </div>
             <div class="files-panel-body" data-files-list>
                 <div class="files-empty">Файлы ещё не созданы</div>
@@ -156,6 +161,7 @@
             <input type="file" id="import-file-input" accept=".json" style="display: none;" data-import-url="{% url 'runner:import_notebook' %}">
             <button data-action="create-cell">➕ Новая ячейка кода</button>
             <button data-action="create-latex-cell">➕ Новая LaTeX-ячейка</button>
+            <button onclick="runAll()">Запустить все ячейки с кодом</button>
             <button data-action="paste-at-end" data-paste-button disabled>📋 Вставить в конец</button>
             <span class="clipboard-indicator" data-clipboard-indicator data-state="empty">Буфер пуст</span>
         </div>
@@ -171,20 +177,5 @@
     </div>
 
     {% csrf_token %}
-
-    <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            notebookDetail.init({
-                notebookId: {{ notebook.id }},
-                csrfToken: '{{ csrf_token }}',
-                runCellUrl: '{% url "run-cell" %}',
-                sessionCreateUrl: '{% url "notebook-session-create" %}',
-                sessionResetUrl: '{% url "session-reset" %}',
-                sessionFilesUrl: '{% url "session-files" %}',
-                sessionFileDownloadUrl: '{% url "session-file-download" %}',
-                sessionStopUrl: '{% url "session-stop" %}'
-            });
-        });
-    </script>
 </body>
 </html>

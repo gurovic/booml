@@ -7,6 +7,20 @@
           <h1 class="problem__name">{{ problem.title }}</h1>
           <div class="problem__text" v-html="problem.rendered_statement"></div>
         </div>
+        <div class="problem__menu">
+          <div class="problem__files" v-if="availableFiles.length > 0">
+            <h2 class="problem__files-title">Файлы</h2>
+            <ul class="problem__files-list">
+              <li
+                class="problem__file"
+                v-for="file in availableFiles"
+                :key="file.name"
+              >
+                <a class="problem__file-href button button--secondary" :href="file.url" :download="file.name">{{ file.name }}</a>
+            </li>
+            </ul>
+          </div>
+        </div>
       </div>
       <div v-else>
         <h1>Задача не найдена</h1>
@@ -16,7 +30,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { getProblem } from '@/api/problem'
 import MarkdownIt from 'markdown-it'
@@ -44,6 +58,13 @@ onMounted(async () => {
     }
   }
 })
+
+const availableFiles = computed(() => {
+  if (!problem.value.files) return []
+  return Object.entries(problem.value.files)
+    .filter(([, url]) => url)
+    .map(([name, url]) => ({ name, url }))
+})
 </script>
 
 <style scoped>
@@ -57,25 +78,60 @@ onMounted(async () => {
   width: 100%;
   height: 100%;
   display: flex;
-  flex-direction: column;
+  gap: 20px;
 }
 
 .problem__content {
   position: relative;
   z-index: 1;
-  max-width: 980px;
+  flex-grow: 1;
   display: flex;
   flex-direction: column;
   padding: 30px 50px;
-  box-shadow: 0px 0px 5px 0px rgba(0, 0, 0, 0.25) inset;
-  border-radius: 10px;
+  border: 1px solid #e5e9f1;
+  border-radius: 20px;
 }
 
 .problem__name {
   margin-bottom: 20px;
 }
 
-.problem__statement {
+.problem__menu {
+  max-width: 350px;
+  width: 100%;
+  flex-grow: 1;
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+}
 
+.problem__files {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 20px;
+  border: 1px solid #e5e9f1;
+  border-radius: 30px;
+}
+
+.problem__files-list {
+  margin-top: 20px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.problem__file {
+  width: 100%;
+}
+
+.problem__file-href {
+  display: inline-block;
+  width: 100%;
+  text-align: start;
 }
 </style>

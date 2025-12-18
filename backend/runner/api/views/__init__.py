@@ -5,6 +5,7 @@ from .sessions import (
     StopSessionView,
     SessionFilesView,
     SessionFileDownloadView,
+    SessionFileUploadView,
     build_notebook_session_id,
     extract_notebook_id,
     ensure_notebook_access,
