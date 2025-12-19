@@ -9,6 +9,8 @@ from pathlib import Path
 
 CURRENT_DIR = Path(__file__).resolve().parent
 BACKEND_DIR = CURRENT_DIR.parent
+_HOST_ROOT_ENV = os.environ.get("RUNTIME_VM_HOST_ROOT")
+_HOST_ROOT = Path(_HOST_ROOT_ENV).expanduser().resolve() if _HOST_ROOT_ENV else None
 if str(CURRENT_DIR) not in sys.path:
     sys.path.insert(0, str(CURRENT_DIR))
 
@@ -41,7 +43,9 @@ def main() -> int:
     if not dockerfile.exists():
         print(f"ERROR: Dockerfile {dockerfile} не найден.", file=sys.stderr)
         return 1
-    context = BACKEND_DIR if dockerfile.parent == BACKEND_DIR / "docker" else dockerfile.parent
+    context = dockerfile.parent.parent if dockerfile.parent.name == "docker" else dockerfile.parent
+    dockerfile = _map_to_host(dockerfile)
+    context = _map_to_host(context)
     cmd = ["docker", "build", "-t", args.image, "-f", str(dockerfile), str(context)]
     print(f"[docker-build] Building {args.image} from {dockerfile}")
     try:
@@ -51,6 +55,16 @@ def main() -> int:
         return exc.returncode
     print(f"[docker-build] Image {args.image} built successfully.")
     return 0
+
+
+def _map_to_host(path: Path) -> Path:
+    if _HOST_ROOT is None:
+        return path
+    try:
+        relative = path.resolve().relative_to(BACKEND_DIR.resolve())
+    except Exception:
+        return path
+    return (_HOST_ROOT / relative).resolve()
 
 
 if __name__ == "__main__":

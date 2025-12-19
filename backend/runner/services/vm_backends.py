@@ -179,6 +179,7 @@ class DockerVmBackend(VmBackend):
         host_root = os.environ.get("RUNTIME_VM_HOST_ROOT")
         self._host_root = Path(host_root).expanduser().resolve() if host_root else None
         self._container_base = Path(getattr(settings, "BASE_DIR", self.root.parent)).resolve()
+        self._docker_bin = _resolve_docker_bin()
 
     def create_vm(
         self,
@@ -345,7 +346,7 @@ class DockerVmBackend(VmBackend):
                 raise ValueError(f"docker arguments must be str, got {type(arg)}: {arg!r}")
             if any(char in arg for char in suspicious_chars):
                 raise ValueError(f"suspicious shell metacharacter detected in docker argument: {arg!r}")
-        cmd = ["docker", *args]
+        cmd = [self._docker_bin, *args]
         return subprocess.run(cmd, check=check, capture_output=False, text=True)
 
     def _vm_dir(self, vm_id: str) -> Path:
@@ -423,6 +424,19 @@ def _resolve_now(value: datetime | None = None) -> datetime:
     if timezone.is_naive(resolved):
         resolved = timezone.make_aware(resolved, timezone.get_current_timezone())
     return resolved
+
+
+def _resolve_docker_bin() -> str:
+    candidate = shutil.which("docker")
+    if candidate:
+        return candidate
+    fallback = Path("/usr/bin/docker")
+    if fallback.exists():
+        return str(fallback)
+    fallback = Path("/usr/local/bin/docker")
+    if fallback.exists():
+        return str(fallback)
+    return "docker"
 
 
 __all__ = ["VmBackend", "LocalVmBackend", "DockerVmBackend"]

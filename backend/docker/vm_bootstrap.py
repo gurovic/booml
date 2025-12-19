@@ -12,6 +12,9 @@ BACKEND_DIR = Path(__file__).resolve().parents[1]
 DEFAULT_IMAGE = "runner-vm:latest"
 DEFAULT_DOCKERFILE = BACKEND_DIR / "docker" / "Dockerfile"
 DEFAULT_CONFIG_PATH = Path(__file__).with_name("vm_settings.json")
+_HOST_ROOT_ENV = os.environ.get("RUNTIME_VM_HOST_ROOT")
+_HOST_ROOT = Path(_HOST_ROOT_ENV).expanduser().resolve() if _HOST_ROOT_ENV else None
+_CONTAINER_BASE = BACKEND_DIR.resolve()
 
 _CONFIG_CACHE: Dict[str, Any] | None = None
 
@@ -156,7 +159,9 @@ def _resolve_dockerfile() -> Path | None:
             path = path.resolve()
         if path.exists():
             return path
-    return DEFAULT_DOCKERFILE if DEFAULT_DOCKERFILE.exists() else None
+    if DEFAULT_DOCKERFILE.exists():
+        return DEFAULT_DOCKERFILE
+    return None
 
 
 def _build_docker_image(image: str, dockerfile: Path) -> None:
@@ -165,7 +170,7 @@ def _build_docker_image(image: str, dockerfile: Path) -> None:
     Uses docker_build.py if available, otherwise runs docker build directly.
     """
     docker_build_script = BACKEND_DIR / "docker" / "docker_build.py"
-    context = BACKEND_DIR if dockerfile.parent == BACKEND_DIR / "docker" else dockerfile.parent
+    context = dockerfile.parent.parent if dockerfile.parent.name == "docker" else dockerfile.parent
     
     if docker_build_script.exists():
         # Use docker_build.py script
@@ -175,6 +180,8 @@ def _build_docker_image(image: str, dockerfile: Path) -> None:
         )
     else:
         # Fallback: use docker build directly
+        dockerfile = _map_to_host(dockerfile)
+        context = _map_to_host(context)
         result = subprocess.run(
             ["docker", "build", "-t", image, "-f", str(dockerfile), str(context)],
             cwd=str(BACKEND_DIR),
@@ -182,6 +189,16 @@ def _build_docker_image(image: str, dockerfile: Path) -> None:
     
     if result.returncode != 0:
         raise RuntimeError(f"Docker build failed with return code {result.returncode}")
+
+
+def _map_to_host(path: Path) -> Path:
+    if _HOST_ROOT is None:
+        return path
+    try:
+        relative = path.resolve().relative_to(_CONTAINER_BASE)
+    except Exception:
+        return path
+    return (_HOST_ROOT / relative).resolve()
 
 
 def _cleanup_old_sessions() -> None:
