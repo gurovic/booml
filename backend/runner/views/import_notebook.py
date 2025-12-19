@@ -37,9 +37,24 @@ def import_notebook(request):
         }, status=400)
     
     try:
+               raw_bytes = uploaded_file.read()
+            file_content = raw_bytes.decode('utf-8')
 
-        file_content = uploaded_file.read().decode('utf-8')
-        notebook_data = json.loads(file_content)
+            if file_content.startswith('\ufeff'):
+                file_content = file_content[1:] 
+
+            notebook_data = json.loads(file_content)  
+
+        except json.JSONDecodeError as e:
+            return JsonResponse({
+                'status': 'error',
+                'message': f'Ошибка парсинга JSON: {str(e)}'
+            }, status=400)
+        except Exception as e:
+            return JsonResponse({
+                'status': 'error',
+                'message': f'Ошибка импорта: {str(e)}'
+            }, status=500)
         
 
         if 'notebook' not in notebook_data or 'cells' not in notebook_data:
