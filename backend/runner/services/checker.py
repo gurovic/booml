@@ -3,6 +3,7 @@ import logging
 from typing import Any, Dict, Optional
 
 import pandas as pd
+import csv
 
 from ..models.submission import Submission
 from ..models.problem_desriptor import ProblemDescriptor
@@ -112,14 +113,11 @@ class SubmissionChecker:
         )
 
     def _detect_sep(self, path, seps=(",",";","\t","|")):
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, "r") as f:
             sample = f.read(4096)
+            dialect = csv.Sniffer().sniff(sample)
 
-        scores = {}
-        for sep in seps:
-            scores[sep] = sum(1 for line in sample.splitlines() if sep in line)
-
-        return max(scores, key=scores.get)
+        return dialect.delimiter
 
     def _load_submission_file(self, file_field) -> Optional[pd.DataFrame]:
         """Загружаем файл submission"""
