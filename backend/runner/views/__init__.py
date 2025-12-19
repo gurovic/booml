@@ -4,14 +4,13 @@ from .contest_draft import (
     create_contest,
     contest_success,
     contest_detail,
-    course_detail,
-    course_contests,
     list_contests,
     list_pending_contests,
     moderate_contest,
     set_contest_access,
     manage_contest_participants,
 )
+from .course import course_detail, course_contests
 from .problems import problem_list
 from .get_reports_list import get_reports_list
 from .receive_test_result import receive_test_result
