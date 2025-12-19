@@ -139,11 +139,30 @@ def problem_detail_api(request):
             "sample_submission": get_file_url(problem_data.sample_submission_file)
         }
 
+    submissions = []
+
+    if request.user.is_authenticated:
+        raw_submissions = (
+            Submission.objects
+            .filter(problem=problem, user=request.user)
+            .order_by("-submitted_at")[:5]
+        )
+
+        submissions = [
+            {
+                "id": submission.id,
+                "submitted_at": submission.submitted_at.strftime("%d.%m.%Y %H:%M"),
+                "status": submission.status
+            }
+            for submission in raw_submissions
+        ]
+
     response = {
         "id": problem.id,
         "title": problem.title,
         "statement": problem.statement,
-        "files": file_urls
+        "files": file_urls,
+        "submissions": submissions
     }
 
     return JsonResponse(response)

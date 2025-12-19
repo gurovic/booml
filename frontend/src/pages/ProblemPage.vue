@@ -7,9 +7,9 @@
           <h1 class="problem__name">{{ problem.title }}</h1>
           <div class="problem__text" v-html="problem.rendered_statement"></div>
         </div>
-        <div class="problem__menu">
-          <div class="problem__files" v-if="availableFiles.length > 0">
-            <h2 class="problem__files-title">Файлы</h2>
+        <ul class="problem__menu">
+          <li class="problem__files problem__menu-item" v-if="availableFiles.length > 0">
+            <h2 class="problem__files-title problem__item-title">Файлы</h2>
             <ul class="problem__files-list">
               <li
                 class="problem__file"
@@ -19,8 +19,29 @@
                 <a class="problem__file-href button button--secondary" :href="file.url" :download="file.name">{{ file.name }}</a>
             </li>
             </ul>
-          </div>
-        </div>
+          </li>
+          <li class="problem__submissions problem__menu-item">
+            <h2 class="problem__submissions-title problem__item-title">Последние посылки</h2>
+            <ul class="problem__submissions-list">
+              <li class="problem__submission-head button button--primary">
+                <p>Посылка</p>
+                <p>Время</p>
+                <p>Вердикт</p>
+              </li>
+              <li 
+                class="problem__submission"
+                v-for="submission in problem.submissions"
+                :key="submission.id"
+              >
+                <a class="problem__submission-href button button--secondary" href="#">
+                  <p>{{ submission.id }}</p>
+                  <p>{{ submission.submitted_at }}</p>
+                  <p>{{ submission.status }}</p>
+                </a>
+              </li>
+            </ul>
+          </li>
+        </ul>
       </div>
       <div v-else>
         <h1>Задача не найдена</h1>
@@ -103,9 +124,10 @@ const availableFiles = computed(() => {
   display: flex;
   align-items: center;
   flex-direction: column;
+  gap: 25px;
 }
 
-.problem__files {
+.problem__menu-item {
   width: 100%;
   display: flex;
   flex-direction: column;
@@ -115,8 +137,11 @@ const availableFiles = computed(() => {
   border-radius: 30px;
 }
 
-.problem__files-list {
-  margin-top: 20px;
+.problem__item-title {
+  margin-bottom: 10px;
+}
+
+.problem__files-list, .problem__submissions-list {
   width: 100%;
   display: flex;
   flex-direction: column;
@@ -125,13 +150,36 @@ const availableFiles = computed(() => {
   gap: 10px;
 }
 
-.problem__file {
+.problem__file, .problem__submission {
+  width: 100%;
+}
+
+.problem__file-href, .problem__submission-href {
+  display: inline-block;
   width: 100%;
 }
 
 .problem__file-href {
-  display: inline-block;
-  width: 100%;
   text-align: start;
+}
+
+.problem__submissions-list {
+
+}
+
+.problem__submission-head {
+  display: flex;
+  width: 100%;
+  justify-content: space-between;
+}
+
+.problem__submission {
+  width: 100%;
+}
+
+.problem__submission-href {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
 }
 </style>
