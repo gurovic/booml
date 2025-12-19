@@ -111,11 +111,21 @@ class SubmissionChecker:
             },
         )
 
+    def _detect_sep(self, path, seps=(",",";","\t","|")):
+        with open(path, "r", encoding="utf-8") as f:
+            sample = f.read(4096)
+
+        scores = {}
+        for sep in seps:
+            scores[sep] = sum(1 for line in sample.splitlines() if sep in line)
+
+        return max(scores, key=scores.get)
+
     def _load_submission_file(self, file_field) -> Optional[pd.DataFrame]:
         """Загружаем файл submission"""
         path = getattr(file_field, "path", None) or getattr(file_field, "name", None) or file_field
         try:
-            return pd.read_csv(path)
+            return pd.read_csv(path, sep=self._detect_sep(path))
         except Exception:  # pragma: no cover - log for observability
             logger.info("Failed to load submission file %s", path)
             return None
@@ -139,7 +149,7 @@ class SubmissionChecker:
             logger.warning("Ground truth file has no path (maybe not saved yet)")
             return None
         try:
-            return pd.read_csv(path)
+            return pd.read_csv(path, sep=self._detect_sep(path))
         except Exception:  # pragma: no cover - log for observability
             logger.info("Failed to load ground truth file %s", path)
             return None
