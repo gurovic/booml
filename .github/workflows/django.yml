@@ -14,6 +14,34 @@ jobs:
       run:
         working-directory: backend
 
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: booml_ci
+          POSTGRES_USER: booml_ci
+          POSTGRES_PASSWORD: booml_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U booml_ci -d booml_ci"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+    env:
+      MODE: test
+      DB_ENGINE: django.db.backends.postgresql
+      DB_NAME: booml_ci
+      DB_USER: booml_ci
+      DB_PASSWORD: booml_ci
+      DB_HOST: localhost
+      DB_PORT: "5432"
+
+      SECRET_KEY: ci-secret-key
+      DEBUG: "False"
+      ALLOWED_HOSTS: localhost,127.0.0.1
+
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -27,8 +55,11 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt    # файл лежит в backend/
+      
+      - name: Run migrations
+        run: |
+          python manage.py migrate --noinput
 
       - name: Run tests
         run: |
-          python manage.py migrate --noinput || true
           python manage.py test -v 2
