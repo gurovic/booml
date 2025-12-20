@@ -12,14 +12,6 @@ class Migration(migrations.Migration):
     operations = [
         migrations.AddField(
             model_name="contest",
-            name="is_rated",
-            field=models.BooleanField(
-                default=False,
-                help_text="If true, contest results affect participant rating",
-            ),
-        ),
-        migrations.AddField(
-            model_name="contest",
             name="registration_type",
             field=models.CharField(
                 choices=[
