@@ -64,7 +64,7 @@ def create_course(payload: CourseCreateInput) -> Course:
     teachers = _unique_users(teacher_candidates)
 
     teacher_ids = {user.pk for user in teachers}
-    student_users: List[User] = []
+    student_users: list[User] = []
     seen_students = set()
     for user in payload.students or []:
         if user is None or user.pk is None:

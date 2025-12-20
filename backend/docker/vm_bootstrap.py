@@ -149,8 +149,13 @@ def _docker_available() -> bool:
 def _resolve_dockerfile() -> Path | None:
     override = os.environ.get("RUNTIME_VM_DOCKERFILE")
     if override:
-        path = Path(override).expanduser().resolve()
-        return path if path.exists() else None
+        path = Path(override).expanduser()
+        if not path.is_absolute():
+            path = (BACKEND_DIR / path).resolve()
+        else:
+            path = path.resolve()
+        if path.exists():
+            return path
     return DEFAULT_DOCKERFILE if DEFAULT_DOCKERFILE.exists() else None
 
 
@@ -160,6 +165,7 @@ def _build_docker_image(image: str, dockerfile: Path) -> None:
     Uses docker_build.py if available, otherwise runs docker build directly.
     """
     docker_build_script = BACKEND_DIR / "docker" / "docker_build.py"
+    context = BACKEND_DIR if dockerfile.parent == BACKEND_DIR / "docker" else dockerfile.parent
     
     if docker_build_script.exists():
         # Use docker_build.py script
@@ -170,7 +176,7 @@ def _build_docker_image(image: str, dockerfile: Path) -> None:
     else:
         # Fallback: use docker build directly
         result = subprocess.run(
-            ["docker", "build", "-t", image, "-f", str(dockerfile), str(dockerfile.parent)],
+            ["docker", "build", "-t", image, "-f", str(dockerfile), str(context)],
             cwd=str(BACKEND_DIR),
         )
     

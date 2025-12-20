@@ -9,6 +9,7 @@ from ..models.problem_desriptor import ProblemDescriptor
 from ..models.submission import Submission
 from ..services import enqueue_submission_for_evaluation, validation_service
 from .submissions import submission_list
+from django.http import JsonResponse
 
 
 def _report_is_valid(report) -> bool:
@@ -105,3 +106,44 @@ def problem_detail(request, problem_id):
         "result": context_submissions_list["result"]
     }
     return render(request, "runner/problem_detail.html", context)
+
+
+def problem_detail_api(request):
+    problem_id = request.GET.get('problem_id')
+
+    if problem_id is None:
+        return JsonResponse({'error': 'problem_id is required'}, status=400)
+
+    problem = get_object_or_404(Problem, id=problem_id)
+    problem_data = ProblemData.objects.filter(problem=problem).first()
+    descriptor = ProblemDescriptor.objects.filter(problem=problem).first()
+
+    def get_file_url(file):
+        file_url = None
+        if file:
+            file_url = request.build_absolute_uri(
+                file.url
+            )
+        return file_url
+    
+    file_urls = {
+        "train": None,
+        "test": None,
+        "sample_submission": None
+    }
+
+    if problem_data:
+        file_urls = {
+            "train": get_file_url(problem_data.train_file),
+            "test": get_file_url(problem_data.test_file),
+            "sample_submission": get_file_url(problem_data.sample_submission_file)
+        }
+
+    response = {
+        "id": problem.id,
+        "title": problem.title,
+        "statement": problem.statement,
+        "files": file_urls
+    }
+
+    return JsonResponse(response)

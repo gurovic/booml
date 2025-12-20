@@ -639,6 +639,7 @@ const notebookDetail = {
         this.sessionCreateUrl = this.sanitizeUrl(config.sessionCreateUrl) || this.sanitizeUrl(this.notebookElement?.dataset.sessionCreateUrl);
         this.sessionResetUrl = this.sanitizeUrl(config.sessionResetUrl) || this.sanitizeUrl(this.notebookElement?.dataset.sessionResetUrl);
         this.sessionFilesUrl = this.sanitizeUrl(config.sessionFilesUrl) || this.sanitizeUrl(this.notebookElement?.dataset.sessionFilesUrl);
+        this.sessionFileUploadUrl = this.sanitizeUrl(config.sessionFileUploadUrl) || this.sanitizeUrl(this.notebookElement?.dataset.sessionFileUploadUrl);
         this.sessionFileDownloadUrl = this.sanitizeUrl(config.sessionFileDownloadUrl) || this.sanitizeUrl(this.notebookElement?.dataset.sessionFileDownloadUrl);
         this.sessionStopUrl = this.sanitizeUrl(config.sessionStopUrl) || this.sanitizeUrl(this.notebookElement?.dataset.sessionStopUrl);
         this.sessionStatusElement = this.notebookElement?.querySelector('[data-session-status]') || null;
@@ -693,6 +694,15 @@ const notebookDetail = {
     bindEvents() {
         if (this.notebookElement) {
             this.notebookElement.addEventListener('click', this.handleNotebookClick.bind(this));
+        }
+
+        if (this.filesPanel) {
+            this.filesPanel.addEventListener('change', (event) => {
+                const target = event.target;
+                if (target && target.matches('[data-upload-input]')) {
+                    this.handleUploadInputChange(event);
+                }
+            });
         }
 
         const deleteForm = document.getElementById('delete-notebook-form');
@@ -776,6 +786,9 @@ const notebookDetail = {
         }
         else if (action === 'refresh-files') {
             this.refreshSessionFiles();
+        }
+        else if (action === 'upload-file') {
+            this.triggerFileUploadSelect();
         }
         else if (action === 'export-notebook') {
             this.exportNotebook();
@@ -1498,6 +1511,110 @@ const notebookDetail = {
         }
     },
 
+    async triggerFileUploadSelect() {
+        if (!this.sessionFileUploadUrl) {
+            alert('URL загрузки файлов недоступен');
+            return;
+        }
+        let sessionId = await this.ensureSession();
+        if (!sessionId) {
+            const ok = window.confirm('Для загрузки файлов нужно создать сессию. Создать её сейчас?');
+            if (!ok) {
+                return;
+            }
+            try {
+                sessionId = await this.createSession();
+            } catch (error) {
+                console.error('Не удалось создать сессию для загрузки файлов:', error);
+                alert(error?.message || 'Не удалось создать сессию для загрузки.');
+                return;
+            }
+        }
+        const input = this.filesPanel?.querySelector('[data-upload-input]');
+        if (!input) {
+            alert('Поле выбора файла недоступно');
+            return;
+        }
+        input.value = '';
+        input.click();
+    },
+
+    async handleUploadInputChange(event) {
+        const input = event?.target;
+        if (!input || !input.files || input.files.length === 0) {
+            return;
+        }
+        const files = Array.from(input.files);
+        input.value = '';
+        await this.uploadFiles(files);
+    },
+
+    async uploadFiles(files) {
+        if (!files || files.length === 0) {
+            return;
+        }
+        if (!this.sessionFileUploadUrl) {
+            alert('URL загрузки файлов недоступен');
+            return;
+        }
+        const sessionId = await this.ensureSession();
+        if (!sessionId) {
+            alert('Сначала создайте сессию.');
+            return;
+        }
+
+        let uploadedCount = 0;
+        const failed = [];
+        for (const file of files) {
+            if (!file) {
+                continue;
+            }
+            const formData = new FormData();
+            formData.append('session_id', sessionId);
+            formData.append('file', file, file.name || 'uploaded.file');
+            try {
+                this.markActivity();
+                const response = await fetch(this.sessionFileUploadUrl, {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRFToken': this.config.csrfToken
+                    },
+                    body: formData
+                });
+                let data = null;
+                try {
+                    data = await response.json();
+                } catch (_error) {
+                    data = null;
+                }
+                if (!response.ok) {
+                    const message = data?.detail || data?.message || 'Не удалось загрузить файл';
+                    const error = new Error(message);
+                    error.status = response.status;
+                    throw error;
+                }
+                uploadedCount += 1;
+            } catch (error) {
+                if (error?.status === 404) {
+                    this.handleSessionLost('Сессия не найдена. Создайте новую.');
+                }
+                console.error('Не удалось загрузить файл:', error);
+                const name = file?.name || 'файл';
+                failed.push(name);
+            }
+        }
+
+        await this.refreshSessionFiles();
+
+        if (failed.length === 0) {
+            alert(uploadedCount > 1 ? 'Файлы загружены.' : 'Файл загружен.');
+        } else if (uploadedCount > 0) {
+            alert(`Загружено файлов: ${uploadedCount}. Не удалось: ${failed.join(', ')}`);
+        } else {
+            alert('Не удалось загрузить выбранные файлы.');
+        }
+    },
+
     renderSessionFiles(files) {
         if (!this.filesList) {
             return;
@@ -1534,7 +1651,11 @@ const notebookDetail = {
         this.filesPanel.innerHTML = `
             <div class="files-panel-header">
                 <span>Файлы сессии</span>
-                <button type="button" data-action="refresh-files">Обновить</button>
+                <div class="files-panel-actions">
+                    <button type="button" data-action="refresh-files">Обновить</button>
+                    <button type="button" data-action="upload-file">Загрузить файл</button>
+                    <input type="file" data-upload-input multiple style="display: none;">
+                </div>
             </div>
             <div class="files-panel-body" data-files-list>
                 <div class="files-empty">Файлы ещё не созданы</div>
@@ -1871,4 +1992,26 @@ const notebookDetail = {
         });
     }
 
+};
+document.addEventListener('DOMContentLoaded', function() {
+    notebookDetail.init({
+        notebookId: {{ notebook.id }},
+        csrfToken: '{{ csrf_token }}',
+        runCellUrl: '{% url "run-cell" %}',
+        sessionCreateUrl: '{% url "notebook-session-create" %}',
+        sessionResetUrl: '{% url "session-reset" %}',
+        sessionFilesUrl: '{% url "session-files" %}',
+        sessionFileDownloadUrl: '{% url "session-file-download" %}',
+        sessionStopUrl: '{% url "session-stop" %}'
+    });
+});
+const runAll = function() {
+    const cells = document.querySelectorAll('.cell')
+    for (const cell of cells) {
+        const id = cell.getAttribute('data-cell-id');
+        if (!id) continue;
+
+        // запускаем так же, как запускается одиночная ячейка
+        notebookDetail.runCell(id);
+    }
 };
