@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import * as user from '@/api/user'
 
 export const useUserStore = defineStore('user', () => {
@@ -14,6 +14,26 @@ export const useUserStore = defineStore('user', () => {
 
     const password = ref(null)
     const password2 = ref(null)
+
+    currentUser.value = JSON.parse(localStorage.getItem('currentUser')) || null;
+    if (currentUser.value) {
+        id.value = currentUser.value.id
+        username.value = currentUser.value.username
+        email.value = currentUser.value.email
+        role.value = currentUser.value.role
+        accessToken.value = currentUser.value.accessToken
+        refreshToken.value = currentUser.value.refreshToken
+    }
+
+
+    watch(
+        currentUser,
+        (newCurrentUser) => {
+            localStorage.setItem('currentUser', JSON.stringify(newCurrentUser));
+        },
+        { deep: true }
+    );
+
 
     const isAuthenticated = computed(() => {
         return !!accessToken.value && !!id.value
@@ -37,6 +57,8 @@ export const useUserStore = defineStore('user', () => {
                     'username': username.value,
                     'email': email.value,
                     'role': role.value,
+                    'accessToken': accessToken.value,
+                    'refreshToken': refreshToken.value,
                 }
 
                 return {
@@ -75,6 +97,14 @@ export const useUserStore = defineStore('user', () => {
                 role.value = res.user.role
                 accessToken.value = res.tokens.access
                 refreshToken.value = res.tokens.refresh
+                currentUser.value = {
+                    'id': id.value,
+                    'username': username.value,
+                    'email': email.value,
+                    'role': role.value,
+                    'accessToken': accessToken.value,
+                    'refreshToken': refreshToken.value,
+                }
 
                 return {
                     success: true,
