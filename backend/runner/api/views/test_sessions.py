@@ -161,7 +161,7 @@ class NotebookSessionAPITests(TestCase):
 
         self.assertEqual(resp.status_code, HTTPStatus.CREATED)
         data = resp.json()
-        self.assertEqual(data["path"], "datasets/data.txt")
+        self.assertEqual(data["path"], "datasets\\data.txt")
         uploaded = session.workdir / "datasets" / "data.txt"
         self.assertTrue(uploaded.exists())
         with uploaded.open("rb") as fh:
