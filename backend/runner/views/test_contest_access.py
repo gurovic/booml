@@ -34,6 +34,8 @@ class ContestAccessViewTests(TestCase):
         )
 
     def test_set_access_to_link_generates_token(self):
+        self.contest.approval_status = Contest.ApprovalStatus.APPROVED
+        self.contest.save(update_fields=["approval_status"])
         request = self.factory.post(
             "/",
             data=json.dumps({"access_type": "link", "is_published": True}),

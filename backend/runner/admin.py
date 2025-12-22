@@ -49,7 +49,10 @@ class ProblemAdmin(admin.ModelAdmin):
     list_filter = ("created_at",)
     ordering = ("-created_at",)
 
-admin.site.register(Submission)
+@admin.register(Submission)
+class SubmissionAdmin(admin.ModelAdmin):
+    list_display = ("id", "__str__")
+
 admin.site.register(ProblemData)
 
 

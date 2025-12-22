@@ -1,7 +1,8 @@
 from django.test import TestCase, override_settings
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.contrib.auth import get_user_model
-
+import tempfile
+from pathlib import Path
 from . import enqueue_submission_for_evaluation
 from .prevalidation_service import run_prevalidation
 from ..views.problem_detail import _report_is_valid
@@ -16,7 +17,13 @@ class IntegrationPrevalidationTest(TestCase):
     self.user = get_user_model().objects.create(username="tester")
     self.problem = Problem.objects.create(title="Test problem")
     ProblemDescriptor.objects.create(problem=self.problem)
+    self.tmpdir = tempfile.TemporaryDirectory()
+    self.media_root = Path(self.tmpdir.name)
 
+  def tearDown(self):
+    self.tmpdir.cleanup()
+
+  @override_settings(MEDIA_ROOT=tempfile.gettempdir())
   def test_valid_flow(self):
     content = "id,prediction\n1,0.9\n2,0.3\n"
 
@@ -39,6 +46,7 @@ class IntegrationPrevalidationTest(TestCase):
     enqueue_submission_for_evaluation.delay(submission.id)
     self.assertIn(submission.status, [Submission.STATUS_PENDING, Submission.STATUS_RUNNING, Submission.STATUS_VALIDATED])
 
+  @override_settings(MEDIA_ROOT=tempfile.gettempdir())
   def test_invalid_flow(self):
     content = "id,prediction\nx,0.9\n2,abc\n"
 
