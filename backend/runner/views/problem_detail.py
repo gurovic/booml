@@ -151,8 +151,9 @@ def problem_detail_api(request):
         submissions = [
             {
                 "id": submission.id,
-                "submitted_at": submission.submitted_at.strftime("%d.%m.%Y %H:%M"),
-                "status": submission.status
+                "submitted_at": submission.submitted_at.strftime("%H:%M"),
+                "status": submission.status,
+                "metric": submission.metrics
             }
             for submission in raw_submissions
         ]

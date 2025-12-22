@@ -24,9 +24,9 @@
             <h2 class="problem__submissions-title problem__item-title">Последние посылки</h2>
             <ul class="problem__submissions-list">
               <li class="problem__submission-head button button--primary">
-                <p>Посылка</p>
                 <p>Время</p>
-                <p>Вердикт</p>
+                <p>Статус</p>
+                <p>Метрика</p>
               </li>
               <li 
                 class="problem__submission"
@@ -34,9 +34,9 @@
                 :key="submission.id"
               >
                 <a class="problem__submission-href button button--secondary" href="#">
-                  <p>{{ submission.id }}</p>
                   <p>{{ submission.submitted_at }}</p>
                   <p>{{ submission.status }}</p>
+                  <p>{{ roundMetric(submission.metric.metric_score) }}</p>
                 </a>
               </li>
             </ul>
@@ -86,6 +86,11 @@ const availableFiles = computed(() => {
     .filter(([, url]) => url)
     .map(([name, url]) => ({ name, url }))
 })
+
+const roundMetric = (value) => {
+  if (value == null) return '-'
+  return Number(value).toFixed(3)
+}
 </script>
 
 <style scoped>
@@ -163,23 +168,15 @@ const availableFiles = computed(() => {
   text-align: start;
 }
 
-.problem__submissions-list {
-
-}
-
-.problem__submission-head {
-  display: flex;
+.problem__submission-head,
+.problem__submission-href {
   width: 100%;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  align-items: center;
 }
 
 .problem__submission {
   width: 100%;
-}
-
-.problem__submission-href {
-  width: 100%;
-  display: flex;
-  justify-content: space-between;
 }
 </style>
