@@ -32,8 +32,8 @@ if _allowed_hosts_env:
     ALLOWED_HOSTS = [host.strip() for host in _allowed_hosts_env.split(",") if host.strip()]
 else:
     ALLOWED_HOSTS = [
-        "booml.veconomics.ru",
-        "backend.booml.veconomics.ru",
+        "booml.letovo.site",
+        "backend.booml.letovo.site",
         "127.0.0.1",
         "localhost",
     ]
@@ -49,16 +49,16 @@ if MODE	== "prod":
 
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:8101",
-    "http://booml.veconomics.ru",
-    "https://booml.veconomics.ru",
+    "http://booml.letovo.site",
+    "https://booml.letovo.site",
 ]
 
 CSRF_TRUSTED_ORIGINS = [
     "http://localhost:8101",
-    "http://booml.veconomics.ru",
-    "https://booml.veconomics.ru",
-    "http://backend.booml.veconomics.ru",
-    "https://backend.booml.veconomics.ru",
+    "http://booml.letovo.site",
+    "https://booml.letovo.site",
+    "http://backend.booml.letovo.site",
+    "https://backend.booml.letovo.site",
 ]
 
 # Application definition
