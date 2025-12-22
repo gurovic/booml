@@ -15,8 +15,12 @@ def _get_owner(apps):
         owner = User.objects.order_by("id").first()
     if owner is None:
         owner = User.objects.create(username="system", is_staff=True, is_superuser=True)
-        owner.set_unusable_password()
-        owner.save(update_fields=["password"])
+        if hasattr(owner, "set_unusable_password"):
+            owner.set_unusable_password()
+            owner.save(update_fields=["password"])
+        elif hasattr(owner, "password"):
+            owner.password = "!"
+            owner.save(update_fields=["password"])
     return owner
 
 

@@ -20,9 +20,9 @@ def create_contest(request, course_id):
         return JsonResponse({"detail": "Method not allowed"}, status=405)
 
     course = get_object_or_404(Course, pk=course_id)
-    if course.owner_id != request.user.id:
+    if course.section.owner_id != request.user.id:
         return JsonResponse(
-            {"detail": "Only course owner can create contests for this course"},
+            {"detail": "Only section owner can create contests for this course"},
             status=403,
         )
 
@@ -70,7 +70,7 @@ def list_contests(request):
     for contest in contests:
         if contest.course is None or not contest.is_visible_to(request.user):
             continue
-        is_owner = contest.course.owner_id == request.user.id
+        is_owner = contest.course.section.owner_id == request.user.id
         is_admin = request.user.is_staff or request.user.is_superuser
         visible.append(
             {
@@ -112,7 +112,7 @@ def contest_detail(request, contest_id):
     if not contest.is_visible_to(request.user):
         return JsonResponse({"detail": "Forbidden"}, status=403)
 
-    is_owner = contest.course.owner_id == request.user.id
+    is_owner = contest.course.section.owner_id == request.user.id
     is_admin = request.user.is_staff or request.user.is_superuser
     allowed_participants = []
     if is_owner or is_admin:
@@ -163,9 +163,9 @@ def set_contest_access(request, contest_id):
     if contest.course is None:
         return JsonResponse({"detail": "Contest must belong to a course"}, status=400)
 
-    if contest.course.owner_id != request.user.id:
+    if contest.course.section.owner_id != request.user.id:
         return JsonResponse(
-            {"detail": "Only course owner can modify this contest"},
+            {"detail": "Only section owner can modify this contest"},
             status=403,
         )
 
