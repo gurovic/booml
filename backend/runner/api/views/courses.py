@@ -90,7 +90,7 @@ class CourseParticipantsUpdateView(generics.GenericAPIView):
     lookup_url_kwarg = "course_id"
 
     """
-    Allow course owner to add or update participants.
+    Allow section owner to add or update participants.
     """
 
     def post(self, request, *args, **kwargs):
@@ -128,6 +128,10 @@ class CourseParticipantsUpdateView(generics.GenericAPIView):
 
 
 class CourseTreeView(APIView):
+    """
+    Return a tree representation of sections and their courses.
+    Breaking change: this endpoint now requires authentication.
+    """
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
@@ -181,7 +185,7 @@ class SectionCreateView(generics.CreateAPIView):
 
 class CourseSelfEnrollView(generics.GenericAPIView):
     """
-    Allow course owner to ensure they are enrolled.
+    Allow section owner to ensure they are enrolled.
     Returns 400 if user already enrolled.
     """
     permission_classes = [permissions.IsAuthenticated]

@@ -19,7 +19,7 @@ def create_contest(request, course_id):
     if request.method != 'POST':
         return JsonResponse({"detail": "Method not allowed"}, status=405)
 
-    course = get_object_or_404(Course, pk=course_id)
+    course = get_object_or_404(Course.objects.select_related("section"), pk=course_id)
     if course.section.owner_id != request.user.id:
         return JsonResponse(
             {"detail": "Only section owner can create contests for this course"},
@@ -159,7 +159,10 @@ def set_contest_access(request, contest_id):
     if request.method != "POST":
         return JsonResponse({"detail": "Method not allowed"}, status=405)
 
-    contest = get_object_or_404(Contest, pk=contest_id)
+    contest = get_object_or_404(
+        Contest.objects.select_related("course__section"),
+        pk=contest_id,
+    )
     if contest.course is None:
         return JsonResponse({"detail": "Contest must belong to a course"}, status=400)
 
@@ -251,7 +254,10 @@ def moderate_contest(request, contest_id):
     if not (request.user.is_staff or request.user.is_superuser):
         return JsonResponse({"detail": "Only admins can moderate contests"}, status=403)
 
-    contest = get_object_or_404(Contest, pk=contest_id)
+    contest = get_object_or_404(
+        Contest.objects.select_related("course__section"),
+        pk=contest_id,
+    )
 
     try:
         payload = json.loads(request.body or "{}")
@@ -297,7 +303,10 @@ def manage_contest_participants(request, contest_id):
     if request.method != "POST":
         return JsonResponse({"detail": "Method not allowed"}, status=405)
 
-    contest = get_object_or_404(Contest, pk=contest_id)
+    contest = get_object_or_404(
+        Contest.objects.select_related("course__section"),
+        pk=contest_id,
+    )
     if contest.course is None:
         return JsonResponse({"detail": "Contest must belong to a course"}, status=400)
 
@@ -341,7 +350,10 @@ def add_problem_to_contest(request, contest_id):
     if request.method != "POST":
         return JsonResponse({"detail": "Method not allowed"}, status=405)
 
-    contest = get_object_or_404(Contest, pk=contest_id)
+    contest = get_object_or_404(
+        Contest.objects.select_related("course__section"),
+        pk=contest_id,
+    )
     if contest.course is None:
         return JsonResponse({"detail": "Contest must belong to a course"}, status=400)
 

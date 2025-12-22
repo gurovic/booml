@@ -58,7 +58,7 @@ def create_root_sections(apps, schema_editor):
             continue
         get_username = getattr(owner_obj, "get_username", None)
         username = get_username() if callable(get_username) else getattr(owner_obj, "username", str(owner_id))
-        title = f"Courses by {username}"[:255]
+        title = f"Courses by {username} ({owner_id})"[:255]
         section, _created = Section.objects.get_or_create(
             title=title,
             parent=default_root,

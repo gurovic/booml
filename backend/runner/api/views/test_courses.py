@@ -31,14 +31,14 @@ class CourseSelfEnrollTests(TestCase):
         self.enroll_url = reverse("course-self-enroll", kwargs={"course_id": self.course.id})
 
     def test_self_enroll_open_course(self):
-        student = User.objects.create_user(username="student", password="pass")
+        User.objects.create_user(username="student", password="pass")
         self.client.login(username="student", password="pass")
         resp = self.client.post(self.enroll_url)
         self.assertEqual(resp.status_code, 403)
     def test_self_enroll_closed_course_forbidden(self):
         self.course.is_open = False
         self.course.save()
-        student = User.objects.create_user(username="student2", password="pass")
+        User.objects.create_user(username="student2", password="pass")
         self.client.login(username="student2", password="pass")
         resp = self.client.post(self.enroll_url)
         self.assertEqual(resp.status_code, 403)

@@ -37,7 +37,7 @@ class CreateCourseTests(TestCase):
         self.assertEqual(course.title, "Intro to ML")
         self.assertTrue(course.is_open)
         self.assertEqual(course.owner, self.owner)
-        self.assertEqual(course.section, self.root_section)
+        self.assertEqual(course.section, self.section)
 
         membership = CourseParticipant.objects.get(course=course, user=self.owner)
         self.assertEqual(membership.role, CourseParticipant.Role.TEACHER)

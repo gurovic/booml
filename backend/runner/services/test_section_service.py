@@ -1,6 +1,7 @@
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 
+from runner.models import Section
 from runner.services.section_service import SectionCreateInput, create_section
 
 User = get_user_model()
@@ -9,9 +10,11 @@ User = get_user_model()
 class SectionServiceTests(TestCase):
     def setUp(self):
         self.owner = User.objects.create_user(username="root-owner", password="pass")
-        self.root = create_section(
-            SectionCreateInput(title="Авторские", owner=self.owner)
-        )
+        self.root = Section.objects.filter(title="Авторские", parent__isnull=True).first()
+        if self.root is None:
+            self.root = create_section(
+                SectionCreateInput(title="Авторские", owner=self.owner)
+            )
 
     def test_other_owner_can_create_section_under_root(self):
         other_owner = User.objects.create_user(username="other-owner", password="pass")
