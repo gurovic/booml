@@ -286,6 +286,8 @@ const handleErrors = (error) => {
 </script>
 
 <style scoped>
+import '@/assets/styles/form.css'
+
 .auth-page {
     min-height: 100vh;
     display: flex;
