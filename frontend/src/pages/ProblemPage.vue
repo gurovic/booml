@@ -101,7 +101,6 @@ const availableFiles = computed(() => {
 .problem__name {
   margin-bottom: 20px;
 
-  font-family: var(--font-title);
   font-size: 48px;
   font-weight: 400;
   line-height: 1.2;
