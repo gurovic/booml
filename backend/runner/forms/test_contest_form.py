@@ -2,7 +2,8 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 
 from runner.forms.contest_draft import ContestForm
-from runner.models import Course
+from runner.models import Course, Section
+from runner.services.section_service import SectionCreateInput, create_section
 
 User = get_user_model()
 
@@ -11,7 +12,19 @@ class ContestFormTests(TestCase):
     def setUp(self):
         self.owner = User.objects.create_user(username="owner", password="pass")
         self.creator = User.objects.create_user(username="creator", password="pass")
-        self.course = Course.objects.create(title="Course A", owner=self.owner)
+        self.root_section = Section.objects.get(title="Авторские", parent__isnull=True)
+        self.section = create_section(
+            SectionCreateInput(
+                title="Owner Section",
+                owner=self.owner,
+                parent=self.root_section,
+            )
+        )
+        self.course = Course.objects.create(
+            title="Course A",
+            owner=self.owner,
+            section=self.section,
+        )
 
     def test_form_requires_course(self):
         form = ContestForm(

@@ -6,7 +6,8 @@ from typing import Iterable
 from django.contrib.auth import get_user_model
 from django.db import transaction
 
-from ..models import Course, CourseParticipant
+from ..models import Course, CourseParticipant, Section
+from .section_service import is_root_section
 
 User = get_user_model()
 
@@ -17,7 +18,7 @@ class CourseCreateInput:
     owner: User
     is_open: bool = False
     description: str = ""
-    parent: Course | None = None
+    section: Section | None = None
     teachers: Iterable[User] | None = None
     students: Iterable[User] | None = None
 
@@ -36,27 +37,15 @@ def _unique_users(users: Iterable[User]) -> list[User]:
     return unique
 
 
-def _ensure_no_cycles(parent: Course, child_id: int | None) -> None:
-    """Defensive check against circular hierarchies when assigning parent."""
-    visited: set[int] = set()
-    current = parent
-    while current:
-        if current.pk:
-            if current.pk == child_id:
-                raise ValueError("Course cannot be its own ancestor")
-            if current.pk in visited:
-                raise ValueError("Circular course hierarchy detected")
-            visited.add(current.pk)
-        current = current.parent
-
-
 def create_course(payload: CourseCreateInput) -> Course:
     if payload.owner is None or payload.owner.pk is None:
         raise ValueError("Owner must be a saved user instance")
-    if payload.parent is not None and payload.parent.pk is None:
-        raise ValueError("Parent course must be saved before use")
-    if payload.parent is not None:
-        _ensure_no_cycles(payload.parent, child_id=None)
+    if payload.section is None:
+        raise ValueError("Section is required to create a course")
+    if payload.section.pk is None:
+        raise ValueError("Section must be saved before use")
+    if not is_root_section(payload.section) and payload.section.owner_id != payload.owner.pk:
+        raise ValueError("Only section owner can create courses in this section")
 
     teacher_candidates = [payload.owner]
     if payload.teachers:
@@ -80,7 +69,7 @@ def create_course(payload: CourseCreateInput) -> Course:
             description=payload.description or "",
             is_open=payload.is_open,
             owner=payload.owner,
-            parent=payload.parent,
+            section=payload.section,
         )
         course.full_clean()
         course.save()

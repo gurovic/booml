@@ -4,6 +4,7 @@ from .views import (
     CourseParticipantsUpdateView,
     CourseSelfEnrollView,
     CourseTreeView,
+    SectionCreateView,
     SubmissionCreateView,
     MySubmissionsListView,
     CreateNotebookSessionView,
@@ -27,6 +28,7 @@ urlpatterns = [
     path("cells/run/", RunCellView.as_view(), name="run-cell"),
     path("courses/", CourseCreateView.as_view(), name="course-create"),
     path("courses/tree/", CourseTreeView.as_view(), name="course-tree"),
+    path("sections/", SectionCreateView.as_view(), name="section-create"),
     path(
         "courses/<int:course_id>/participants/",
         CourseParticipantsUpdateView.as_view(),
