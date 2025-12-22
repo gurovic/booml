@@ -239,16 +239,10 @@ const handleSubmit = async () => {
     clearErrors()
 
     try {
-        userStore.username = formData.username
-        userStore.email = formData.email
-        userStore.password = formData.password
-        userStore.password2 = formData.password2
-        userStore.role = formData.role
-
-        const result = await userStore.registerUser()
+        const result = await userStore.registerUser(formData.username, formData.email, formData.password, formData.password2, formData.role)
 
         if (result.success) {
-            const loginResult = await userStore.loginUser()
+            const loginResult = await userStore.loginUser(formData.username, formData.password)
 
             if (loginResult.success) {
                 await router.push('/')
