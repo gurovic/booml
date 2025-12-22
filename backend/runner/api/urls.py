@@ -4,6 +4,11 @@ from .views import (
     CourseParticipantsUpdateView,
     CourseSelfEnrollView,
     CourseTreeView,
+    SectionCreateView,
+    SectionUpdateView,
+    SectionDeleteView,
+    SectionListView,
+    SectionDetailView,
     SubmissionCreateView,
     MySubmissionsListView,
     CreateNotebookSessionView,
@@ -37,4 +42,10 @@ urlpatterns = [
         CourseSelfEnrollView.as_view(),
         name="course-self-enroll",
     ),
+    # Sections
+    path("sections/", SectionCreateView.as_view(), name="section-create"),
+    path("sections/list/", SectionListView.as_view(), name="section-list"),
+    path("sections/<int:section_id>/", SectionDetailView.as_view(), name="section-detail"),
+    path("sections/<int:section_id>/update/", SectionUpdateView.as_view(), name="section-update"),
+    path("sections/<int:section_id>/delete/", SectionDeleteView.as_view(), name="section-delete"),
 ]
