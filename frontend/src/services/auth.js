@@ -1,4 +1,7 @@
 import { apiPost } from '@/api/http'
+import { ref } from 'vue'
+
+const currentUser = ref(null)
 
 export const authService = {
     async login(credentials) {
@@ -11,6 +14,8 @@ export const authService = {
                 localStorage.setItem('access_token', tokens.access)
                 localStorage.setItem('refresh_token', tokens.refresh)
                 localStorage.setItem('user', JSON.stringify(user))
+
+                currentUser.value = user
 
                 return {
                     success: true,
@@ -58,22 +63,16 @@ export const authService = {
     async logout() {
         try {
             await apiPost('backend/logout/')
+            currentUser.value = null
         } catch (error) {
             console.error('Logout error:', error)
         } finally {
             this.clearStorage()
-            window.location.href = 'login/'
         }
     },
 
-    async getCurrentUser() {
-        try {
-            const response = await apiPost('backend/user/')
-            return response
-        } catch (error) {
-            const storedUser = localStorage.getItem('user')
-            return storedUser ? JSON.parse(storedUser) : null
-        }
+    getCurrentUser() {
+        return currentUser
     },
 
     async checkAuth() {

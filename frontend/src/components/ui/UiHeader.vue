@@ -18,17 +18,20 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
+import { useUserStore } from '@/stores/UserStore'
 
 const router = useRouter()
+const userStore = useUserStore()
+let user = userStore.getCurrentUser()
 
-const user = ref(null) // позже подключите auth
-const isAuthorized = computed(() => user.value !== null)
+let isAuthorized = computed(() => user.value != null)
 
-const handleButton = () => {
+const handleButton = async () => {
   if (isAuthorized.value) {
-    router.push('/logout')
+    await userStore.logoutUser()
+    router.push('/')
   } else {
     router.push('/login')
   }
