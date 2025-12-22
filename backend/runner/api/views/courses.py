@@ -6,6 +6,7 @@ from rest_framework.views import APIView
 
 from ...models import Course, CourseParticipant
 from ...services import add_users_to_course
+from ..permissions import IsTeacher
 from ..serializers import (
     CourseCreateSerializer,
     CourseParticipantSummarySerializer,
@@ -36,12 +37,13 @@ def _build_course_tree(courses):
 
 
 class CourseCreateView(generics.CreateAPIView):
-    serializer_class = CourseCreateSerializer
-    permission_classes = [permissions.IsAuthenticated]
-
     """
     Create a course with the authenticated user as owner and optional participants.
+    Only teachers can create courses.
     """
+
+    serializer_class = CourseCreateSerializer
+    permission_classes = [IsTeacher]
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
