@@ -41,8 +41,12 @@ const handleButton = () => {
   background-color: var(--color-primary);
 }
 
+.container {
+  height: 100%;
+}
+
 .header__inner {
-  height: 64px;
+  height: 100%;
   display: flex;
   align-items: center;
   justify-content: space-between;

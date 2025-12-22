@@ -10,22 +10,15 @@
   /* ===== Text ===== */
   --color-title-text: #30343F;
   --color-text-primary: #1E264A;
-  --color-text-secondary: #5C6282;
-  --color-text-inverse: #FFFFFF;
 
   /* ===== Buttons ===== */
   --color-button-primary: #27346A;
   --color-button-text-primary: #FFFFFF;
 
   --color-button-secondary: #E4DAFF;
-  --color-button-text-secondary: #27346A;
+  --color-button-text-secondary: #000000;
 
   /* ===== Borders / UI ===== */
   --color-border-default: #E0E3F0;
   --color-border-light: #EEF0FA;
-
-  /* ===== States ===== */
-  --color-success: #2ECC71;
-  --color-error: #E74C3C;
-  --color-warning: #F1C40F;
 }
