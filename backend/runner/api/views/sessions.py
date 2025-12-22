@@ -129,7 +129,7 @@ class SessionFilesView(APIView):
             rel = path.relative_to(session.workdir)
             stat = path.stat()
             files.append({
-                "path": str(rel),
+                "path": rel.as_posix(),
                 "size": stat.st_size,
                 "modified": stat.st_mtime,
             })
@@ -187,7 +187,7 @@ class SessionFileUploadView(APIView):
         return Response(
             {
                 "session_id": session_id,
-                "path": str(target_path.relative_to(base_dir)),
+                "path": target_path.relative_to(base_dir).as_posix(),
                 "size": stat.st_size,
             },
             status=status.HTTP_201_CREATED,
@@ -249,7 +249,7 @@ def _serialize_vm_payload(session: RuntimeSession | None) -> dict | None:
             "outbound": vm.spec.network.outbound,
             "allowlist": list(vm.spec.network.allowlist),
         },
-        "workspace_path": str(vm.workspace_path),
+        "workspace_path": vm.workspace_path.as_posix(),
         "created_at": vm.created_at.isoformat(),
         "updated_at": vm.updated_at.isoformat(),
     }
