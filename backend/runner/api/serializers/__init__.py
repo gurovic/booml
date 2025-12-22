@@ -13,3 +13,8 @@ from .courses import (
     CourseParticipantSummarySerializer,
     CourseReadSerializer,
 )
+from .sections import (
+    SectionCreateSerializer,
+    SectionReadSerializer,
+    SectionUpdateSerializer,
+)
