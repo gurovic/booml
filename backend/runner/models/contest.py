@@ -148,6 +148,9 @@ class Contest(models.Model):
             if self.allowed_participants.filter(pk=user.pk).exists():
                 return True
 
+        if self.access_type == self.AccessType.PUBLIC and self.course.is_open:
+            return True
+
         return self.course.participants.filter(user=user).exists()
 
     def ensure_access_token(self):

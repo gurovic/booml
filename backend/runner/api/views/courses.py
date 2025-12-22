@@ -141,6 +141,7 @@ class CourseTreeView(APIView):
         if not is_admin:
             courses_qs = courses_qs.filter(
                 Q(is_open=True)
+                | Q(owner=request.user)
                 | Q(section__owner=request.user)
                 | Q(participants__user=request.user)
             ).distinct()

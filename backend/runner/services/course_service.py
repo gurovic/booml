@@ -7,6 +7,7 @@ from django.contrib.auth import get_user_model
 from django.db import transaction
 
 from ..models import Course, CourseParticipant, Section
+from .section_service import is_root_section
 
 User = get_user_model()
 
@@ -43,7 +44,7 @@ def create_course(payload: CourseCreateInput) -> Course:
         raise ValueError("Section is required to create a course")
     if payload.section.pk is None:
         raise ValueError("Section must be saved before use")
-    if payload.section.owner_id != payload.owner.pk:
+    if not is_root_section(payload.section) and payload.section.owner_id != payload.owner.pk:
         raise ValueError("Only section owner can create courses in this section")
 
     teacher_candidates = [payload.owner]

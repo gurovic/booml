@@ -71,16 +71,14 @@ class CreateCourseTests(TestCase):
 
     def test_create_course_under_root_by_other_owner(self):
         other_owner = User.objects.create_user(username="owner2", password="pass")
-        course = create_course(
-            CourseCreateInput(
-                title="Root Course",
-                owner=other_owner,
-                section=self.root_section,
+        with self.assertRaises(ValueError):
+            create_course(
+                CourseCreateInput(
+                    title="Root Course",
+                    owner=other_owner,
+                    section=self.root_section,
+                )
             )
-        )
-
-        self.assertEqual(course.owner, other_owner)
-        self.assertEqual(course.section, self.root_section)
 
     def test_unsaved_owner_is_rejected(self):
         unsaved_user = User(username="ghost")
