@@ -177,5 +177,20 @@
     </div>
 
     {% csrf_token %}
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            notebookDetail.init({
+                notebookId: {{ notebook.id }},
+                csrfToken: '{{ csrf_token }}',
+                runCellUrl: '{% url "run-cell" %}',
+                sessionCreateUrl: '{% url "notebook-session-create" %}',
+                sessionResetUrl: '{% url "session-reset" %}',
+                sessionFilesUrl: '{% url "session-files" %}',
+                sessionFileDownloadUrl: '{% url "session-file-download" %}',
+                sessionStopUrl: '{% url "session-stop" %}'
+            });
+        });
+    </script>
 </body>
 </html>

@@ -27,14 +27,13 @@ from .views.contest_draft import (
     contest_detail,
     create_contest,
     contest_success,
-    course_detail,
-    course_contests,
     list_contests,
     manage_contest_participants,
     list_pending_contests,
     moderate_contest,
     set_contest_access,
 )
+from .views.course import course_contests, course_detail
 from .views.run_code import run_code
 from .views.list_of_problems_polygon import problem_list_polygon
 from .views.create_problem_polygon import create_problem_polygon

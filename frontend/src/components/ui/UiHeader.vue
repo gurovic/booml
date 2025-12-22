@@ -1,17 +1,20 @@
 <template>
-  <div class="header">
+  <header class="header">
     <div class="container">
       <div class="header__inner">
-        <a class="header__title" href="/"><h1>Booml</h1></a>
-        <button 
-          class="header__button button button--secondary"
+        <a href="/" class="header__title">
+          Booml
+        </a>
+
+        <button
+          class="button button--secondary header__button"
           @click="handleButton"
         >
-          {{ isAuthorized ? "Выйти" : "Войти" }}
+          {{ isAuthorized ? 'Выйти' : 'Войти' }}
         </button>
       </div>
     </div>
-  </div>
+  </header>
 </template>
 
 <script setup>
@@ -25,10 +28,6 @@ let user = userStore.getCurrentUser()
 
 let isAuthorized = computed(() => user.value != null)
 
-onMounted(async () => {
-  // getting user from storage
-})
-
 const handleButton = async () => {
   if (isAuthorized.value) {
     await userStore.logoutUser()
@@ -41,9 +40,12 @@ const handleButton = async () => {
 
 <style scoped>
 .header {
-  background-color: #144EEC;
-  width: 100%;
-  height: 60px;
+  height: 64px;
+  background-color: var(--color-primary);
+}
+
+.container {
+  height: 100%;
 }
 
 .header__inner {
@@ -54,6 +56,16 @@ const handleButton = async () => {
 }
 
 .header__title {
-  color: white;
+  font-family: 'Dela Gothic One', sans-serif;
+  font-size: 20px;
+  line-height: 1;
+  color: #ffffff;
+  text-decoration: none;
+}
+
+.header__button {
+  height: 40px;
+  display: flex;
+  align-items: center;
 }
 </style>

@@ -4,7 +4,8 @@ from django.contrib.auth import get_user_model
 from django.test import RequestFactory, TestCase
 
 from runner.models import Contest, Course, CourseParticipant
-from runner.views.contest_draft import course_contests, list_pending_contests, moderate_contest
+from runner.views.course import course_contests
+from runner.views.contest_draft import list_pending_contests, moderate_contest
 
 User = get_user_model()
 
