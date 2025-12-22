@@ -1,4 +1,4 @@
-FROM python:3.14-slim
+FROM python:3.11-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -8,7 +8,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /workspace
 
-# Build toolchain is required because Python 3.14 often lacks prebuilt wheels
+# Build toolchain is required because Python 3.11 often lacks prebuilt wheels
 # for scientific packages (numpy/scipy/pandas) and they fall back to source builds.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential \
