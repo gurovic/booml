@@ -1,31 +1,36 @@
+@import url('https://fonts.googleapis.com/css2?family=Dela+Gothic+One&family=Roboto:wght@400;500;700&display=swap');
+
 :root {
-  --font-default: Roboto, sans-serif;
+  --font-title: 'Dela Gothic One', sans-serif;
+  --font-default: 'Roboto', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
-/* === TITLE === */
 h1 {
-  font-family: var(--font-default);
+  font-family: var(--font-title);
+  font-size: 48px;
   font-weight: 400;
-  font-size: 28px;
+  color: var(--color-title-text);
+  margin-bottom: 16px;
 }
 
-/* === TITLE 2 === */
 h2 {
   font-family: var(--font-default);
-  font-weight: 400;
   font-size: 24px;
+  font-weight: 500;
+  color: var(--color-title-text);
+  margin-bottom: 12px;
 }
 
-/* === TITLE 3 === */
 h3 {
   font-family: var(--font-default);
-  font-weight: 400;
   font-size: 20px;
+  font-weight: 500;
+  color: var(--color-title-text);
+  margin-bottom: 8px;
 }
 
-/* === BODY === */
 p {
-  font-family: var(--font-default);
-  font-weight: 400;
   font-size: 16px;
+  color: var(--color-text-primary);
+  margin-bottom: 12px;
 }

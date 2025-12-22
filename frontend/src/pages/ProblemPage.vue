@@ -85,15 +85,30 @@ const availableFiles = computed(() => {
   position: relative;
   z-index: 1;
   flex-grow: 1;
+
   display: flex;
   flex-direction: column;
-  padding: 30px 50px;
-  border: 1px solid #e5e9f1;
+
+  padding: 32px 40px;
+
+  background: var(--color-bg-card);
   border-radius: 20px;
+  border: 1px solid var(--color-border-light);
+
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
 }
 
 .problem__name {
   margin-bottom: 20px;
+
+  font-size: 48px;
+  font-weight: 400;
+  line-height: 1.2;
+
+  color: var(--color-title-text);
+
+  padding-left: 16px;
+  border-left: 6px solid var(--color-primary);
 }
 
 .problem__menu {
@@ -109,10 +124,14 @@ const availableFiles = computed(() => {
   width: 100%;
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  padding: 20px;
-  border: 1px solid #e5e9f1;
-  border-radius: 30px;
+
+  padding: 24px;
+
+  background: var(--color-bg-card);
+  border-radius: 20px;
+  border: 1px solid var(--color-border-light);
+
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
 }
 
 .problem__files-list {
@@ -134,4 +153,28 @@ const availableFiles = computed(() => {
   width: 100%;
   text-align: start;
 }
+
+.problem__text {
+  font-family: var(--font-default);
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--color-text-primary);
+}
+
+.problem__text :deep(p) {
+  margin-bottom: 16px;
+}
+
+.problem__text :deep(h2) {
+  font-size: 24px;
+  font-weight: 500;
+  margin: 32px 0 12px;
+}
+
+.problem__text :deep(h3) {
+  font-size: 20px;
+  font-weight: 500;
+  margin: 24px 0 10px;
+}
+
 </style>
