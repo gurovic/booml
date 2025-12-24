@@ -8,7 +8,7 @@ from ..models.problem import Problem
 from ..models.problem_desriptor import ProblemDescriptor
 from ..models.problem_data import ProblemData
 from ..services.metrics import get_available_metrics
-
+#A
 MIN_RATING = None
 MAX_RATING = None
 rating_field = Problem._meta.get_field("rating")

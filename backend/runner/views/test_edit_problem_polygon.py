@@ -11,7 +11,7 @@ from ..models.problem import Problem
 from ..models.problem_data import ProblemData
 from ..models.problem_desriptor import ProblemDescriptor
 
-
+#A
 class EditProblemPolygonViewTests(TestCase):
     def setUp(self):
         User = get_user_model()

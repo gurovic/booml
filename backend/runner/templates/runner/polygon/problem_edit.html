@@ -34,7 +34,7 @@
         {% endif %}
       </div>
     </div>
-
+ 
     <div class="form-group">
       <label for="statement-input">Условие задачи</label>
       <textarea id="statement-input" name="statement" placeholder="Опишите условие задачи...">{{ form_data.statement }}</textarea>
@@ -93,7 +93,7 @@
       <ol>
         <li>Если подходит стандартная метрика — выберите её из списка и оставьте поле с кодом пустым.</li>
         <li>Нужна своя логика — впишите название и добавьте функцию <code>compute_metric(y_true, y_pred)</code> ниже.</li>
-        <li>Функция должна вернуть число или словарь с ключом <code>metric</code>. Допустимы <code>numpy</code>, <code>pandas</code>, можно вызывать <code>calculate_metric()</code> для готовых метрик.</li>
+        <li>Функция должна вернуть число или словарь с ключом: <code>metric</code>. Допустимы <code>numpy</code>, <code>pandas</code>, можно вызывать <code>calculate_metric()</code> для готовых метрик.</li>
       </ol>
     </div>
     <div class="top-fields">
