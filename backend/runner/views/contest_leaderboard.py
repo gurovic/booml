@@ -148,7 +148,7 @@ def build_contest_problem_leaderboards(contest: Contest) -> List[Dict[str, Any]]
             "status",
             "submitted_at",
         )
-        for row in submissions:
+        for row in submissions.iterator(chunk_size=1000):
             key = (row["problem_id"], row["user_id"])
             attempts[key] += 1
             if row["status"] not in _VALID_STATUSES:
@@ -194,7 +194,8 @@ def build_contest_problem_leaderboards(contest: Contest) -> List[Dict[str, Any]]
             )
 
         lower_is_better = settings["lower_is_better"]
-        fallback_time = timezone.now()
+        now = timezone.now()
+        fallback_time = datetime.max.replace(tzinfo=now.tzinfo) if timezone.is_aware(now) else datetime.max
 
         def _sort_key(entry: Dict[str, Any]) -> Tuple[int, float, datetime, int]:
             metric = entry["best_metric"]
