@@ -11,6 +11,7 @@ from django.utils import timezone
 
 from ..models import Contest, Course, Problem
 from ..forms.contest_draft import ContestForm
+from .contest_leaderboard import build_contest_problem_leaderboards
 
 User = get_user_model()
 
@@ -106,7 +107,7 @@ def contest_detail(request, contest_id):
     contest = get_object_or_404(
         Contest.objects.select_related("course__section")
         .annotate(problems_count=Count("problems"))
-        .prefetch_related("problems"),
+        .prefetch_related("problems", "allowed_participants"),
         pk=contest_id,
     )
     if not contest.is_visible_to(request.user):
@@ -127,6 +128,7 @@ def contest_detail(request, contest_id):
         }
         for problem in contest.problems.all()
     ]
+    leaderboards = build_contest_problem_leaderboards(contest)
 
     return JsonResponse(
         {
@@ -150,6 +152,7 @@ def contest_detail(request, contest_id):
             "problems_count": contest.problems_count,
             "allowed_participants": allowed_participants,
             "problems": problems,
+            "leaderboards": leaderboards,
         },
         status=200,
     )

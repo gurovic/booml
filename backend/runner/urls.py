@@ -33,6 +33,7 @@ from .views.contest_draft import (
     moderate_contest,
     set_contest_access,
 )
+from .views.contest_leaderboard import contest_problem_leaderboard
 from .views.course import course_contests, course_detail
 from .views.run_code import run_code
 from .views.list_of_problems_polygon import problem_list_polygon
@@ -64,6 +65,7 @@ urlpatterns = [
     path('course/<int:course_id>/contests/', course_contests, name='course_contests'),
     path('contest/', list_contests, name='contest_list'),
     path('contest/<int:contest_id>/', contest_detail, name='contest_detail'),
+    path('contest/<int:contest_id>/leaderboard/', contest_problem_leaderboard, name='contest_problem_leaderboard'),
     path('contest/<int:course_id>/new/', create_contest, name='create_contest'),
     path('contest/<int:contest_id>/access/', set_contest_access, name='contest_set_access'),
     path('contest/<int:contest_id>/participants/', manage_contest_participants, name='contest_manage_participants'),
