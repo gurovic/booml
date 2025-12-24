@@ -119,28 +119,28 @@
 
     <h2>Данные задачи</h2>
     <div class="form-group">
-      <label for="train-file-input">Изменить train CSV</label>
-      <input id="train-file-input" type="file" name="train_file" accept=".csv">
+      <label for="train-file-input">Изменить train CSV/ZIP/RAR</label>
+      <input id="train-file-input" type="file" name="train_file" accept=".csv,.zip,.rar">
       {% if problem_data and problem_data.train_file %}
         <br>Текущий: <a href="{{ problem_data.train_file.url }}" target="_blank">{{ problem_data.train_file.name }}</a>
       {% endif %}
     </div><br>
     <div class="form-group">
-      <label for="test-file-input">Изменить test CSV</label>
-      <input id="test-file-input" type="file" name="test_file" accept=".csv">
+      <label for="test-file-input">Изменить test CSV/ZIP/RAR</label>
+      <input id="test-file-input" type="file" name="test_file" accept=".csv,.zip,.rar">
       {% if problem_data and problem_data.test_file %}
         <br>Текущий: <a href="{{ problem_data.test_file.url }}" target="_blank">{{ problem_data.test_file.name }}</a>
       {% endif %}
     </div><br>
     <div class="form-group">
-      <label for="sample-file-input">Изменить sample submission CSV</label>
+      <label for="sample-file-input">Изменить sample submission (только CSV)</label>
       <input id="sample-file-input" type="file" name="sample_submission_file" accept=".csv">
       {% if problem_data and problem_data.sample_submission_file %}
         <br>Текущий: <a href="{{ problem_data.sample_submission_file.url }}" target="_blank">{{ problem_data.sample_submission_file.name }}</a>
       {% endif %}
     </div><br>
     <div class="form-group">
-      <label for="answer-file-input">Изменить answer CSV</label>
+      <label for="answer-file-input">Изменить answer (только CSV)</label>
       <input id="answer-file-input" type="file" name="answer_file" accept=".csv">
       {% if problem_data and problem_data.answer_file %}
         <br>Текущий: <a href="{{ problem_data.answer_file.url }}" target="_blank">{{ problem_data.answer_file.name }}</a>

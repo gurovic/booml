@@ -176,3 +176,37 @@ class EditProblemPolygonViewTests(TestCase):
         pdata = ProblemData.objects.get(problem=self.problem)
         self.assertTrue(pdata.train_file.name.endswith("train.csv"))
         self.assertTrue(pdata.sample_submission_file.name.endswith("sample.csv"))
+
+    def test_allows_archives_for_train_and_test_files(self):
+        ProblemData.objects.filter(problem=self.problem).delete()
+        self.client.force_login(self.author)
+        payload = self._base_post_payload()
+        payload.update(
+            {
+                "train_file": SimpleUploadedFile("train.zip", b"zipdata"),
+                "test_file": SimpleUploadedFile("test.rar", b"rardata"),
+            }
+        )
+
+        resp = self.client.post(self.url, payload)
+
+        self.assertEqual(resp.status_code, 302)
+        pdata = ProblemData.objects.get(problem=self.problem)
+        self.assertTrue(pdata.train_file.name.endswith("train.zip"))
+        self.assertTrue(pdata.test_file.name.endswith("test.rar"))
+
+    def test_rejects_non_csv_answer_file(self):
+        ProblemData.objects.filter(problem=self.problem).delete()
+        self.client.force_login(self.author)
+        payload = self._base_post_payload()
+        payload.update(
+            {
+                "answer_file": SimpleUploadedFile("answer.zip", b"zipdata"),
+            }
+        )
+
+        resp = self.client.post(self.url, payload)
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "Файл answer должен быть в формате CSV")
+        self.assertFalse(ProblemData.objects.filter(problem=self.problem).exists())
