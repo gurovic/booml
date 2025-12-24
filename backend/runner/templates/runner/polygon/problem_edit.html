@@ -119,15 +119,15 @@
 
     <h2>Данные задачи</h2>
     <div class="form-group">
-      <label for="train-file-input">Изменить train CSV</label>
-      <input id="train-file-input" type="file" name="train_file" accept=".csv">
+      <label for="train-file-input">Изменить train файл (CSV/ZIP/RAR)</label>
+      <input id="train-file-input" type="file" name="train_file" accept=".csv,.zip,.rar">
       {% if problem_data and problem_data.train_file %}
         <br>Текущий: <a href="{{ problem_data.train_file.url }}" target="_blank">{{ problem_data.train_file.name }}</a>
       {% endif %}
     </div><br>
     <div class="form-group">
-      <label for="test-file-input">Изменить test CSV</label>
-      <input id="test-file-input" type="file" name="test_file" accept=".csv">
+      <label for="test-file-input">Изменить test файл (CSV/ZIP/RAR)</label>
+      <input id="test-file-input" type="file" name="test_file" accept=".csv,.zip,.rar">
       {% if problem_data and problem_data.test_file %}
         <br>Текущий: <a href="{{ problem_data.test_file.url }}" target="_blank">{{ problem_data.test_file.name }}</a>
       {% endif %}
