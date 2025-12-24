@@ -3,7 +3,8 @@ import json
 from django.contrib.auth import get_user_model
 from django.test import RequestFactory, TestCase
 
-from runner.models import Contest, Course, CourseParticipant
+from runner.models import Contest, Course, CourseParticipant, Section
+from runner.services.section_service import SectionCreateInput, create_section
 from runner.views.contest_draft import contest_detail
 from runner.views.course import course_detail
 
@@ -16,7 +17,19 @@ class ContestDetailViewTests(TestCase):
         self.teacher = User.objects.create_user(username="teacher", password="pass")
         self.student = User.objects.create_user(username="student", password="pass")
         self.outsider = User.objects.create_user(username="outsider", password="pass")
-        self.course = Course.objects.create(title="Course A", owner=self.teacher)
+        self.root_section = Section.objects.get(title="Авторские", parent__isnull=True)
+        self.section = create_section(
+            SectionCreateInput(
+                title="Teacher Section",
+                owner=self.teacher,
+                parent=self.root_section,
+            )
+        )
+        self.course = Course.objects.create(
+            title="Course A",
+            owner=self.teacher,
+            section=self.section,
+        )
         CourseParticipant.objects.create(
             course=self.course,
             user=self.teacher,
@@ -102,7 +115,20 @@ class CourseDetailViewTests(TestCase):
         self.teacher = User.objects.create_user(username="teacher", password="pass")
         self.student = User.objects.create_user(username="student", password="pass")
         self.outsider = User.objects.create_user(username="outsider", password="pass")
-        self.course = Course.objects.create(title="Course A", description="Desc", owner=self.teacher)
+        self.root_section = Section.objects.get(title="Авторские", parent__isnull=True)
+        self.section = create_section(
+            SectionCreateInput(
+                title="Teacher Section",
+                owner=self.teacher,
+                parent=self.root_section,
+            )
+        )
+        self.course = Course.objects.create(
+            title="Course A",
+            description="Desc",
+            owner=self.teacher,
+            section=self.section,
+        )
         CourseParticipant.objects.create(
             course=self.course,
             user=self.teacher,
@@ -141,3 +167,13 @@ class CourseDetailViewTests(TestCase):
         response = course_detail(request, course_id=self.course.id)
 
         self.assertEqual(response.status_code, 403)
+
+    def test_outsider_can_view_open_course(self):
+        self.course.is_open = True
+        self.course.save(update_fields=["is_open"])
+        request = self.factory.get("/")
+        request.user = self.outsider
+
+        response = course_detail(request, course_id=self.course.id)
+
+        self.assertEqual(response.status_code, 200)

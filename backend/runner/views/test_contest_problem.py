@@ -3,7 +3,8 @@ import json
 from django.contrib.auth import get_user_model
 from django.test import RequestFactory, TestCase
 
-from runner.models import Contest, Course, CourseParticipant, Problem
+from runner.models import Contest, Course, CourseParticipant, Problem, Section
+from runner.services.section_service import SectionCreateInput, create_section
 from runner.views.contest_draft import add_problem_to_contest
 
 User = get_user_model()
@@ -15,7 +16,19 @@ class AddProblemToContestViewTests(TestCase):
         self.owner = User.objects.create_user(username="owner", password="pass")
         self.teacher = User.objects.create_user(username="teacher", password="pass")
         self.student = User.objects.create_user(username="student", password="pass")
-        self.course = Course.objects.create(title="Course A", owner=self.owner)
+        self.root_section = Section.objects.get(title="Авторские", parent__isnull=True)
+        self.section = create_section(
+            SectionCreateInput(
+                title="Owner Section",
+                owner=self.owner,
+                parent=self.root_section,
+            )
+        )
+        self.course = Course.objects.create(
+            title="Course A",
+            owner=self.owner,
+            section=self.section,
+        )
         CourseParticipant.objects.create(
             course=self.course,
             user=self.teacher,
@@ -29,20 +42,20 @@ class AddProblemToContestViewTests(TestCase):
         self.contest = Contest.objects.create(
             title="Contest 1",
             course=self.course,
-            created_by=self.teacher,
+            created_by=self.owner,
         )
         self.problem = Problem.objects.create(
             title="Simple Sum",
             statement="Solve A+B",
         )
 
-    def test_teacher_can_add_problem(self):
+    def test_owner_can_add_problem(self):
         request = self.factory.post(
             "/",
             data=json.dumps({"problem_id": self.problem.id}),
             content_type="application/json",
         )
-        request.user = self.teacher
+        request.user = self.owner
 
         response = add_problem_to_contest.__wrapped__(request, contest_id=self.contest.id)
 
@@ -61,7 +74,7 @@ class AddProblemToContestViewTests(TestCase):
             data=json.dumps({"problem_id": self.problem.id}),
             content_type="application/json",
         )
-        request.user = self.teacher
+        request.user = self.owner
 
         response = add_problem_to_contest.__wrapped__(request, contest_id=self.contest.id)
 
@@ -85,7 +98,7 @@ class AddProblemToContestViewTests(TestCase):
 
     def test_missing_problem_id_returns_bad_request(self):
         request = self.factory.post("/", data=json.dumps({}), content_type="application/json")
-        request.user = self.teacher
+        request.user = self.owner
 
         response = add_problem_to_contest.__wrapped__(request, contest_id=self.contest.id)
 

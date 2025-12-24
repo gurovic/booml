@@ -1,11 +1,10 @@
 import json
-from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
-from django.http import HttpResponse
 from django.test import RequestFactory, TestCase
 
-from runner.models import Contest, Course, CourseParticipant
+from runner.models import Contest, Course, CourseParticipant, Section
+from runner.services.section_service import SectionCreateInput, create_section
 from runner.views.contest_draft import create_contest
 
 User = get_user_model()
@@ -16,7 +15,19 @@ class CreateContestViewTests(TestCase):
         self.factory = RequestFactory()
         self.owner = User.objects.create_user(username="owner", password="pass")
         self.teacher = User.objects.create_user(username="teacher", password="pass")
-        self.course = Course.objects.create(title="Course A", owner=self.owner)
+        self.root_section = Section.objects.get(title="Авторские", parent__isnull=True)
+        self.section = create_section(
+            SectionCreateInput(
+                title="Owner Section",
+                owner=self.owner,
+                parent=self.root_section,
+            )
+        )
+        self.course = Course.objects.create(
+            title="Course A",
+            owner=self.owner,
+            section=self.section,
+        )
         CourseParticipant.objects.create(
             course=self.course,
             user=self.teacher,
@@ -37,7 +48,7 @@ class CreateContestViewTests(TestCase):
             "is_rated": True,
         }
         request = self.factory.post("/", data=data)
-        request.user = self.teacher
+        request.user = self.owner
 
         response = create_contest.__wrapped__(request, course_id=self.course.id)
 
@@ -54,14 +65,14 @@ class CreateContestViewTests(TestCase):
 
         contest = Contest.objects.get(title="Via view")
         self.assertEqual(contest.course, self.course)
-        self.assertEqual(contest.created_by, self.teacher)
+        self.assertEqual(contest.created_by, self.owner)
         self.assertTrue(contest.is_published)
         self.assertTrue(contest.is_rated)
         self.assertEqual(contest.scoring, "icpc")
         self.assertEqual(contest.registration_type, "approval")
         self.assertEqual(contest.duration_minutes, 120)
 
-    def test_non_teacher_gets_forbidden(self):
+    def test_non_owner_gets_forbidden(self):
         student = User.objects.create_user(username="student", password="pass")
         data = {
             "title": "Blocked",
