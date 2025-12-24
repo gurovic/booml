@@ -23,8 +23,8 @@ for v in getattr(rating_field, "validators", []):
 METRIC_SUGGESTIONS = tuple(get_available_metrics())
 METRIC_SUGGESTIONS_SET = set(METRIC_SUGGESTIONS)
 
-DATA_FILE_EXTENSIONS = {".csv", ".zip", ".rar"}
-CSV_ONLY_EXTENSIONS = {".csv"}
+DATA_FILE_EXTENSIONS = (".csv", ".zip", ".rar")
+CSV_ONLY_EXTENSIONS = (".csv",)
 UPLOAD_FIELD_LABELS = {
     "train_file": "train",
     "test_file": "test",
@@ -40,7 +40,7 @@ UPLOAD_ALLOWED_EXTENSIONS = {
 
 
 def _format_extensions(extensions):
-    return "/".join(ext.lstrip(".").upper() for ext in sorted(extensions))
+    return "/".join(ext.lstrip(".").upper() for ext in extensions)
 
 
 @require_http_methods(["GET", "POST"])
