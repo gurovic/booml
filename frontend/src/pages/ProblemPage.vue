@@ -7,9 +7,9 @@
           <h1 class="problem__name">{{ problem.title }}</h1>
           <div class="problem__text" v-html="problem.rendered_statement"></div>
         </div>
-        <div class="problem__menu">
-          <div class="problem__files" v-if="availableFiles.length > 0">
-            <h2 class="problem__files-title">Файлы</h2>
+        <ul class="problem__menu">
+          <li class="problem__files problem__menu-item" v-if="availableFiles.length > 0">
+            <h2 class="problem__files-title problem__item-title">Файлы</h2>
             <ul class="problem__files-list">
               <li
                 class="problem__file"
@@ -19,8 +19,29 @@
                 <a class="problem__file-href button button--secondary" :href="file.url" :download="file.name">{{ file.name }}</a>
             </li>
             </ul>
-          </div>
-        </div>
+          </li>
+          <li class="problem__submissions problem__menu-item">
+            <h2 class="problem__submissions-title problem__item-title">Последние посылки</h2>
+            <ul class="problem__submissions-list">
+              <li class="problem__submission-head">
+                <p>Время</p>
+                <p>Статус</p>
+                <p>Метрика</p>
+              </li>
+              <li 
+                class="problem__submission"
+                v-for="submission in problem.submissions"
+                :key="submission.id"
+              >
+                <a class="problem__submission-href" href="#">
+                  <p>{{ submission.submitted_at }}</p>
+                  <p>{{ submission.status }}</p>
+                  <p>{{ roundMetric(submission.metric.metric_score) }}</p>
+                </a>
+              </li>
+            </ul>
+          </li>
+        </ul>
       </div>
       <div v-else>
         <h1>Задача не найдена</h1>
@@ -65,6 +86,11 @@ const availableFiles = computed(() => {
     .filter(([, url]) => url)
     .map(([name, url]) => ({ name, url }))
 })
+
+const roundMetric = (value) => {
+  if (value == null) return '-'
+  return Number(value).toFixed(3)
+}
 </script>
 
 <style scoped>
@@ -111,49 +137,6 @@ const availableFiles = computed(() => {
   border-left: 6px solid var(--color-primary);
 }
 
-.problem__menu {
-  max-width: 350px;
-  width: 100%;
-  flex-grow: 1;
-  display: flex;
-  align-items: center;
-  flex-direction: column;
-}
-
-.problem__files {
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-
-  padding: 24px;
-
-  background: var(--color-bg-card);
-  border-radius: 20px;
-  border: 1px solid var(--color-border-light);
-
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
-}
-
-.problem__files-list {
-  margin-top: 20px;
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-}
-
-.problem__file {
-  width: 100%;
-}
-
-.problem__file-href {
-  display: inline-block;
-  width: 100%;
-  text-align: start;
-}
-
 .problem__text {
   font-family: var(--font-default);
   font-size: 16px;
@@ -177,4 +160,91 @@ const availableFiles = computed(() => {
   margin: 24px 0 10px;
 }
 
+.problem__menu {
+  max-width: 350px;
+  width: 100%;
+  flex-grow: 1;
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+  gap: 25px;
+}
+
+.problem__menu-item {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+
+  padding: 24px;
+
+  background: var(--color-bg-card);
+  border-radius: 20px;
+  border: 1px solid var(--color-border-light);
+
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+}
+
+.problem__item-title {
+  margin-bottom: 10px;
+}
+
+.problem__files-list, .problem__submissions-list {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.problem__file, .problem__submission {
+  width: 100%;
+}
+
+.problem__file-href, .problem__submission-href {
+  display: inline-block;
+  width: 100%;
+}
+
+.problem__file-href {
+  text-align: start;
+  color: #9480C9;
+}
+
+.problem__submission-head,
+.problem__submission-href {
+  border-radius: 10px;
+  padding: 10px 20px;
+  width: 100%;
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  align-items: center;
+}
+
+.problem__submission-head {
+  background-color: var(--color-button-primary);
+}
+
+.problem__submission-href {
+  background-color: var(--color-button-secondary);
+}
+
+.problem__submission-head p,
+.problem__submission-href p {
+  margin: 0;
+  text-align: center;
+}
+
+
+.problem__submission-head p {
+  color: var(--color-button-text-primary);
+}
+
+.problem__submission-href p {
+  color: #9480C9;
+}
+
+.problem__submission {
+  width: 100%;
+}
 </style>
