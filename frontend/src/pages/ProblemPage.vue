@@ -23,7 +23,7 @@
           <li class="problem__submissions problem__menu-item">
             <h2 class="problem__submissions-title problem__item-title">Последние посылки</h2>
             <ul class="problem__submissions-list">
-              <li class="problem__submission-head button button--primary">
+              <li class="problem__submission-head">
                 <p>Время</p>
                 <p>Статус</p>
                 <p>Метрика</p>
@@ -33,7 +33,7 @@
                 v-for="submission in problem.submissions"
                 :key="submission.id"
               >
-                <a class="problem__submission-href button button--secondary" href="#">
+                <a class="problem__submission-href" href="#">
                   <p>{{ submission.submitted_at }}</p>
                   <p>{{ submission.status }}</p>
                   <p>{{ roundMetric(submission.metric.metric_score) }}</p>
@@ -137,6 +137,29 @@ const roundMetric = (value) => {
   border-left: 6px solid var(--color-primary);
 }
 
+.problem__text {
+  font-family: var(--font-default);
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--color-text-primary);
+}
+
+.problem__text :deep(p) {
+  margin-bottom: 16px;
+}
+
+.problem__text :deep(h2) {
+  font-size: 24px;
+  font-weight: 500;
+  margin: 32px 0 12px;
+}
+
+.problem__text :deep(h3) {
+  font-size: 20px;
+  font-weight: 500;
+  margin: 24px 0 10px;
+}
+
 .problem__menu {
   max-width: 350px;
   width: 100%;
@@ -185,40 +208,43 @@ const roundMetric = (value) => {
 
 .problem__file-href {
   text-align: start;
+  color: #9480C9;
 }
 
 .problem__submission-head,
 .problem__submission-href {
+  border-radius: 10px;
+  padding: 10px 20px;
   width: 100%;
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;
   align-items: center;
 }
 
+.problem__submission-head {
+  background-color: var(--color-button-primary);
+}
+
+.problem__submission-href {
+  background-color: var(--color-button-secondary);
+}
+
+.problem__submission-head p,
+.problem__submission-href p {
+  margin: 0;
+  text-align: center;
+}
+
+
+.problem__submission-head p {
+  color: var(--color-button-text-primary);
+}
+
+.problem__submission-href p {
+  color: #9480C9;
+}
+
 .problem__submission {
   width: 100%;
 }
-.problem__text {
-  font-family: var(--font-default);
-  font-size: 16px;
-  line-height: 1.6;
-  color: var(--color-text-primary);
-}
-
-.problem__text :deep(p) {
-  margin-bottom: 16px;
-}
-
-.problem__text :deep(h2) {
-  font-size: 24px;
-  font-weight: 500;
-  margin: 32px 0 12px;
-}
-
-.problem__text :deep(h3) {
-  font-size: 20px;
-  font-weight: 500;
-  margin: 24px 0 10px;
-}
-
 </style>

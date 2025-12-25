@@ -39,8 +39,8 @@ body {
 }
 
 .button--primary {
-  background-color: var(--color-primary);
-  color: var(--color-text-inverse);
+  background-color: var(--color-button-primary);
+  color: var(--color-button-text-primary);
 }
 
 .button--secondary {
