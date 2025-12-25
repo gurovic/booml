@@ -9,8 +9,9 @@ from django.shortcuts import get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.utils import timezone
 
-from ..models import Contest, Course, CourseParticipant, Problem
+from ..models import Contest, Course, Problem
 from ..forms.contest_draft import ContestForm
+from .contest_leaderboard import build_contest_problem_leaderboards
 
 User = get_user_model()
 
@@ -19,13 +20,12 @@ def create_contest(request, course_id):
     if request.method != 'POST':
         return JsonResponse({"detail": "Method not allowed"}, status=405)
 
-    course = get_object_or_404(Course, pk=course_id)
-    is_teacher = course.participants.filter(
-        user=request.user,
-        role=CourseParticipant.Role.TEACHER,
-    ).exists()
-    if not is_teacher:
-        return JsonResponse({"detail": "Only teachers can create contests for this course"}, status=403)
+    course = get_object_or_404(Course.objects.select_related("section"), pk=course_id)
+    if course.section.owner_id != request.user.id:
+        return JsonResponse(
+            {"detail": "Only section owner can create contests for this course"},
+            status=403,
+        )
 
     form = ContestForm(request.POST, course=course)
     if form.is_valid():
@@ -60,7 +60,7 @@ def list_contests(request):
         return JsonResponse({"detail": "course_id must be an integer"}, status=400)
 
     contests = (
-        Contest.objects.select_related("course")
+        Contest.objects.select_related("course__section")
         .annotate(problems_count=Count("problems"))
         .order_by("-created_at")
     )
@@ -71,10 +71,7 @@ def list_contests(request):
     for contest in contests:
         if contest.course is None or not contest.is_visible_to(request.user):
             continue
-        is_teacher = contest.course.participants.filter(
-            user=request.user,
-            role=CourseParticipant.Role.TEACHER,
-        ).exists()
+        is_owner = contest.course.section.owner_id == request.user.id
         is_admin = request.user.is_staff or request.user.is_superuser
         visible.append(
             {
@@ -93,7 +90,9 @@ def list_contests(request):
                 "duration_minutes": contest.duration_minutes,
                 "start_time": contest.start_time.isoformat() if contest.start_time else None,
                 "problems_count": contest.problems_count,
-                "access_token": contest.access_token if contest.access_type == Contest.AccessType.LINK and (is_teacher or is_admin) else None,
+                "access_token": contest.access_token
+                if contest.access_type == Contest.AccessType.LINK and (is_owner or is_admin)
+                else None,
             }
         )
 
@@ -106,21 +105,18 @@ def contest_detail(request, contest_id):
         return JsonResponse({"detail": "Authentication required"}, status=401)
 
     contest = get_object_or_404(
-        Contest.objects.select_related("course")
+        Contest.objects.select_related("course__section")
         .annotate(problems_count=Count("problems"))
-        .prefetch_related("problems"),
+        .prefetch_related("problems", "allowed_participants"),
         pk=contest_id,
     )
     if not contest.is_visible_to(request.user):
         return JsonResponse({"detail": "Forbidden"}, status=403)
 
-    is_teacher = contest.course and contest.course.participants.filter(
-        user=request.user,
-        role=CourseParticipant.Role.TEACHER,
-    ).exists()
+    is_owner = contest.course.section.owner_id == request.user.id
     is_admin = request.user.is_staff or request.user.is_superuser
     allowed_participants = []
-    if is_teacher or is_admin:
+    if is_owner or is_admin:
         allowed_participants = list(
             contest.allowed_participants.values("id", "username")
         )
@@ -132,6 +128,7 @@ def contest_detail(request, contest_id):
         }
         for problem in contest.problems.all()
     ]
+    leaderboards = build_contest_problem_leaderboards(contest)
 
     return JsonResponse(
         {
@@ -142,7 +139,9 @@ def contest_detail(request, contest_id):
             "course_title": contest.course.title if contest.course else None,
             "is_published": contest.is_published,
             "access_type": contest.access_type,
-            "access_token": contest.access_token if (is_teacher or is_admin) and contest.access_type == Contest.AccessType.LINK else None,
+            "access_token": contest.access_token
+            if (is_owner or is_admin) and contest.access_type == Contest.AccessType.LINK
+            else None,
             "approval_status": contest.approval_status,
             "status": contest.status,
             "is_rated": contest.is_rated,
@@ -153,6 +152,7 @@ def contest_detail(request, contest_id):
             "problems_count": contest.problems_count,
             "allowed_participants": allowed_participants,
             "problems": problems,
+            "leaderboards": leaderboards,
         },
         status=200,
     )
@@ -162,17 +162,18 @@ def set_contest_access(request, contest_id):
     if request.method != "POST":
         return JsonResponse({"detail": "Method not allowed"}, status=405)
 
-    contest = get_object_or_404(Contest, pk=contest_id)
+    contest = get_object_or_404(
+        Contest.objects.select_related("course__section"),
+        pk=contest_id,
+    )
     if contest.course is None:
         return JsonResponse({"detail": "Contest must belong to a course"}, status=400)
 
-    is_teacher = contest.course.participants.filter(
-        user=request.user,
-        role=CourseParticipant.Role.TEACHER,
-    ).exists()
-    is_admin = request.user.is_staff or request.user.is_superuser
-    if not (is_teacher or is_admin):
-        return JsonResponse({"detail": "Only teachers can modify this contest"}, status=403)
+    if contest.course.section.owner_id != request.user.id:
+        return JsonResponse(
+            {"detail": "Only section owner can modify this contest"},
+            status=403,
+        )
 
     try:
         payload = json.loads(request.body or "{}")
@@ -193,7 +194,7 @@ def set_contest_access(request, contest_id):
         update_fields.append("access_type")
 
     if is_published is not None:
-        if bool(is_published) and not is_admin and contest.approval_status != Contest.ApprovalStatus.APPROVED:
+        if bool(is_published) and contest.approval_status != Contest.ApprovalStatus.APPROVED:
             return JsonResponse({"detail": "Contest must be approved before publishing"}, status=400)
         contest.is_published = bool(is_published)
         update_fields.append("is_published")
@@ -256,7 +257,10 @@ def moderate_contest(request, contest_id):
     if not (request.user.is_staff or request.user.is_superuser):
         return JsonResponse({"detail": "Only admins can moderate contests"}, status=403)
 
-    contest = get_object_or_404(Contest, pk=contest_id)
+    contest = get_object_or_404(
+        Contest.objects.select_related("course__section"),
+        pk=contest_id,
+    )
 
     try:
         payload = json.loads(request.body or "{}")
@@ -302,16 +306,18 @@ def manage_contest_participants(request, contest_id):
     if request.method != "POST":
         return JsonResponse({"detail": "Method not allowed"}, status=405)
 
-    contest = get_object_or_404(Contest, pk=contest_id)
+    contest = get_object_or_404(
+        Contest.objects.select_related("course__section"),
+        pk=contest_id,
+    )
     if contest.course is None:
         return JsonResponse({"detail": "Contest must belong to a course"}, status=400)
 
-    is_teacher = contest.course.participants.filter(
-        user=request.user,
-        role=CourseParticipant.Role.TEACHER,
-    ).exists()
-    if not is_teacher:
-        return JsonResponse({"detail": "Only teachers can modify this contest"}, status=403)
+    if contest.course.section.owner_id != request.user.id:
+        return JsonResponse(
+            {"detail": "Only section owner can modify this contest"},
+            status=403,
+        )
 
     try:
         payload = json.loads(request.body or "{}")
@@ -347,16 +353,18 @@ def add_problem_to_contest(request, contest_id):
     if request.method != "POST":
         return JsonResponse({"detail": "Method not allowed"}, status=405)
 
-    contest = get_object_or_404(Contest, pk=contest_id)
+    contest = get_object_or_404(
+        Contest.objects.select_related("course__section"),
+        pk=contest_id,
+    )
     if contest.course is None:
         return JsonResponse({"detail": "Contest must belong to a course"}, status=400)
 
-    is_teacher = contest.course.participants.filter(
-        user=request.user,
-        role=CourseParticipant.Role.TEACHER,
-    ).exists()
-    if not is_teacher:
-        return JsonResponse({"detail": "Only teachers can modify this contest"}, status=403)
+    if contest.course.section.owner_id != request.user.id:
+        return JsonResponse(
+            {"detail": "Only section owner can modify this contest"},
+            status=403,
+        )
 
     try:
         if request.content_type and "application/json" in request.content_type:

@@ -12,4 +12,6 @@ from .courses import (
     CourseParticipantsUpdateSerializer,
     CourseParticipantSummarySerializer,
     CourseReadSerializer,
+    SectionCreateSerializer,
+    SectionReadSerializer,
 )

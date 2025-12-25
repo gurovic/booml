@@ -25,8 +25,10 @@ class ContestForm(forms.ModelForm):
 
     def save(self, commit=True, created_by=None, course=None):
         contest = super().save(commit=False)
-        contest.course = course or self.course or contest.course
-        if contest.course is None:
+        course_value = course or self.course
+        if course_value is not None:
+            contest.course = course_value
+        elif contest.course_id is None:
             raise ValueError("course is required to save contest")
         if created_by is not None:
             contest.created_by = created_by

@@ -14,9 +14,11 @@
   /* ===== Buttons ===== */
   --color-button-primary: #27346A;
   --color-button-text-primary: #FFFFFF;
+  --color-button-primary-hover: #1A274D;
 
   --color-button-secondary: #E4DAFF;
   --color-button-text-secondary: #000000;
+  --color-button-secondary-hover: #E4DAFF;
 
   /* ===== Borders / UI ===== */
   --color-border-default: #E0E3F0;

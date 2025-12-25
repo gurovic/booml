@@ -15,7 +15,6 @@ class Contest(models.Model):
         Course,
         on_delete=models.CASCADE,
         related_name="contests",
-        null=True,
     )
     title = models.CharField(max_length=255)
     description = models.TextField(blank=True, default="")
@@ -128,22 +127,17 @@ class Contest(models.Model):
 
     def is_visible_to(self, user):
         """
-        Teachers of linked courses always see the contest.
-        Drafts are hidden from non-teachers.
-        Visibility for others depends on access_type and explicit allows.
+        Drafts are visible only to the section owner.
+        Published contests follow access_type and course membership.
         """
         if not user.is_authenticated:
             return False
 
-        is_teacher = self.course and self.course.participants.filter(
-            user=user,
-            role=CourseParticipant.Role.TEACHER,
-        ).exists()
-        is_admin = getattr(user, "is_staff", False) or getattr(user, "is_superuser", False)
-        if is_teacher or is_admin:
+        is_owner = self.course.section.owner_id == user.id
+        if is_owner:
             return True
 
-        # Only approved & published contests are visible to non-teachers.
+        # Only approved & published contests are visible to non-owners.
         if not self.is_published or self.approval_status != self.ApprovalStatus.APPROVED:
             return False
 
@@ -154,9 +148,10 @@ class Contest(models.Model):
             if self.allowed_participants.filter(pk=user.pk).exists():
                 return True
 
-        if self.course:
-            return self.course.participants.filter(user=user).exists()
-        return False
+        if self.access_type == self.AccessType.PUBLIC and self.course.is_open:
+            return True
+
+        return self.course.participants.filter(user=user).exists()
 
     def ensure_access_token(self):
         if not self.access_token:
