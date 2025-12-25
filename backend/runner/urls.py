@@ -96,6 +96,7 @@ urlpatterns = [
 
     path('backend/problem/', problem_detail_api),
     path('backend/start/', start_api),
+    path('backend/course/<int:course_id>/', course_detail, name='backend_course_detail'),
     path('backend/contest/', list_contests, name='backend_contest_list'),
     path('backend/contest/<int:contest_id>/', contest_detail, name='backend_contest_detail'),
     path('backend/register/', backend_register, name='backend_register'),
