@@ -1,3 +1,6 @@
+from pathlib import Path
+
+from django.contrib import messages
 from django.shortcuts import render, redirect, get_object_or_404
 from django.views.decorators.http import require_http_methods
 
@@ -19,6 +22,25 @@ for v in getattr(rating_field, "validators", []):
 
 METRIC_SUGGESTIONS = tuple(get_available_metrics())
 METRIC_SUGGESTIONS_SET = set(METRIC_SUGGESTIONS)
+
+DATA_FILE_EXTENSIONS = (".csv", ".zip", ".rar")
+CSV_ONLY_EXTENSIONS = (".csv",)
+UPLOAD_FIELD_LABELS = {
+    "train_file": "train",
+    "test_file": "test",
+    "sample_submission_file": "sample submission",
+    "answer_file": "answer",
+}
+UPLOAD_ALLOWED_EXTENSIONS = {
+    "train_file": DATA_FILE_EXTENSIONS,
+    "test_file": DATA_FILE_EXTENSIONS,
+    "sample_submission_file": CSV_ONLY_EXTENSIONS,
+    "answer_file": CSV_ONLY_EXTENSIONS,
+}
+
+
+def _format_extensions(extensions):
+    return "/".join(ext.lstrip(".").upper() for ext in extensions)
 
 
 @require_http_methods(["GET", "POST"])
@@ -100,12 +122,26 @@ def edit_problem_polygon(request, problem_id):
             descriptor_errors["metric_name"] = "Выберите метрику из списка или добавьте Python код"
 
         uploaded_files = {}
+        file_errors = {}
         for field_name in ("train_file", "test_file", "sample_submission_file", "answer_file"):
             file_obj = request.FILES.get(field_name)
-            if file_obj:
+            if not file_obj:
+                continue
+            filename = getattr(file_obj, "name", "") or ""
+            ext = Path(filename).suffix.lower()
+            allowed_extensions = UPLOAD_ALLOWED_EXTENSIONS.get(field_name, CSV_ONLY_EXTENSIONS)
+            if ext not in allowed_extensions:
+                label = UPLOAD_FIELD_LABELS.get(field_name, field_name)
+                allowed_label = _format_extensions(allowed_extensions)
+                file_errors[field_name] = f"Файл {label} должен быть в формате {allowed_label}"
+            else:
                 uploaded_files[field_name] = file_obj
 
-        if not errors and not descriptor_errors:
+        if file_errors:
+            for error_message in file_errors.values():
+                messages.error(request, error_message)
+
+        if not errors and not descriptor_errors and not file_errors:
             problem.title = form_data["title"]
             problem.rating = rating_value
             problem.statement = form_data["statement"]
