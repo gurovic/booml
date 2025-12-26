@@ -6,3 +6,10 @@ export async function getCourses() {
   if (data && Array.isArray(data.items)) return data.items
   return []
 }
+
+export async function getCourse(courseId) {
+  if (courseId == null || courseId === '') {
+    return null
+  }
+  return await apiGet(`backend/course/${courseId}/`)
+}
