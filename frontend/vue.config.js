@@ -5,15 +5,18 @@ const BACKEND_URL = process.env.VUE_APP_BACKEND_URL || 'http://127.0.0.1:8000'
 module.exports = defineConfig({
   transpileDependencies: true,
   devServer: {
-    port: 3000,
-    host: "localhost",
+    allowedHosts: "all",
+    port: 8101,
+    host: "0.0.0.0",
     proxy: {
       '/api': {
-        target: BACKEND_URL,
+
+        target: process.env.VUE_APP_BACKEND_URL || 'http://127.0.0.1:8100/',
         changeOrigin: true,
       },
       '/backend': {
-        target: BACKEND_URL,
+        target: process.env.VUE_APP_BACKEND_URL || 'http://127.0.0.1:8100',
+
         changeOrigin: true,
       },
     },

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 import time
@@ -10,6 +11,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict
 
+from django.conf import settings
 from django.utils import timezone
 
 from .vm_agent_server import VM_AGENT_SERVER_SOURCE
@@ -174,6 +176,10 @@ class DockerVmBackend(VmBackend):
     def __init__(self, root: Path):
         self.root = Path(root)
         self.root.mkdir(parents=True, exist_ok=True)
+        host_root = os.environ.get("RUNTIME_VM_HOST_ROOT")
+        self._host_root = Path(host_root).expanduser().resolve() if host_root else None
+        self._container_base = Path(getattr(settings, "BASE_DIR", self.root.parent)).resolve()
+        self._docker_bin = _resolve_docker_bin()
 
     def create_vm(
         self,
@@ -265,6 +271,8 @@ class DockerVmBackend(VmBackend):
         vm_dir: Path,
         workspace: Path,
     ) -> None:
+        source_vm_dir = self._map_to_host(vm_dir)
+        source_workspace = self._map_to_host(workspace)
         args = [
             "create",
             "--name",
@@ -278,9 +286,9 @@ class DockerVmBackend(VmBackend):
             "--pids-limit",
             "512",
             "--mount",
-            f"type=bind,source={vm_dir.resolve()},target=/vm",
+            f"type=bind,source={source_vm_dir},target=/vm",
             "--mount",
-            f"type=bind,source={workspace.resolve()},target=/workspace",
+            f"type=bind,source={source_workspace},target=/workspace",
         ]
         if spec.network.outbound == "deny":
             args += ["--network", "none"]
@@ -290,6 +298,20 @@ class DockerVmBackend(VmBackend):
         args += [spec.image, "sleep", "infinity"]
         self._run_docker(tuple(args))
         self._run_docker(("start", container_name))
+
+    def _map_to_host(self, container_path: Path) -> str:
+        """
+        When backend itself runs inside Docker, container paths like /app/...
+        are not valid bind sources for the host daemon. If RUNTIME_VM_HOST_ROOT
+        is set to the host directory corresponding to BASE_DIR, rewrite paths.
+        """
+        if self._host_root is None:
+            return str(container_path)
+        try:
+            relative = container_path.relative_to(self._container_base)
+        except Exception:
+            return str(container_path)
+        return str((self._host_root / relative).resolve())
 
     def _start_agent(self, container_name: str) -> None:
         self._run_docker(
@@ -324,7 +346,7 @@ class DockerVmBackend(VmBackend):
                 raise ValueError(f"docker arguments must be str, got {type(arg)}: {arg!r}")
             if any(char in arg for char in suspicious_chars):
                 raise ValueError(f"suspicious shell metacharacter detected in docker argument: {arg!r}")
-        cmd = ["docker", *args]
+        cmd = [self._docker_bin, *args]
         return subprocess.run(cmd, check=check, capture_output=False, text=True)
 
     def _vm_dir(self, vm_id: str) -> Path:
@@ -402,6 +424,19 @@ def _resolve_now(value: datetime | None = None) -> datetime:
     if timezone.is_naive(resolved):
         resolved = timezone.make_aware(resolved, timezone.get_current_timezone())
     return resolved
+
+
+def _resolve_docker_bin() -> str:
+    candidate = shutil.which("docker")
+    if candidate:
+        return candidate
+    fallback = Path("/usr/bin/docker")
+    if fallback.exists():
+        return str(fallback)
+    fallback = Path("/usr/local/bin/docker")
+    if fallback.exists():
+        return str(fallback)
+    return "docker"
 
 
 __all__ = ["VmBackend", "LocalVmBackend", "DockerVmBackend"]
