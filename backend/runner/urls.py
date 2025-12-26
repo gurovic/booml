@@ -96,6 +96,8 @@ urlpatterns = [
 
     path('backend/problem/', problem_detail_api),
     path('backend/start/', start_api),
+    path('backend/contest/', list_contests, name='backend_contest_list'),
+    path('backend/contest/<int:contest_id>/', contest_detail, name='backend_contest_detail'),
     path('backend/register/', backend_register, name='backend_register'),
     path('backend/login/', backend_login, name='backend_login'),
     path('backend/logout/', backend_logout, name='backend_logout'),
