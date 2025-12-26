@@ -2,20 +2,40 @@
 @import './typography.css';
 @import './color-variables.css';
 
-.container {
-  width: 100%;
+html,
+body,
+#app {
   height: 100%;
-  padding: 0 16px;
-  overflow: hidden;
+  margin: 0;
+  padding: 0;
 }
 
-.button {
+body {
   font-family: var(--font-default);
-  font-weight: 400;
-  font-size: 20px;
+  background-color: var(--color-background);
+  color: var(--color-text-primary);
+  line-height: 1.5;
+}
+
+/* Container */
+.container {
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 16px;
+}
+
+/* Buttons */
+.button {
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-default);
+  font-size: 16px;
+  font-weight: 500;
   padding: 10px 20px;
-  text-align: center;
   border-radius: 10px;
+  cursor: pointer;
+  transition: opacity 0.2s ease;
 }
 
 .button--primary {
@@ -26,4 +46,24 @@
 .button--secondary {
   background-color: var(--color-button-secondary);
   color: var(--color-button-text-secondary);
+}
+
+.button:hover {
+  opacity: 0.9;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+
+.app-content {
+  flex: 1;
 }

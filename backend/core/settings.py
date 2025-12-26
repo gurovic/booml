@@ -13,6 +13,7 @@ https://docs.djangoproject.com/en/5.1/ref/settings/
 import os
 from pathlib import Path
 from dotenv import load_dotenv
+from django.core.exceptions import ImproperlyConfigured
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env")
@@ -113,19 +114,41 @@ ASGI_APPLICATION = 'core.asgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.1/ref/settings/#databases
 
-TEST_DB_DIR_ENV = os.getenv("TEST_DB_DIR")
-if TEST_DB_DIR_ENV:
-    TEST_DB_NAME = str(Path(TEST_DB_DIR_ENV) / "booml_test_db.sqlite3")
-else:
-    TEST_DB_NAME = os.getenv("TEST_DB_NAME", ":memory:")
+DB_ENGINE = os.getenv("DB_ENGINE", "django.db.backends.postgresql")
+
+if DB_ENGINE != "django.db.backends.postgresql":
+    raise ImproperlyConfigured(
+        f"Unsupported DB_ENGINE={DB_ENGINE!r}. "
+        "This project now supports only PostgreSQL. "
+        "Set DB_ENGINE=django.db.backends.postgresql in your .env."
+    )
+
+try:
+    import psycopg  # noqa: F401
+except ImportError as exc:
+    raise ImproperlyConfigured(
+        "PostgreSQL engine selected but psycopg is not installed. "
+        "Install psycopg[binary] (see backend/requirements.txt)."
+    ) from exc
+
+DB_NAME = os.getenv("DB_NAME", "booml")
+DB_USER = os.getenv("DB_USER", "postgres")
+DB_PASSWORD = os.getenv("DB_PASSWORD", "")
+DB_HOST = os.getenv("DB_HOST", "localhost")
+DB_PORT = os.getenv("DB_PORT", "5432")
+
+TEST_DB_NAME = os.getenv("TEST_DB_NAME", f"{DB_NAME}_test")
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': str(BASE_DIR / 'db.sqlite3'),
+        'ENGINE': DB_ENGINE,
+        'NAME': DB_NAME,
+        'USER': DB_USER,
+        'PASSWORD': DB_PASSWORD,
+        'HOST': DB_HOST,
+        'PORT': DB_PORT,
         'TEST': {
             'NAME': TEST_DB_NAME,
-            'SERIALIZE': False,
         },
     }
 }

@@ -1,3 +1,5 @@
+import tempfile
+from pathlib import Path
 from importlib import import_module
 from types import SimpleNamespace
 from unittest.mock import ANY, patch
@@ -20,11 +22,11 @@ class ProblemDetailViewTests(TestCase):
         self.problem = Problem.objects.create(title="Demo", statement="desc", rating=800)
         self.url = reverse("runner:problem_detail", args=[self.problem.id])
 
-        self.runs_dir = Path('backend/data/runner/runs')
-        self.runs_dir.mkdir(parents=True, exist_ok=True)
+        self.tmpdir = tempfile.TemporaryDirectory()
+        self.media_root = Path(self.tmpdir.name)
 
     def tearDown(self):
-        self._cleanup_submission_files()
+        self.tmpdir.cleanup()
 
     def _submission_file(self, name: str = "submission.csv"):
         return SimpleUploadedFile(
@@ -33,26 +35,21 @@ class ProblemDetailViewTests(TestCase):
             content_type="text/csv",
         )
 
-    def _cleanup_submission_files(self):
-        for submission in Submission.objects.all():
-            if submission.file and os.path.exists(submission.file.path):
-                try:
-                    os.remove(submission.file.path)
-                except OSError:
-                    pass
-
+    @override_settings(MEDIA_ROOT=tempfile.gettempdir())
     def test_get_renders_upload_form(self):
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, 200)
         self.assertIn("form", response.context)
         self.assertContains(response, "Отправить решение")
 
+    @override_settings(MEDIA_ROOT=tempfile.gettempdir())
     def test_context_for_anonymous_user(self):
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.context["submissions"]), 0)
         self.assertIsNone(response.context["result"])
 
+    @override_settings(MEDIA_ROOT=tempfile.gettempdir())
     def test_problem_data_in_context(self):
         problem_data = ProblemData.objects.create(problem=self.problem)
         response = self.client.get(self.url)
@@ -60,12 +57,14 @@ class ProblemDetailViewTests(TestCase):
         self.assertIsNotNone(response.context["data"])
         self.assertEqual(response.context["data"], problem_data)
 
+    @override_settings(MEDIA_ROOT=tempfile.gettempdir())
     def test_problem_data_none_in_context(self):
         ProblemData.objects.filter(problem=self.problem).delete()
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, 200)
         self.assertIsNone(response.context["data"])
 
+    @override_settings(MEDIA_ROOT=tempfile.gettempdir())
     def test_descriptor_metric_shown_to_user(self):
         ProblemDescriptor.objects.create(
             problem=self.problem,
@@ -79,6 +78,7 @@ class ProblemDetailViewTests(TestCase):
         self.assertContains(response, "Метрика задачи")
         self.assertContains(response, "accuracy")
 
+    @override_settings(MEDIA_ROOT=tempfile.gettempdir())
     def test_descriptor_marks_custom_metric(self):
         ProblemDescriptor.objects.create(
             problem=self.problem,
@@ -92,14 +92,14 @@ class ProblemDetailViewTests(TestCase):
         self.assertContains(response, "macro_iou")
         self.assertContains(response, "кастомная реализация")
 
-    @override_settings(MEDIA_ROOT='backend/data/runner/runs')
+    @override_settings(MEDIA_ROOT=tempfile.gettempdir())
     def test_post_requires_authentication(self):
         response = self.client.post(self.url, {"file": self._submission_file()})
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Авторизуйтесь")
         self.assertEqual(Submission.objects.count(), 0)
 
-    @override_settings(MEDIA_ROOT='backend/data/runner/runs')
+    @override_settings(MEDIA_ROOT=tempfile.gettempdir())
     def test_invalid_form_returns_error(self):
         self.client.force_login(self.user)
         response = self.client.post(self.url, {})
@@ -109,7 +109,7 @@ class ProblemDetailViewTests(TestCase):
         self.assertEqual(feedback["level"], "error")
         self.assertIn("Исправьте ошибки формы", feedback["message"])
 
-    @override_settings(MEDIA_ROOT='backend/data/runner/runs')
+    @override_settings(MEDIA_ROOT=tempfile.gettempdir())
     @patch.object(problem_detail_view, "enqueue_submission_for_evaluation")
     @patch.object(problem_detail_view.validation_service, "run_pre_validation")
     def test_successful_submission_enqueues_job(self, mock_pre_validation, mock_enqueue):
@@ -129,7 +129,7 @@ class ProblemDetailViewTests(TestCase):
         self.assertEqual(feedback["level"], "success")
         self.assertIn("тестирующую систему", feedback["message"])
 
-    @override_settings(MEDIA_ROOT='backend/data/runner/runs')
+    @override_settings(MEDIA_ROOT=tempfile.gettempdir())
     @patch.object(problem_detail_view, "enqueue_submission_for_evaluation")
     @patch.object(problem_detail_view.validation_service, "run_pre_validation")
     def test_failed_prevalidation_returns_error(self, mock_pre_validation, mock_enqueue):
@@ -146,7 +146,7 @@ class ProblemDetailViewTests(TestCase):
         self.assertEqual(feedback["level"], "error")
         self.assertIn("не прошёл", feedback["message"])
 
-    @override_settings(MEDIA_ROOT='backend/data/runner/runs')
+    @override_settings(MEDIA_ROOT=tempfile.gettempdir())
     @patch.object(problem_detail_view, "enqueue_submission_for_evaluation")
     @patch.object(problem_detail_view.validation_service, "run_pre_validation")
     def test_submission_with_none_report_enqueues_job(self, mock_pre_validation, mock_enqueue):
@@ -161,7 +161,7 @@ class ProblemDetailViewTests(TestCase):
         feedback = response.context["submission_feedback"]
         self.assertEqual(feedback["level"], "success")
 
-    @override_settings(MEDIA_ROOT='backend/data/runner/runs')
+    @override_settings(MEDIA_ROOT=tempfile.gettempdir())
     @patch.object(problem_detail_view, "enqueue_submission_for_evaluation")
     @patch.object(problem_detail_view.validation_service, "run_pre_validation")
     def test_submission_with_valid_attribute(self, mock_pre_validation, mock_enqueue):
@@ -175,7 +175,7 @@ class ProblemDetailViewTests(TestCase):
         feedback = response.context["submission_feedback"]
         self.assertEqual(feedback["level"], "success")
 
-    @override_settings(MEDIA_ROOT='backend/data/runner/runs')
+    @override_settings(MEDIA_ROOT=tempfile.gettempdir())
     @patch.object(problem_detail_view, "enqueue_submission_for_evaluation")
     @patch.object(problem_detail_view.validation_service, "run_pre_validation")
     def test_submission_with_success_status(self, mock_pre_validation, mock_enqueue):
@@ -189,7 +189,7 @@ class ProblemDetailViewTests(TestCase):
         feedback = response.context["submission_feedback"]
         self.assertEqual(feedback["level"], "success")
 
-    @override_settings(MEDIA_ROOT='backend/data/runner/runs')
+    @override_settings(MEDIA_ROOT=tempfile.gettempdir())
     @patch.object(problem_detail_view, "enqueue_submission_for_evaluation")
     @patch.object(problem_detail_view.validation_service, "run_pre_validation")
     def test_submission_with_failed_status(self, mock_pre_validation, mock_enqueue):
@@ -204,7 +204,7 @@ class ProblemDetailViewTests(TestCase):
         self.assertEqual(feedback["level"], "error")
         self.assertIn("не прошёл", feedback["message"])
 
-    @override_settings(MEDIA_ROOT='backend/data/runner/runs')
+    @override_settings(MEDIA_ROOT=tempfile.gettempdir())
     @patch.object(problem_detail_view, "enqueue_submission_for_evaluation")
     @patch.object(problem_detail_view.validation_service, "run_pre_validation")
     def test_submission_with_error_status(self, mock_pre_validation, mock_enqueue):
@@ -218,7 +218,7 @@ class ProblemDetailViewTests(TestCase):
         feedback = response.context["submission_feedback"]
         self.assertEqual(feedback["level"], "error")
 
-    @override_settings(MEDIA_ROOT='backend/data/runner/runs')
+    @override_settings(MEDIA_ROOT=tempfile.gettempdir())
     @patch.object(problem_detail_view, "enqueue_submission_for_evaluation")
     @patch.object(problem_detail_view.validation_service, "run_pre_validation")
     def test_prevalidation_exception_handling(self, mock_pre_validation, mock_enqueue):
@@ -234,7 +234,7 @@ class ProblemDetailViewTests(TestCase):
         self.assertIn("Не удалось запустить", feedback["message"])
         self.assertIn("Service unavailable", feedback["details"])
 
-    @override_settings(MEDIA_ROOT='backend/data/runner/runs')
+    @override_settings(MEDIA_ROOT=tempfile.gettempdir())
     @patch.object(problem_detail_view, "enqueue_submission_for_evaluation")
     @patch.object(problem_detail_view.validation_service, "run_pre_validation")
     def test_submission_with_list_errors(self, mock_pre_validation, mock_enqueue):
@@ -252,7 +252,7 @@ class ProblemDetailViewTests(TestCase):
         self.assertEqual(feedback["level"], "error")
         self.assertEqual(feedback["details"], "Error 1")
 
-    @override_settings(MEDIA_ROOT='backend/data/runner/runs')
+    @override_settings(MEDIA_ROOT=tempfile.gettempdir())
     @patch.object(problem_detail_view, "enqueue_submission_for_evaluation")
     @patch.object(problem_detail_view.validation_service, "run_pre_validation")
     def test_submission_with_string_errors(self, mock_pre_validation, mock_enqueue):

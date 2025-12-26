@@ -1,43 +1,25 @@
 <template>
     <div class="auth-page">
-        <div class="auth-page__container">
-            <div class="auth-card">
-                <div class="auth-card__tabs">
-                    <button
-                        @click="switchToLogin"
-                        :class="[
-                            'auth-card__tab',
-                            { 'auth-card__tab--active': activeTab === 'login' }
-                        ]"
-                    >
-                        Вход
-                    </button>
-                    <button
-                        @click="switchToRegister"
-                        :class="[
-                            'auth-card__tab',
-                            { 'auth-card__tab--active': activeTab === 'register' }
-                        ]"
-                    >
-                        Регистрация
-                    </button>
+        <div class="auth-page__container container">
+            <div class="card">
+                <div class="card__header">
+                    <h2 class="card__title">Вход в аккаунт</h2>
+                    <p class="card__subtitle">
+                        Введите свои данные для входа в систему
+                    </p>
                 </div>
 
-                <form @submit.prevent="handleSubmit" class="auth-card__form">
-                    <h2 class="auth-card__title">
-                        {{ activeTab === 'login' ? 'Вход в аккаунт' : 'Создание аккаунта' }}
-                    </h2>
-
+                <form @submit.prevent="handleSubmit" class="card__form">
                     <div
                         v-if="formErrors.general"
-                        class="auth-card__error auth-card__error--general"
+                        class="card__error card__error--general"
                     >
                         {{ formErrors.general }}
                     </div>
 
                     <div class="form-group">
                         <label for="username" class="form-group__label">
-                            Имя пользователя *
+                            Имя пользователя
                         </label>
                         <input
                             type="text"
@@ -47,8 +29,9 @@
                                 'form-group__input',
                                 { 'form-group__input--error': formErrors.username }
                             ]"
-                            placeholder="Ваше имя пользователя"
+                            placeholder="Введите имя пользователя"
                             required
+                            :disabled="loading"
                         >
                         <div
                             v-if="formErrors.username"
@@ -58,32 +41,9 @@
                         </div>
                     </div>
 
-                    <div v-if="activeTab === 'register'" class="form-group">
-                        <label for="email" class="form-group__label">
-                            Email *
-                        </label>
-                        <input
-                            type="email"
-                            id="email"
-                            v-model="formData.email"
-                            :class="[
-                                'form-group__input',
-                                { 'form-group__input--error': formErrors.email }
-                            ]"
-                            placeholder="Ваш email"
-                            required
-                        >
-                        <div
-                            v-if="formErrors.email"
-                            class="form-group__error"
-                        >
-                            {{ formErrors.email }}
-                        </div>
-                    </div>
-
                     <div class="form-group">
                         <label for="password" class="form-group__label">
-                            Пароль *
+                            Пароль
                         </label>
                         <input
                             type="password"
@@ -93,8 +53,9 @@
                                 'form-group__input',
                                 { 'form-group__input--error': formErrors.password }
                             ]"
-                            :placeholder="activeTab === 'login' ? 'Введите пароль' : 'Придумайте пароль'"
+                            placeholder="Введите пароль"
                             required
+                            :disabled="loading"
                         >
                         <div
                             v-if="formErrors.password"
@@ -102,70 +63,32 @@
                         >
                             {{ formErrors.password }}
                         </div>
-                        <small
-                            v-if="activeTab === 'register'"
-                            class="form-group__hint"
-                        >
-                            Минимум 8 символов
-                        </small>
-                    </div>
-
-                    <div v-if="activeTab === 'register'" class="form-group">
-                        <label for="password2" class="form-group__label">
-                            Подтверждение пароля *
-                        </label>
-                        <input
-                            type="password"
-                            id="password2"
-                            v-model="formData.password2"
-                            :class="[
-                                'form-group__input',
-                                { 'form-group__input--error': formErrors.password2 }
-                            ]"
-                            placeholder="Повторите пароль"
-                            required
-                        >
-                        <div
-                            v-if="formErrors.password2"
-                            class="form-group__error"
-                        >
-                            {{ formErrors.password2 }}
-                        </div>
                     </div>
 
                     <button
                         type="submit"
                         :class="[
-                            'auth-card__submit',
-                            { 'auth-card__submit--loading': loading }
+                            'card__submit button button--primary',
+                            { 'card__submit--loading': loading }
                         ]"
                         :disabled="loading"
                     >
                         <span
                             v-if="loading"
-                            class="auth-card__spinner"
+                            class="card__spinner"
                         ></span>
-                        <span class="auth-card__submit-text">
-                            {{ activeTab === 'login' ? 'Войти' : 'Зарегистрироваться' }}
+                        <span class="card__submit-text">
+                            Войти
                         </span>
                     </button>
                 </form>
 
-                <div class="auth-card__switch">
-                    <p class="auth-card__switch-text">
-                        <span v-if="activeTab === 'login'">
-                            Нет аккаунта?
-                        </span>
-                        <span v-else>
-                            Уже есть аккаунт?
-                        </span>
-                        <a
-                            href="#"
-                            @click.prevent="activeTab === 'login' ? switchToRegister() : switchToLogin()"
-                            class="auth-card__switch-link"
-                        >
-                            {{ activeTab === 'login' ? 'Зарегистрируйтесь' : 'Войдите' }}
-                        </a>
+                <div class="card__footer">
+                    <p class="card__footer-text">
+                        Нет аккаунта?
+                        <router-link to="/register" class="card__footer-link">
+                            Зарегистрируйтесь
+                        </router-link>
                     </p>
                 </div>
             </div>
@@ -174,44 +97,19 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed } from 'vue'
+import { ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
-import { authService } from '@/services/auth'
+import { useUserStore } from '@/stores/UserStore'
 
 const router = useRouter()
+const userStore = useUserStore()
 
-const activeTab = ref('login')
 const loading = ref(false)
 const formData = reactive({
     username: '',
-    email: '',
-    password: '',
-    password2: ''
+    password: ''
 })
 const formErrors = reactive({})
-
-const isLoginMode = computed(() => activeTab.value === 'login')
-
-const switchToLogin = () => {
-    activeTab.value = 'login'
-    resetForm()
-    clearErrors()
-}
-
-const switchToRegister = () => {
-    activeTab.value = 'register'
-    resetForm()
-    clearErrors()
-}
-
-const resetForm = () => {
-    Object.assign(formData, {
-        username: '',
-        email: '',
-        password: '',
-        password2: ''
-    })
-}
 
 const clearErrors = () => {
     Object.keys(formErrors).forEach(key => {
@@ -224,22 +122,7 @@ const handleSubmit = async () => {
     clearErrors()
 
     try {
-        let result
-
-        if (isLoginMode.value) {
-            result = await authService.login({
-                username: formData.username,
-                password: formData.password
-            })
-        } else {
-            result = await authService.register({
-                username: formData.username,
-                email: formData.email,
-                password1: formData.password,
-                password2: formData.password2,
-                role: 'student',
-            })
-        }
+        const result = await userStore.loginUser(formData.username, formData.password)
 
         if (result.success) {
             await router.push('/')
@@ -247,7 +130,7 @@ const handleSubmit = async () => {
             handleErrors(result.error)
         }
     } catch (error) {
-        console.error('Auth error:', error)
+        console.error('Login error:', error)
         formErrors.general = 'Произошла ошибка. Попробуйте позже.'
     } finally {
         loading.value = false
@@ -263,14 +146,7 @@ const handleErrors = (error) => {
             if (fieldWithLabel && message) {
                 const field = fieldWithLabel.trim()
                 const cleanMessage = message.trim()
-
-                const fieldMap = {
-                    'password1': 'password',
-                    'password2': 'password2'
-                }
-
-                const vueField = fieldMap[field] || field
-                formErrors[vueField] = cleanMessage
+                formErrors[field] = cleanMessage
             }
         })
     } else {
@@ -279,5 +155,26 @@ const handleErrors = (error) => {
 }
 </script>
 
-<style lang="scss" scoped>
+<style scoped>
+import '@/assets/styles/form.css'
+
+.auth-page {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: var(--color-bg-default);
+    padding: 20px;
+}
+
+.auth-page__container {
+    max-width: 440px;
+    margin: 0 auto;
+}
+
+@keyframes spin {
+    to {
+        transform: translate(-50%, -50%) rotate(360deg);
+    }
+}
 </style>

@@ -1,4 +1,6 @@
-from django.test import TestCase
+import tempfile
+from pathlib import Path
+from django.test import TestCase, override_settings
 from django.utils import timezone
 from django.core.files.base import ContentFile
 from django.contrib.auth.models import User
@@ -12,10 +14,18 @@ class RunPrevalidationTestCase(TestCase):
 
     maxDiff = None  # Чтобы Django не обрезал длинные diff'ы в assertEqual
 
+    def setUp(self):
+        self.tmpdir = tempfile.TemporaryDirectory()
+        self.media_root = Path(self.tmpdir.name)
+
+    def tearDown(self):
+        self.tmpdir.cleanup()
+
     @patch("runner.services.prevalidation_service.transaction.atomic")
     @patch("runner.services.prevalidation_service.PreValidation.save")
     @patch("runner.services.prevalidation_service.Submission.save")
     @patch("builtins.open", new_callable=mock_open, read_data="id,value\n1,10\n2,20\n")
+    @override_settings(MEDIA_ROOT=tempfile.gettempdir())
     def test_successful_prevalidation(self, mock_file, mock_sub_save, mock_preval_save, mock_atomic):
         """Успешная валидация корректного сабмишена"""
         # Создаём объекты задачи и её описателя
@@ -62,6 +72,7 @@ class RunPrevalidationTestCase(TestCase):
     @patch("runner.services.prevalidation_service.PreValidation.objects.create")
     @patch("runner.services.prevalidation_service.Submission.save")
     @patch("builtins.open", side_effect=Exception("File not found"))
+    @override_settings(MEDIA_ROOT=tempfile.gettempdir())
     def test_file_read_error(self, mock_file, mock_sub_save, mock_preval_save, mock_atomic):
         """Ошибка при чтении файла сабмишена"""
         problem = Problem.objects.create(title="Test Problem", created_at=timezone.now().date())
@@ -95,6 +106,7 @@ class RunPrevalidationTestCase(TestCase):
     @patch("runner.services.prevalidation_service.transaction.atomic")
     @patch("runner.services.prevalidation_service.PreValidation.objects.create")
     @patch("runner.services.prevalidation_service.Submission.save")
+    @override_settings(MEDIA_ROOT=tempfile.gettempdir())
     def test_row_count_mismatch(self, mock_sub_save, mock_preval_save, mock_atomic):
         """Несовпадение количества строк между сабмишеном и sample submission"""
         problem = Problem.objects.create(title="Test Problem", created_at=timezone.now().date())

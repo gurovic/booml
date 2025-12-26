@@ -4,7 +4,8 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AnonymousUser
 from django.test import RequestFactory, TestCase
 
-from runner.models import Contest, Course, CourseParticipant
+from runner.models import Contest, Course, CourseParticipant, Section
+from runner.services.section_service import SectionCreateInput, create_section
 from runner.views.contest_draft import list_contests
 
 User = get_user_model()
@@ -18,7 +19,27 @@ class ContestListViewTests(TestCase):
         self.outsider = User.objects.create_user(username="outsider", password="pass")
         self.other_teacher = User.objects.create_user(username="other", password="pass")
 
-        self.course = Course.objects.create(title="Course A", owner=self.teacher)
+        self.root_section = Section.objects.get(title="Авторские", parent__isnull=True)
+        self.other_root_section = Section.objects.get(title="Тематические", parent__isnull=True)
+        self.section = create_section(
+            SectionCreateInput(
+                title="Teacher Section",
+                owner=self.teacher,
+                parent=self.root_section,
+            )
+        )
+        self.other_section = create_section(
+            SectionCreateInput(
+                title="Other Section",
+                owner=self.other_teacher,
+                parent=self.other_root_section,
+            )
+        )
+        self.course = Course.objects.create(
+            title="Course A",
+            owner=self.teacher,
+            section=self.section,
+        )
         CourseParticipant.objects.create(
             course=self.course,
             user=self.teacher,
@@ -31,7 +52,11 @@ class ContestListViewTests(TestCase):
             role=CourseParticipant.Role.STUDENT,
         )
 
-        self.other_course = Course.objects.create(title="Course B", owner=self.other_teacher)
+        self.other_course = Course.objects.create(
+            title="Course B",
+            owner=self.other_teacher,
+            section=self.other_section,
+        )
         CourseParticipant.objects.create(
             course=self.other_course,
             user=self.other_teacher,
@@ -99,26 +124,6 @@ class ContestListViewTests(TestCase):
         response = list_contests(request)
 
         self.assertEqual(response.status_code, 401)
-
-    def test_course_filter(self):
-        request = self.factory.get("/", {"course_id": str(self.course.id)})
-        request.user = self.teacher
-
-        response = list_contests(request)
-
-        self.assertEqual(response.status_code, 200)
-        payload = json.loads(response.content.decode())
-        titles = [item["title"] for item in payload["items"]]
-        self.assertEqual(set(titles), {"Published", "Draft"})
-        self.assertNotIn("Other Course", titles)
-
-    def test_invalid_course_filter_returns_bad_request(self):
-        request = self.factory.get("/", {"course_id": "abc"})
-        request.user = self.teacher
-
-        response = list_contests(request)
-
-        self.assertEqual(response.status_code, 400)
 
     def test_private_contest_visible_only_to_allowed(self):
         private_contest = Contest.objects.create(

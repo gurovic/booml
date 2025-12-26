@@ -4,7 +4,9 @@ import ProblemPage from '@/pages/ProblemPage.vue'
 import HomePage from '@/pages/HomePage.vue'
 import SectionPage from '@/pages/SectionPage.vue'
 import CoursePage from '@/pages/CoursePage.vue'
+import ContestPage from '@/pages/ContestPage.vue'
 import LoginPage from '@/pages/LoginPage.vue'
+import RegisterPage from '@/pages/RegisterPage.vue'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -33,10 +35,19 @@ const router = createRouter({
       path: '/course/:id',
       name: 'course',
       component: CoursePage,
+    },
+    {
+      path: '/contest/:id',
+      name: 'contest',
+      component: ContestPage,
     },{
       path: '/login',
       name: 'login',
       component: LoginPage,
+    },{
+      path: '/register',
+      name: 'register',
+      component: RegisterPage,
     }
   ],
 })

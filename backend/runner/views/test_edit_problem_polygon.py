@@ -10,8 +10,6 @@ from django.urls import reverse
 from ..models.problem import Problem
 from ..models.problem_data import ProblemData
 from ..models.problem_desriptor import ProblemDescriptor
-
-
 class EditProblemPolygonViewTests(TestCase):
     def setUp(self):
         User = get_user_model()
@@ -176,3 +174,91 @@ class EditProblemPolygonViewTests(TestCase):
         pdata = ProblemData.objects.get(problem=self.problem)
         self.assertTrue(pdata.train_file.name.endswith("train.csv"))
         self.assertTrue(pdata.sample_submission_file.name.endswith("sample.csv"))
+
+    def test_allows_archives_for_train_and_test_files(self):
+        ProblemData.objects.filter(problem=self.problem).delete()
+        self.client.force_login(self.author)
+        payload = self._base_post_payload()
+        payload.update(
+            {
+                "train_file": SimpleUploadedFile("train.zip", b"zipdata"),
+                "test_file": SimpleUploadedFile("test.rar", b"rardata"),
+            }
+        )
+
+        resp = self.client.post(self.url, payload)
+
+        self.assertEqual(resp.status_code, 302)
+        pdata = ProblemData.objects.get(problem=self.problem)
+        self.assertTrue(pdata.train_file.name.endswith("train.zip"))
+        self.assertTrue(pdata.test_file.name.endswith("test.rar"))
+
+    def test_rejects_invalid_extensions_for_train_and_test_files(self):
+        ProblemData.objects.filter(problem=self.problem).delete()
+        self.client.force_login(self.author)
+        payload = self._base_post_payload()
+        payload.update(
+            {
+                "train_file": SimpleUploadedFile("train.txt", b"bad"),
+                "test_file": SimpleUploadedFile("test.exe", b"bad"),
+            }
+        )
+
+        resp = self.client.post(self.url, payload)
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "Файл train должен быть в формате CSV/ZIP/RAR")
+        self.assertContains(resp, "Файл test должен быть в формате CSV/ZIP/RAR")
+        self.assertFalse(ProblemData.objects.filter(problem=self.problem).exists())
+
+    def test_allows_uppercase_extensions(self):
+        ProblemData.objects.filter(problem=self.problem).delete()
+        self.client.force_login(self.author)
+        payload = self._base_post_payload()
+        payload.update(
+            {
+                "train_file": SimpleUploadedFile("train.ZIP", b"zipdata"),
+                "test_file": SimpleUploadedFile("test.Rar", b"rardata"),
+                "answer_file": SimpleUploadedFile("answer.CSV", b"id,prediction\n1,0.1\n"),
+            }
+        )
+
+        resp = self.client.post(self.url, payload)
+
+        self.assertEqual(resp.status_code, 302)
+        pdata = ProblemData.objects.get(problem=self.problem)
+        self.assertTrue(pdata.train_file.name.endswith("train.ZIP"))
+        self.assertTrue(pdata.test_file.name.endswith("test.Rar"))
+        self.assertTrue(pdata.answer_file.name.endswith("answer.CSV"))
+
+    def test_rejects_non_csv_answer_file(self):
+        ProblemData.objects.filter(problem=self.problem).delete()
+        self.client.force_login(self.author)
+        payload = self._base_post_payload()
+        payload.update(
+            {
+                "answer_file": SimpleUploadedFile("answer.zip", b"zipdata"),
+            }
+        )
+
+        resp = self.client.post(self.url, payload)
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "Файл answer должен быть в формате CSV")
+        self.assertFalse(ProblemData.objects.filter(problem=self.problem).exists())
+
+    def test_rejects_non_csv_sample_submission_file(self):
+        ProblemData.objects.filter(problem=self.problem).delete()
+        self.client.force_login(self.author)
+        payload = self._base_post_payload()
+        payload.update(
+            {
+                "sample_submission_file": SimpleUploadedFile("sample.zip", b"zipdata"),
+            }
+        )
+
+        resp = self.client.post(self.url, payload)
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "Файл sample submission должен быть в формате CSV")
+        self.assertFalse(ProblemData.objects.filter(problem=self.problem).exists())

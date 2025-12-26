@@ -3,8 +3,10 @@ import json
 from django.contrib.auth import get_user_model
 from django.test import RequestFactory, TestCase
 
-from runner.models import Contest, Course, CourseParticipant
-from runner.views.contest_draft import course_contests, list_pending_contests, moderate_contest
+from runner.models import Contest, Course, CourseParticipant, Section
+from runner.services.section_service import SectionCreateInput, create_section
+from runner.views.course import course_contests
+from runner.views.contest_draft import list_pending_contests, moderate_contest
 
 User = get_user_model()
 
@@ -15,7 +17,19 @@ class ContestModerationViewTests(TestCase):
         self.admin = User.objects.create_user(username="admin", password="pass", is_staff=True)
         self.teacher = User.objects.create_user(username="teacher", password="pass")
         self.student = User.objects.create_user(username="student", password="pass")
-        self.course = Course.objects.create(title="Course A", owner=self.teacher)
+        self.root_section = Section.objects.get(title="Авторские", parent__isnull=True)
+        self.section = create_section(
+            SectionCreateInput(
+                title="Teacher Section",
+                owner=self.teacher,
+                parent=self.root_section,
+            )
+        )
+        self.course = Course.objects.create(
+            title="Course A",
+            owner=self.teacher,
+            section=self.section,
+        )
         CourseParticipant.objects.create(
             course=self.course,
             user=self.teacher,

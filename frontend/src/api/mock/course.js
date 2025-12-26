@@ -87,3 +87,30 @@ const mockData = [
 export function getCourses() {
   return new Promise(resolve => setTimeout(() => resolve(mockData), 200));
 }
+
+const flattenCourses = (nodes = []) => {
+  const result = []
+  nodes.forEach(node => {
+    result.push(node)
+    if (Array.isArray(node.children)) {
+      result.push(...flattenCourses(node.children))
+    }
+  })
+  return result
+}
+
+export function getCourse(courseId) {
+  const numericId = Number(courseId)
+  if (!Number.isFinite(numericId)) {
+    return Promise.resolve(null)
+  }
+  const found = flattenCourses(mockData).find(item => item.id === numericId)
+  if (!found) {
+    return Promise.resolve(null)
+  }
+  return Promise.resolve({
+    id: found.id,
+    title: found.title,
+    description: found.description || '',
+  })
+}

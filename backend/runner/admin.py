@@ -8,6 +8,7 @@ from .models import (
     Notebook,
     Cell,
     Contest,
+    Section,
     Course,
     CourseParticipant,
     PreValidation,
@@ -49,7 +50,10 @@ class ProblemAdmin(admin.ModelAdmin):
     list_filter = ("created_at",)
     ordering = ("-created_at",)
 
-admin.site.register(Submission)
+@admin.register(Submission)
+class SubmissionAdmin(admin.ModelAdmin):
+    list_display = ("id", "__str__")
+
 admin.site.register(ProblemData)
 
 
@@ -123,8 +127,15 @@ class ProblemDescriptorAdmin(admin.ModelAdmin):
 
 @admin.register(Course)
 class CourseAdmin(admin.ModelAdmin):
-    list_display = ("id", "title", "owner", "parent", "is_open", "created_at")
+    list_display = ("id", "title", "owner", "section", "is_open", "created_at")
     list_filter = ("is_open", "created_at")
+    search_fields = ("title", "owner__username")
+
+
+@admin.register(Section)
+class SectionAdmin(admin.ModelAdmin):
+    list_display = ("id", "title", "owner", "parent", "created_at")
+    list_filter = ("created_at",)
     search_fields = ("title", "owner__username")
 
 

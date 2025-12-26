@@ -10,4 +10,5 @@ from .leaderboard import Leaderboard
 from .notebook import Notebook
 from .problem import Problem
 from .tag import Tag
+from .section import Section
 from .course import Course, CourseParticipant

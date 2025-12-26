@@ -1,7 +1,8 @@
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 
-from runner.models import Contest, Course, CourseParticipant
+from runner.models import Contest, Course, CourseParticipant, Section
+from runner.services.section_service import SectionCreateInput, create_section
 
 User = get_user_model()
 
@@ -9,18 +10,34 @@ User = get_user_model()
 class ContestVisibilityTests(TestCase):
     def setUp(self):
         self.teacher = User.objects.create_user(username="teacher", password="pass")
+        self.co_teacher = User.objects.create_user(username="teacher2", password="pass")
         self.student = User.objects.create_user(username="student", password="pass")
         self.outsider = User.objects.create_user(username="outsider", password="pass")
 
+        self.root_section = Section.objects.get(title="Авторские", parent__isnull=True)
+        self.section = create_section(
+            SectionCreateInput(
+                title="Teacher Section",
+                owner=self.teacher,
+                parent=self.root_section,
+            )
+        )
         self.course = Course.objects.create(
             title="Course A",
             owner=self.teacher,
+            section=self.section,
         )
         CourseParticipant.objects.create(
             course=self.course,
             user=self.teacher,
             role=CourseParticipant.Role.TEACHER,
             is_owner=True,
+        )
+        CourseParticipant.objects.create(
+            course=self.course,
+            user=self.co_teacher,
+            role=CourseParticipant.Role.TEACHER,
+            is_owner=False,
         )
         CourseParticipant.objects.create(
             course=self.course,
@@ -41,7 +58,7 @@ class ContestVisibilityTests(TestCase):
         self.assertTrue(contest.is_visible_to(self.student))
         self.assertFalse(contest.is_visible_to(self.outsider))
 
-    def test_draft_contest_visible_only_to_teachers(self):
+    def test_draft_contest_visible_only_to_owner(self):
         contest = Contest.objects.create(
             course=self.course,
             title="Draft Contest",
@@ -50,8 +67,22 @@ class ContestVisibilityTests(TestCase):
         )
 
         self.assertTrue(contest.is_visible_to(self.teacher))
+        self.assertFalse(contest.is_visible_to(self.co_teacher))
         self.assertFalse(contest.is_visible_to(self.student))
         self.assertFalse(contest.is_visible_to(self.outsider))
+
+    def test_open_course_public_contest_visible_to_any_user(self):
+        self.course.is_open = True
+        self.course.save(update_fields=["is_open"])
+        contest = Contest.objects.create(
+            course=self.course,
+            title="Open Contest",
+            created_by=self.teacher,
+            is_published=True,
+            approval_status=Contest.ApprovalStatus.APPROVED,
+        )
+
+        self.assertTrue(contest.is_visible_to(self.outsider))
 
     def test_defaults_for_scoring_registration_rating(self):
         contest = Contest.objects.create(

@@ -1993,3 +1993,13 @@ const notebookDetail = {
     }
 
 };
+const runAll = function() {
+    const cells = document.querySelectorAll('.cell')
+    for (const cell of cells) {
+        const id = cell.getAttribute('data-cell-id');
+        if (!id) continue;
+
+        // запускаем так же, как запускается одиночная ячейка
+        notebookDetail.runCell(id);
+    }
+};
