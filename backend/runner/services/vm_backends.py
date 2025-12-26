@@ -272,7 +272,7 @@ class DockerVmBackend(VmBackend):
         workspace: Path,
     ) -> None:
         source_vm_dir = self._map_to_host(vm_dir)
-        source_workspace = self._map_to_host(workspace.resolve())
+        source_workspace = self._map_to_host(workspace)
         args = [
             "create",
             "--name",
