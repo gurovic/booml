@@ -2,9 +2,9 @@
   <header class="header">
     <div class="container">
       <div class="header__inner">
-        <a href="/" class="header__title">
+        <button type="button" class="header__title" @click="handleHomeClick">
           Booml
-        </a>
+        </button>
 
         <button
           class="button button--secondary header__button"
@@ -31,9 +31,17 @@ let isAuthorized = computed(() => user.value != null)
 const handleButton = async () => {
   if (isAuthorized.value) {
     await userStore.logoutUser()
-    router.push('/')
+    if (router.currentRoute.value.path !== '/') {
+      router.push('/')
+    }
   } else {
     router.push('/login')
+  }
+}
+
+const handleHomeClick = () => {
+  if (router.currentRoute.value.path !== '/') {
+    router.push('/')
   }
 }
 </script>
@@ -61,6 +69,10 @@ const handleButton = async () => {
   line-height: 1;
   color: #ffffff;
   text-decoration: none;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
 }
 
 .header__button {
