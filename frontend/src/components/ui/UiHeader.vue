@@ -75,6 +75,15 @@ const handleHomeClick = () => {
   cursor: pointer;
 }
 
+.header__title:hover {
+  opacity: 0.9;
+}
+
+.header__title:focus {
+  outline: 2px solid #ffffff;
+  outline-offset: 2px;
+}
+
 .header__button {
   height: 40px;
   display: flex;
