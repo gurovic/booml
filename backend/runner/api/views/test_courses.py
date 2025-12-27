@@ -167,13 +167,26 @@ class CourseTreeTests(TestCase):
         self.assertEqual(resp.json(), [])
 
     def test_authenticated_user_sees_open_courses(self):
-        """Authenticated users should see open courses"""
+        """Authenticated users should see open courses but not closed ones"""
         self.client.login(username="student", password="pass")
         resp = self.client.get(self.tree_url)
         self.assertEqual(resp.status_code, 200)
         tree = resp.json()
-        # Should have at least one section with courses
-        self.assertGreater(len(tree), 0)
+        
+        # Flatten the tree to get all course titles
+        course_titles = []
+        for section in tree:
+            for child in section.get('children', []):
+                if child.get('type') == 'course':
+                    course_titles.append(child.get('title'))
+                # Check nested sections
+                for grandchild in child.get('children', []):
+                    if grandchild.get('type') == 'course':
+                        course_titles.append(grandchild.get('title'))
+        
+        # Student should see open course but not closed course
+        self.assertIn("Open Course", course_titles)
+        self.assertNotIn("Closed Course", course_titles)
 
     def test_course_owner_sees_own_courses(self):
         """Course owners should see their own courses including closed ones"""
@@ -181,5 +194,18 @@ class CourseTreeTests(TestCase):
         resp = self.client.get(self.tree_url)
         self.assertEqual(resp.status_code, 200)
         tree = resp.json()
-        # Teacher should see both open and closed courses
-        self.assertGreater(len(tree), 0)
+        
+        # Flatten the tree to get all course titles
+        course_titles = []
+        for section in tree:
+            for child in section.get('children', []):
+                if child.get('type') == 'course':
+                    course_titles.append(child.get('title'))
+                # Check nested sections
+                for grandchild in child.get('children', []):
+                    if grandchild.get('type') == 'course':
+                        course_titles.append(grandchild.get('title'))
+        
+        # Owner should see both open and closed courses
+        self.assertIn("Open Course", course_titles)
+        self.assertIn("Closed Course", course_titles)
