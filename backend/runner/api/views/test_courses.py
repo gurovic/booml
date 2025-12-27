@@ -127,3 +127,85 @@ class CourseParticipantsTests(TestCase):
         resp = self.client.post(self.url, {"student_ids": [self.student.id]})
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(len(resp.json()["created"]), 1)
+
+
+class CourseTreeTests(TestCase):
+    def setUp(self):
+        self.teacher = User.objects.create_user(username="teacher", password="pass")
+        self.student = User.objects.create_user(username="student", password="pass")
+        self.root_section = Section.objects.get(title="Авторские", parent__isnull=True)
+        self.section = create_section(
+            SectionCreateInput(
+                title="Teacher Section",
+                owner=self.teacher,
+                parent=self.root_section,
+            )
+        )
+        self.open_course = create_course(
+            CourseCreateInput(
+                title="Open Course",
+                owner=self.teacher,
+                is_open=True,
+                section=self.section,
+            )
+        )
+        self.closed_course = create_course(
+            CourseCreateInput(
+                title="Closed Course",
+                owner=self.teacher,
+                is_open=False,
+                section=self.section,
+            )
+        )
+        self.tree_url = reverse("course-tree")
+
+    def test_unauthenticated_user_gets_empty_tree(self):
+        """Unauthenticated users should get empty array, not 403"""
+        self.client.logout()
+        resp = self.client.get(self.tree_url)
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json(), [])
+
+    def test_authenticated_user_sees_open_courses(self):
+        """Authenticated users should see open courses but not closed ones"""
+        self.client.login(username="student", password="pass")
+        resp = self.client.get(self.tree_url)
+        self.assertEqual(resp.status_code, 200)
+        tree = resp.json()
+        
+        # Flatten the tree to get all course titles
+        course_titles = []
+        for section in tree:
+            for child in section.get('children', []):
+                if child.get('type') == 'course':
+                    course_titles.append(child.get('title'))
+                # Check nested sections
+                for grandchild in child.get('children', []):
+                    if grandchild.get('type') == 'course':
+                        course_titles.append(grandchild.get('title'))
+        
+        # Student should see open course but not closed course
+        self.assertIn("Open Course", course_titles)
+        self.assertNotIn("Closed Course", course_titles)
+
+    def test_course_owner_sees_own_courses(self):
+        """Course owners should see their own courses including closed ones"""
+        self.client.login(username="teacher", password="pass")
+        resp = self.client.get(self.tree_url)
+        self.assertEqual(resp.status_code, 200)
+        tree = resp.json()
+        
+        # Flatten the tree to get all course titles
+        course_titles = []
+        for section in tree:
+            for child in section.get('children', []):
+                if child.get('type') == 'course':
+                    course_titles.append(child.get('title'))
+                # Check nested sections
+                for grandchild in child.get('children', []):
+                    if grandchild.get('type') == 'course':
+                        course_titles.append(grandchild.get('title'))
+        
+        # Owner should see both open and closed courses
+        self.assertIn("Open Course", course_titles)
+        self.assertIn("Closed Course", course_titles)
