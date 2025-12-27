@@ -139,7 +139,7 @@ class CourseTreeView(APIView):
         # Return empty tree for unauthenticated users
         if not request.user.is_authenticated:
             return Response([])
-        
+
         sections = list(Section.objects.select_related("parent").all())
         courses_qs = Course.objects.select_related("section").all()
         is_admin = request.user.is_staff or request.user.is_superuser
