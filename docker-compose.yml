@@ -1,6 +1,23 @@
 version: "3.9"
 
 services:
+  postgres:
+    container_name: booml-postgres
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: booml
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d booml"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
   redis:
     container_name: booml-redis
     image: redis:7-alpine
@@ -38,6 +55,8 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
+      postgres:
+        condition: service_healthy
       redis:
         condition: service_healthy
     environment:
@@ -45,6 +64,11 @@ services:
       SECRET_KEY: dev-secret-key
       DEBUG: "True"
       MODE: dev
+      DB_NAME: booml
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_HOST: postgres
+      DB_PORT: "5432"
       ALLOWED_HOSTS: booml.letovo.site,backend.booml.letovo.site,backend,localhost,127.0.0.1
       CSRF_TRUSTED_ORIGINS: http://localhost:8101,http://frontend:8101,http://booml.letovo.site,https://booml.letovo.site,http://backend.booml.letovo.site,https://backend.booml.letovo.site
       RUNTIME_EXECUTION_BACKEND: jupyter
@@ -72,6 +96,8 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
+      postgres:
+        condition: service_healthy
       redis:
         condition: service_healthy
     environment:
@@ -79,6 +105,11 @@ services:
       SECRET_KEY: dev-secret-key
       DEBUG: "True"
       MODE: dev
+      DB_NAME: booml
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_HOST: postgres
+      DB_PORT: "5432"
       RUNTIME_VM_BACKEND: docker
       # Host path corresponding to /app inside container; used for Docker VM bind mounts.
       RUNTIME_VM_HOST_ROOT: ${PWD}/backend
@@ -131,3 +162,4 @@ services:
 volumes:
   frontend-node-modules:
   redis-data:
+  postgres-data:
