@@ -119,11 +119,16 @@ class SubmissionChecker:
         try:
             dialect = csv.Sniffer().sniff(sample, delimiters="".join(seps))
             return dialect.delimiter
-        except (csv.Error, Exception):
+        except csv.Error:
             # Fallback to manual counting if Sniffer fails
             scores = {}
             for sep in seps:
                 scores[sep] = sum(1 for line in sample.splitlines() if sep in line)
+            
+            # Return comma as default if all scores are zero (empty file or no separators)
+            if all(score == 0 for score in scores.values()):
+                return ","
+            
             return max(scores, key=scores.get)
 
     def _load_submission_file(self, file_field) -> Optional[pd.DataFrame]:
