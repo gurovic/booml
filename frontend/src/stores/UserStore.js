@@ -18,7 +18,7 @@ export const useUserStore = defineStore('user', () => {
 
 
     const isAuthenticated = computed(() => {
-        return !!currentUser.value.accessToken && !!currentUser.value
+        return !!currentUser.value && !!currentUser.value.accessToken
     })
 
     async function loginUser(username, password) {
