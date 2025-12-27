@@ -53,6 +53,21 @@
           </li>
         </ul>
       </div>
+
+      <div v-if="!sections.length && !standalone.length" class="section-card empty-state">
+        <div class="empty-state__content">
+          <h2 class="empty-state__title">Нет доступных курсов</h2>
+          <p class="empty-state__text">
+            Войдите в систему, чтобы увидеть доступные курсы
+          </p>
+          <button 
+            class="button button--primary empty-state__button" 
+            @click="router.push('/login')"
+          >
+            Войти
+          </button>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -229,6 +244,35 @@ onMounted(load)
 .course-link:hover,
 .badge:hover {
   opacity: 0.9;
+}
+
+.empty-state {
+  text-align: center;
+}
+
+.empty-state__content {
+  padding: 32px 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+.empty-state__title {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--color-text-title);
+}
+
+.empty-state__text {
+  font-size: 16px;
+  color: var(--color-text-primary);
+  margin: 0;
+}
+
+.empty-state__button {
+  margin-top: 8px;
+  padding: 10px 24px;
 }
 
 @media (min-width: 900px) {
