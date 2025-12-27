@@ -35,6 +35,8 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
     ports:
       - "8100:8100"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       redis:
         condition: service_healthy
@@ -67,6 +69,8 @@ services:
     volumes:
       - ./backend:/app
       - /var/run/docker.sock:/var/run/docker.sock
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       redis:
         condition: service_healthy
