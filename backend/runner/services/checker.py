@@ -113,11 +113,18 @@ class SubmissionChecker:
         )
 
     def _detect_sep(self, path, seps=(",",";","\t","|")):
-        with open(path, "r") as f:
+        with open(path, "r", encoding="utf-8") as f:
             sample = f.read(4096)
-            dialect = csv.Sniffer().sniff(sample)
-
-        return dialect.delimiter
+        
+        try:
+            dialect = csv.Sniffer().sniff(sample, delimiters="".join(seps))
+            return dialect.delimiter
+        except (csv.Error, Exception):
+            # Fallback to manual counting if Sniffer fails
+            scores = {}
+            for sep in seps:
+                scores[sep] = sum(1 for line in sample.splitlines() if sep in line)
+            return max(scores, key=scores.get)
 
     def _load_submission_file(self, file_field) -> Optional[pd.DataFrame]:
         """Загружаем файл submission"""
