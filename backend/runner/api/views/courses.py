@@ -130,11 +130,16 @@ class CourseParticipantsUpdateView(generics.GenericAPIView):
 class CourseTreeView(APIView):
     """
     Return a tree representation of sections and their courses.
-    Breaking change: this endpoint now requires authentication.
+    Unauthenticated users receive an empty tree.
+    Authenticated users see courses they have access to.
     """
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.AllowAny]
 
     def get(self, request):
+        # Return empty tree for unauthenticated users
+        if not request.user.is_authenticated:
+            return Response([])
+        
         sections = list(Section.objects.select_related("parent").all())
         courses_qs = Course.objects.select_related("section").all()
         is_admin = request.user.is_staff or request.user.is_superuser
