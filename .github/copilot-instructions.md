@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-This is **booml**, a machine learning learning platform with a Django backend and Vue.js frontend. The platform allows students to work on ML tasks, submit code for execution in isolated environments, and track their progress through courses and contests.
+This is **booml**, a machine learning platform with a Django backend and Vue.js frontend. The platform allows students to work on ML tasks, submit code for execution in isolated environments, and track their progress through courses and contests.
 
 ## Architecture
 
