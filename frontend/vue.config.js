@@ -8,6 +8,10 @@ module.exports = defineConfig({
     allowedHosts: "all",
     port: 8101,
     host: "0.0.0.0",
+    // Disable HMR when running in serve mode with NODE_ENV=production
+    // This prevents infinite reload loops in production deployments
+    hot: process.env.NODE_ENV !== 'production',
+    liveReload: process.env.NODE_ENV !== 'production',
     proxy: {
       '/api': {
 
