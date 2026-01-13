@@ -12,6 +12,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List
 
+from .config import cfg
+from ..utils.csv_utils import detect_csv_delimiter
+
 try:
     import resource
 except Exception:
@@ -101,8 +104,12 @@ def collect_outputs(run_dir: Path, stdout_bytes: bytes) -> List[OutputItem]:
         try:
             if path.stat().st_size <= cfg.MAX_FILE_BYTES:
                 rows: List[List[str]] = []
+
+                # Detect delimiter first
+                delimiter = detect_csv_delimiter(str(path))
+
                 with path.open(newline="", encoding="utf-8", errors="replace") as f:
-                    reader = csv.reader(f)
+                    reader = csv.reader(f, delimiter=delimiter)
                     for i, row in enumerate(reader):
                         if i >= cfg.CSV_PREVIEW_ROWS:
                             break

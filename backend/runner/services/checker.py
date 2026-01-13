@@ -10,6 +10,7 @@ from .custom_metric import MetricCodeExecutor, MetricExecutionError
 from .metrics import calculate_metric
 from .report_service import ReportGenerator
 from .websocket_notifications import broadcast_metric_update
+from ..utils.csv_utils import detect_csv_delimiter
 
 logger = logging.getLogger(__name__)
 
@@ -115,7 +116,9 @@ class SubmissionChecker:
         """Загружаем файл submission"""
         path = getattr(file_field, "path", None) or getattr(file_field, "name", None) or file_field
         try:
-            return pd.read_csv(path)
+            # Detect delimiter and load with pandas
+            delimiter = detect_csv_delimiter(path)
+            return pd.read_csv(path, sep=delimiter)
         except Exception:  # pragma: no cover - log for observability
             logger.info("Failed to load submission file %s", path)
             return None
@@ -139,7 +142,9 @@ class SubmissionChecker:
             logger.warning("Ground truth file has no path (maybe not saved yet)")
             return None
         try:
-            return pd.read_csv(path)
+            # Detect delimiter and load with pandas
+            delimiter = detect_csv_delimiter(path)
+            return pd.read_csv(path, sep=delimiter)
         except Exception:  # pragma: no cover - log for observability
             logger.info("Failed to load ground truth file %s", path)
             return None

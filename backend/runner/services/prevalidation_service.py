@@ -3,6 +3,7 @@ import time
 from django.db import DEFAULT_DB_ALIAS, transaction
 
 from ..models import PreValidation, Submission
+from ..utils.csv_utils import read_csv_file_with_auto_delimiter, read_csv_with_auto_delimiter
 
 MAX_ERRORS = 50
 MAX_WARNINGS = 50
@@ -77,9 +78,7 @@ def run_prevalidation(submission: Submission) -> PreValidation:
     )
 
     try:
-        with open(file_path, "r", encoding="utf-8", newline="") as f:
-            reader = csv.DictReader(f)
-            rows = list(reader)
+        rows = read_csv_with_auto_delimiter(file_path)
     except Exception:
         _append_error(prevalidation, "Cannot read file or invalid encoding")
         return _finalize_report(prevalidation, submission, start_ts)
@@ -89,8 +88,7 @@ def run_prevalidation(submission: Submission) -> PreValidation:
     sample_path = getattr(sample_file, "path", None)
     if sample_path:
         try:
-            with open(sample_path, "r", encoding="utf-8", newline="") as f:
-                sample_rows = list(csv.DictReader(f))
+            sample_rows = read_csv_with_auto_delimiter(sample_path)
         except Exception:
             _append_error(prevalidation, "Cannot read sample submission file")
     else:
