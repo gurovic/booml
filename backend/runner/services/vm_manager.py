@@ -66,6 +66,7 @@ class VmManager:
                 allowlist=self.config.net_allowlist,
             ),
             ttl_sec=self.config.ttl_sec,
+            gpu=False,
         )
 
     def _apply_overrides(self, spec: VmSpec, overrides: Mapping[str, object]) -> VmSpec:
@@ -91,6 +92,9 @@ class VmManager:
         if "ttl_sec" in overrides and overrides["ttl_sec"] is not None:
             updated = replace(updated, ttl_sec=int(overrides["ttl_sec"]))
 
+        if "gpu" in overrides:
+            updated = replace(updated, gpu=bool(overrides["gpu"]))
+            
         network_fields = {
             key: overrides[key]
             for key in ("net_outbound", "net_allowlist")

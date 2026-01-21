@@ -196,8 +196,11 @@ class CreateNotebookSessionView(APIView):
         ensure_notebook_access(request.user, notebook)
 
         session_id = build_notebook_session_id(notebook.id)
-        session = create_session(session_id)
-        
+        overrides = {
+            "gpu": notebook.compute_device == Notebook.ComputeDevice.GPU,
+        }
+        session = create_session(session_id, overrides=overrides)
+
         # Copy problem files if notebook is linked to a problem
         if notebook.problem:
             try:
@@ -207,7 +210,7 @@ class CreateNotebookSessionView(APIView):
                 import logging
                 logger = logging.getLogger(__name__)
                 logger.warning(f"Failed to copy problem files to session: {e}")
-        
+
         payload = _build_session_payload(session_id, session, status_label="created")
         return Response(payload, status=status.HTTP_201_CREATED)
 
@@ -232,8 +235,13 @@ class ResetSessionView(APIView):
             notebook = get_object_or_404(Notebook, pk=notebook_id)
             ensure_notebook_access(request.user, notebook)
 
+        overrides = None
+        if notebook_id is not None:
+            overrides = {
+                "gpu": notebook.compute_device == Notebook.ComputeDevice.GPU,
+            }
         try:
-            session = reset_session(session_id)
+            session = reset_session(session_id, overrides=overrides)
         except SessionNotFoundError:
             raise Http404("Session not found")
         
@@ -404,6 +412,7 @@ def _serialize_vm_payload(session: RuntimeSession | None) -> dict | None:
             "cpu": vm.spec.resources.cpu,
             "ram_mb": vm.spec.resources.ram_mb,
             "disk_gb": vm.spec.resources.disk_gb,
+            "gpu": vm.spec.gpu,
         },
         "network": {
             "outbound": vm.spec.network.outbound,

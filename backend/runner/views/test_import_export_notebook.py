@@ -52,6 +52,7 @@ class ImportExportNotebookTests(TestCase):
         self.assertIn('notebook', exported_data)
         self.assertIn('cells', exported_data)
         self.assertEqual(exported_data['notebook']['title'], 'Test Notebook')
+        self.assertEqual(exported_data['notebook']['compute_device'], 'cpu')
         self.assertEqual(len(exported_data['cells']), 3)
 
         json_file = BytesIO(export_response.content)
@@ -73,6 +74,7 @@ class ImportExportNotebookTests(TestCase):
         imported_notebook = Notebook.objects.get(id=import_data['notebook_id'])
         self.assertIsNotNone(imported_notebook)
         self.assertEqual(imported_notebook.title, 'Test Notebook')
+        self.assertEqual(imported_notebook.compute_device, 'cpu')
 
         imported_cells = imported_notebook.cells.all().order_by('execution_order')
         self.assertEqual(imported_cells.count(), 3)

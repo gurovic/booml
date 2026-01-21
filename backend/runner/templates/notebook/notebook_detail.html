@@ -97,6 +97,8 @@
          data-session-file-upload-url="{% url 'session-file-upload' %}"
          data-session-file-download-url="{% url 'session-file-download' %}"
          data-session-stop-url="{% url 'session-stop' %}"
+         data-notebook-device="{{ notebook.compute_device }}"
+         data-update-device-url="{% url 'runner:update_notebook_device' notebook.id %}"
          data-delete-url-template="{% url 'runner:delete_cell' notebook.id 0 %}"
          data-copy-cell-url-template="{% url 'runner:copy_cell' notebook.id 0 %}"
          data-move-cell-url-template="{% url 'runner:move_cell' notebook.id 0 %}"
@@ -126,6 +128,18 @@
             <div class="session-status-row">
                 <span>Состояние сессии:</span>
                 <span data-session-status>Сессия не создана</span>
+            </div>
+            <div class="session-status-row">
+                <span>Устройство вычислений:</span>
+                <label>
+                    <select data-compute-device>
+                        <option value="cpu">CPU</option>
+                        <option value="gpu">GPU</option>
+                    </select>
+                </label>
+                <span data-compute-device-hint style="margin-left: 8px; color: #666; font-size: 12px;">
+                    Применяется при создании/перезапуске сессии
+                </span>
             </div>
             <div class="session-actions">
                 <button type="button" data-action="create-session">🚀 Создать сессию</button>

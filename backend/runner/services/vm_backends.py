@@ -6,7 +6,7 @@ import shutil
 import subprocess
 import time
 from abc import ABC, abstractmethod
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict
@@ -154,6 +154,7 @@ class LocalVmBackend(VmBackend):
             resources=resources,
             network=network,
             ttl_sec=spec_payload["ttl_sec"],
+            gpu=bool(spec_payload.get("gpu", False)),
         )
         workspace_path = Path(payload.get("workspace_path") or (vm_dir / "workspace"))
         backend_data = payload.get("backend_data") or {}
@@ -209,9 +210,21 @@ class DockerVmBackend(VmBackend):
             self._create_container(container_name, spec, vm_dir, workspace)
             self._start_agent(container_name)
             self._wait_for_agent(agent_dir)
-        except Exception:
-            shutil.rmtree(vm_dir, ignore_errors=True)
-            raise
+        except Exception as exc:
+            if spec.gpu:
+                self._run_docker(("rm", "-f", container_name), check=False)
+                cpu_spec = replace(spec, gpu=False)
+                try:
+                    self._create_container(container_name, cpu_spec, vm_dir, workspace)
+                    self._start_agent(container_name)
+                    self._wait_for_agent(agent_dir)
+                    spec = cpu_spec
+                except Exception:
+                    shutil.rmtree(vm_dir, ignore_errors=True)
+                    raise
+            else:
+                shutil.rmtree(vm_dir, ignore_errors=True)
+                raise exc
 
         vm = VirtualMachine(
             id=vm_id,
@@ -290,6 +303,8 @@ class DockerVmBackend(VmBackend):
             "--mount",
             f"type=bind,source={source_workspace},target=/workspace",
         ]
+        if spec.gpu:
+            args += ["--gpus", "all"]
         if spec.network.outbound == "deny":
             args += ["--network", "none"]
         else:
@@ -395,6 +410,7 @@ class DockerVmBackend(VmBackend):
             resources=resources,
             network=network,
             ttl_sec=spec_payload["ttl_sec"],
+            gpu=bool(spec_payload.get("gpu", False)),
         )
         workspace_path = Path(payload.get("workspace_path") or (vm_dir / "workspace"))
         backend_data = payload.get("backend_data") or {}
