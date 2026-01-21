@@ -54,6 +54,10 @@ def import_notebook(request):
 
         notebook_title = notebook_info.get('title', 'Импортированный блокнот')
 
+        raw_device = (notebook_info.get('compute_device') or '').strip().lower()
+        if raw_device not in (Notebook.ComputeDevice.CPU, Notebook.ComputeDevice.GPU):
+            raw_device = Notebook.ComputeDevice.CPU
+
         if Notebook.objects.filter(owner=user, title=notebook_title).exists():
             counter = 1
             while Notebook.objects.filter(owner=user, title=f"{notebook_title} ({counter})").exists():
@@ -62,7 +66,8 @@ def import_notebook(request):
         
         notebook = Notebook.objects.create(
             owner=user,
-            title=notebook_title
+            title=notebook_title,
+            compute_device=raw_device
         )
         
 

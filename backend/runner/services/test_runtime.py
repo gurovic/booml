@@ -376,6 +376,7 @@ def _build_fake_docker_vm(workdir: Path) -> VirtualMachine:
         resources=VmResources(cpu=2, ram_mb=2048, disk_gb=8),
         network=VmNetworkPolicy(outbound="deny", allowlist=()),
         ttl_sec=3600,
+        gpu=False,
     )
     now = _resolve_now()
     return VirtualMachine(

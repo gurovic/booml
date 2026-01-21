@@ -59,7 +59,7 @@ admin.site.register(ProblemData)
 
 @admin.register(Notebook)
 class NotebookAdmin(admin.ModelAdmin):
-    list_display = ("id", "title", "owner", "created_at", "updated_at")
+    list_display = ("id", "title", "owner", "compute_device", "created_at", "updated_at")
     list_filter = ("created_at", "updated_at")
     search_fields = ("title", "owner__username")
 

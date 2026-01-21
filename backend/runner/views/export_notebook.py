@@ -27,6 +27,7 @@ def export_notebook(request, notebook_id):
         'version': '1.0',
         'notebook': {
             'title': notebook.title,
+            'compute_device': notebook.compute_device,
             'created_at': notebook.created_at.isoformat() if notebook.created_at else None,
             'updated_at': notebook.updated_at.isoformat() if notebook.updated_at else None,
         },
