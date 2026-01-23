@@ -148,7 +148,7 @@ const handleSubmit = async () => {
   submitMessage.value = null
 
   try {
-    const result = await submitSolution(problem.value.id, selectedFile.value)
+    await submitSolution(problem.value.id, selectedFile.value)
     submitMessage.value = { type: 'success', text: 'Файл успешно отправлен на проверку!' }
     
     // Refresh problem data to show new submission
