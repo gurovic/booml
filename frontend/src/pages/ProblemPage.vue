@@ -8,7 +8,7 @@
           <div class="problem__text" v-html="problem.rendered_statement"></div>
         </div>
         <ul class="problem__menu">
-          <li class="problem__submit problem__menu-item">
+          <li class="problem__submit problem__menu-item" v-if="userStore.isAuthenticated">
             <h2 class="problem__submit-title problem__item-title">Отправить решение</h2>
             <div class="problem__submit-form">
               <input 
@@ -83,6 +83,7 @@ import { ref, onMounted, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { getProblem } from '@/api/problem'
 import { submitSolution } from '@/api/submission'
+import { useUserStore } from '@/stores/UserStore'
 import MarkdownIt from 'markdown-it'
 import mkKatex from 'markdown-it-katex'
 import UiHeader from '@/components/ui/UiHeader.vue'
@@ -93,6 +94,7 @@ const md = new MarkdownIt({
 }).use(mkKatex)
 
 const route = useRoute()
+const userStore = useUserStore()
 
 let problem = ref(null)
 let selectedFile = ref(null)
