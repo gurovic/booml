@@ -8,6 +8,34 @@
           <div class="problem__text" v-html="problem.rendered_statement"></div>
         </div>
         <ul class="problem__menu">
+          <li class="problem__submit problem__menu-item">
+            <h2 class="problem__submit-title problem__item-title">Отправить решение</h2>
+            <div class="problem__submit-form">
+              <input 
+                type="file" 
+                :key="fileInputKey"
+                accept=".csv"
+                @change="handleFileChange"
+                class="problem__file-input"
+                id="file-input"
+              />
+              <label for="file-input" class="problem__file-label">
+                <span v-if="!selectedFile">Выбрать файл</span>
+                <span v-else>{{ selectedFile.name }}</span>
+              </label>
+              <button 
+                @click="handleSubmit"
+                :disabled="!selectedFile || isSubmitting"
+                class="problem__submit-button button button--primary"
+              >
+                <span v-if="!isSubmitting">Отправить</span>
+                <span v-else>Отправка...</span>
+              </button>
+              <div v-if="submitMessage" :class="['problem__submit-message', `problem__submit-message--${submitMessage.type}`]">
+                {{ submitMessage.text }}
+              </div>
+            </div>
+          </li>
           <li class="problem__files problem__menu-item" v-if="availableFiles.length > 0">
             <h2 class="problem__files-title problem__item-title">Файлы</h2>
             <ul class="problem__files-list">
@@ -54,6 +82,7 @@
 import { ref, onMounted, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { getProblem } from '@/api/problem'
+import { submitSolution } from '@/api/submission'
 import MarkdownIt from 'markdown-it'
 import mkKatex from 'markdown-it-katex'
 import UiHeader from '@/components/ui/UiHeader.vue'
@@ -66,6 +95,10 @@ const md = new MarkdownIt({
 const route = useRoute()
 
 let problem = ref(null)
+let selectedFile = ref(null)
+let isSubmitting = ref(false)
+let submitMessage = ref(null)
+let fileInputKey = ref(0)
 
 onMounted(async () => {
   try {
@@ -90,6 +123,50 @@ const availableFiles = computed(() => {
 const roundMetric = (value) => {
   if (value == null) return '-'
   return Number(value).toFixed(3)
+}
+
+const handleFileChange = (event) => {
+  const file = event.target.files[0]
+  if (file) {
+    if (!file.name.toLowerCase().endsWith('.csv')) {
+      submitMessage.value = { type: 'error', text: 'Пожалуйста, выберите CSV файл' }
+      selectedFile.value = null
+      return
+    }
+    selectedFile.value = file
+    submitMessage.value = null
+  }
+}
+
+const handleSubmit = async () => {
+  if (!selectedFile.value) {
+    submitMessage.value = { type: 'error', text: 'Пожалуйста, выберите файл' }
+    return
+  }
+
+  isSubmitting.value = true
+  submitMessage.value = null
+
+  try {
+    const result = await submitSolution(problem.value.id, selectedFile.value)
+    submitMessage.value = { type: 'success', text: 'Файл успешно отправлен на проверку!' }
+    
+    // Refresh problem data to show new submission
+    const res = await getProblem(route.params.id)
+    problem.value = res
+    if (problem.value != null) {
+      problem.value.rendered_statement = md.render(problem.value.statement)
+    }
+    
+    // Clear file input
+    selectedFile.value = null
+    fileInputKey.value++
+  } catch (err) {
+    console.error('Submission error:', err)
+    submitMessage.value = { type: 'error', text: err.message || 'Ошибка при отправке файла' }
+  } finally {
+    isSubmitting.value = false
+  }
 }
 </script>
 
@@ -247,4 +324,61 @@ const roundMetric = (value) => {
 .problem__submission {
   width: 100%;
 }
-</style>
+
+.problem__submit-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.problem__file-input {
+  display: none;
+}
+
+.problem__file-label {
+  display: block;
+  padding: 12px 20px;
+  background-color: var(--color-button-secondary);
+  color: var(--color-button-text-secondary);
+  border-radius: 10px;
+  text-align: center;
+  cursor: pointer;
+  transition: opacity 0.2s ease;
+  font-weight: 500;
+}
+
+.problem__file-label:hover {
+  opacity: 0.9;
+}
+
+.problem__submit-button {
+  width: 100%;
+  padding: 12px 20px;
+  border: none;
+  font-weight: 500;
+  transition: opacity 0.2s ease;
+}
+
+.problem__submit-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.problem__submit-message {
+  padding: 10px 15px;
+  border-radius: 8px;
+  font-size: 14px;
+  text-align: center;
+}
+
+.problem__submit-message--success {
+  background-color: #d1fae5;
+  color: #065f46;
+  border: 1px solid #a7f3d0;
+}
+
+.problem__submit-message--error {
+  background-color: #fee2e2;
+  color: #991b1b;
+  border: 1px solid #fecaca;
+}
