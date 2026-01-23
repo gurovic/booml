@@ -16,8 +16,28 @@ export async function submitSolution(problemId, file) {
   })
 
   if (!res.ok) {
-    const errorText = await res.text()
-    throw new Error(`API Error: ${res.status} — ${errorText}`)
+    let errorMessage = `API Error: ${res.status}`
+    try {
+      const errorData = await res.json()
+      if (errorData.message) {
+        errorMessage = errorData.message
+      } else if (errorData.detail) {
+        errorMessage = errorData.detail
+      } else if (typeof errorData === 'object') {
+        errorMessage = JSON.stringify(errorData)
+      }
+    } catch {
+      // If JSON parsing fails, try text
+      try {
+        const errorText = await res.text()
+        if (errorText) {
+          errorMessage = errorText
+        }
+      } catch {
+        // Use default error message
+      }
+    }
+    throw new Error(errorMessage)
   }
 
   return await res.json()

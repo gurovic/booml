@@ -128,6 +128,8 @@ const roundMetric = (value) => {
 const handleFileChange = (event) => {
   const file = event.target.files[0]
   if (file) {
+    // Note: Extension validation is done client-side for UX;
+    // server-side validation provides actual security
     if (!file.name.toLowerCase().endsWith('.csv')) {
       submitMessage.value = { type: 'error', text: 'Пожалуйста, выберите CSV файл' }
       selectedFile.value = null
@@ -136,6 +138,12 @@ const handleFileChange = (event) => {
     selectedFile.value = file
     submitMessage.value = null
   }
+}
+
+const clearFileInput = () => {
+  selectedFile.value = null
+  // Force re-render of file input to clear selection
+  fileInputKey.value++
 }
 
 const handleSubmit = async () => {
@@ -158,9 +166,8 @@ const handleSubmit = async () => {
       problem.value.rendered_statement = md.render(problem.value.statement)
     }
     
-    // Clear file input
-    selectedFile.value = null
-    fileInputKey.value++
+    // Clear file input for next submission
+    clearFileInput()
   } catch (err) {
     console.error('Submission error:', err)
     submitMessage.value = { type: 'error', text: err.message || 'Ошибка при отправке файла' }
