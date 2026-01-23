@@ -200,6 +200,7 @@
 import { ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/UserStore'
+import '@/assets/styles/form.css'
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -286,7 +287,6 @@ const handleErrors = (error) => {
 </script>
 
 <style scoped>
-import '@/assets/styles/form.css'
 
 .auth-page {
     min-height: 100vh;
