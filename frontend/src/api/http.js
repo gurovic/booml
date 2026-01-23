@@ -43,6 +43,8 @@ function getCookie(name) {
   return cookieValue;
 }
 
+export { getCookie };
+
 export async function apiPost(endpoint, data = {}) {
   const csrftoken = getCookie('csrftoken');
   const url = endpoint
