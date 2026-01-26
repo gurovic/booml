@@ -7,8 +7,17 @@
         <div v-if="isLoading" class="state">Loading contest...</div>
         <div v-else-if="error" class="state state--error">{{ error }}</div>
         <template v-else-if="contest">
+          <div class="contest-header">
+            <h2 class="contest-title">{{ contestTitle }}</h2>
+            <router-link
+              :to="leaderboardRoute"
+              class="button button--secondary contest-link"
+            >
+              Leaderboard
+            </router-link>
+          </div>
           <UiLinkList
-            :title="listTitle"
+            :title="problemsTitle"
             :items="problemItems"
           />
           <p v-if="!problemItems.length" class="note">This contest has no problems yet.</p>
@@ -34,10 +43,12 @@ const contest = ref(null)
 const isLoading = ref(false)
 const error = ref('')
 
-const listTitle = computed(() => {
+const contestTitle = computed(() => {
   if (contest.value?.title) return contest.value.title
   return hasValidId.value ? `Contest ${contestId.value}` : 'Contest'
 })
+
+const problemsTitle = computed(() => (contest.value ? 'Problems' : contestTitle.value))
 
 const problemItems = computed(() => {
   const problems = Array.isArray(contest.value?.problems) ? contest.value.problems : []
@@ -47,6 +58,12 @@ const problemItems = computed(() => {
       text: problem.title || `Problem ${problem.id}`,
       route: { name: 'problem', params: { id: problem.id }, query: { title: problem.title } },
     }))
+})
+
+const leaderboardRoute = computed(() => {
+  const title = contest.value?.title
+  const query = title ? { title } : {}
+  return { name: 'contest-leaderboard', params: { id: contestId.value }, query }
 })
 
 const loadContest = async () => {
@@ -102,6 +119,11 @@ watch(contestId, () => {
   font-size: 15px;
 }
 
+.state--error {
+  border-color: var(--color-border-danger);
+  color: var(--color-text-danger);
+}
+
 .note {
   margin: 0;
   padding: 10px 12px;
@@ -110,6 +132,26 @@ watch(contestId, () => {
   border: 1px solid var(--color-border-light);
   font-size: 14px;
   color: var(--color-text-muted);
+}
+
+.contest-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 4px 4px 0;
+}
+
+.contest-title {
+  margin: 0;
+}
+
+.contest-link {
+  display: inline-flex;
+  align-items: center;
+  color: #1E264A;
+  text-decoration: none;
 }
 
 @media (min-width: 900px) {
