@@ -64,7 +64,7 @@
                 <a class="problem__submission-href" href="#">
                   <p>{{ submission.submitted_at }}</p>
                   <p>{{ submission.status }}</p>
-                  <p>{{ formatMetric(submission.metric ?? submission.metrics) }}</p>
+                  <p>{{ roundMetric(submission.metric) }}</p>
                 </a>
               </li>
             </ul>
@@ -124,42 +124,8 @@ const availableFiles = computed(() => {
 
 const roundMetric = (value) => {
   if (value == null) return '-'
-  const numeric = Number(value)
-  if (Number.isNaN(numeric)) return '-'
-  return numeric.toFixed(3)
+  return value.toFixed(3)
 }
-
-const extractMetricValue = (metric) => {
-  if (metric == null) return null
-  if (typeof metric === 'number') return metric
-  if (typeof metric === 'string') {
-    const numeric = Number(metric)
-    return Number.isNaN(numeric) ? null : numeric
-  }
-  if (Array.isArray(metric)) {
-    for (const value of metric) {
-      const candidate = extractMetricValue(value)
-      if (candidate != null) return candidate
-    }
-    return null
-  }
-  if (typeof metric === 'object') {
-    const priorityKeys = ['metric', 'metric_score', 'score', 'accuracy', 'f1', 'auc', 'rmse', 'mse']
-    for (const key of priorityKeys) {
-      if (Object.prototype.hasOwnProperty.call(metric, key)) {
-        const candidate = extractMetricValue(metric[key])
-        if (candidate != null) return candidate
-      }
-    }
-    for (const value of Object.values(metric)) {
-      const candidate = extractMetricValue(value)
-      if (candidate != null) return candidate
-    }
-  }
-  return null
-}
-
-const formatMetric = (metric) => roundMetric(extractMetricValue(metric))
 
 const handleFileChange = (event) => {
   const file = event.target.files[0]
@@ -180,7 +146,7 @@ const handleFileChange = (event) => {
 const clearFileInput = () => {
   selectedFile.value = null
   // Force re-render of file input to clear selection
-  fileInputKey.value++
+  fileInputKey.value = (fileInputKey.value + 1) % 1000
 }
 
 const handleSubmit = async () => {

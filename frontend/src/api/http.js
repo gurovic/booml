@@ -55,11 +55,16 @@ async function ensureCsrfToken() {
       credentials: 'include',
     });
     if (!res.ok) {
+      console.error('Failed to fetch CSRF token: non-OK response', {
+        status: res.status,
+        statusText: res.statusText,
+      });
       return null;
     }
     const data = await res.json();
     return data.csrfToken || getCookie('csrftoken');
-  } catch {
+  } catch (error) {
+    console.error('Failed to fetch CSRF token: network or parsing error', error);
     return null;
   }
 }

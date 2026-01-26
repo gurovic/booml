@@ -139,8 +139,6 @@ def problem_detail_api(request):
             "sample_submission": get_file_url(problem_data.sample_submission_file)
         }
 
-    submissions = []
-
     if request.user.is_authenticated:
         raw_submissions = (
             Submission.objects

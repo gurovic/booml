@@ -18,7 +18,7 @@ export const useUserStore = defineStore('user', () => {
 
 
     const isAuthenticated = computed(() => {
-        return !!currentUser.value
+        return !!(currentUser.value && currentUser.value.accessToken)
     })
 
     async function loginUser(username, password) {
@@ -70,8 +70,8 @@ export const useUserStore = defineStore('user', () => {
             })
 
             if (res.success) {
-                const accessToken = res?.tokens?.access || res?.user?.access || null
-                const refreshToken = res?.tokens?.refresh || res?.user?.refresh || null
+                const accessToken = res?.tokens?.access || null
+                const refreshToken = res?.tokens?.refresh || null
                 currentUser.value = {
                     'id': res.user.id,
                     'username': res.user.username,
@@ -127,16 +127,18 @@ export const useUserStore = defineStore('user', () => {
                 } else {
                     currentUser.value = {
                         ...currentUser.value,
-                        username: res?.user?.username ?? currentUser.value.username,
-                        email: res?.user?.email ?? currentUser.value.email,
+                        username: res?.user?.username || currentUser.value.username,
+                        email: res?.user?.email || currentUser.value.email,
                     }
                 }
             } else {
+                // Clear all fields when not authenticated
                 currentUser.value = null
             }
             return res
         } catch (err) {
             console.error('Failed to check authorisation user:', err)
+            currentUser.value = null
             return { is_authenticated: false }
         }
     }

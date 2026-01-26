@@ -25,8 +25,21 @@ export async function submitSolution(problemId, file) {
           errorMessage = errorData.message
         } else if (errorData.detail) {
           errorMessage = errorData.detail
-        } else if (typeof errorData === 'object') {
-          errorMessage = JSON.stringify(errorData)
+        } else if (typeof errorData === 'object' && errorData !== null) {
+          // Extract first error message from validation errors
+          const values = Object.values(errorData)
+          if (values.length > 0) {
+            const firstVal = values[0]
+            if (Array.isArray(firstVal) && firstVal.length > 0) {
+              errorMessage = String(firstVal[0])
+            } else if (typeof firstVal === 'string') {
+              errorMessage = firstVal
+            } else {
+              errorMessage = JSON.stringify(errorData)
+            }
+          } else {
+            errorMessage = JSON.stringify(errorData)
+          }
         } else {
           errorMessage = errorText
         }
