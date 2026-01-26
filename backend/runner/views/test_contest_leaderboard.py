@@ -10,7 +10,11 @@ from django.utils import timezone
 
 from runner.models import Contest, Course, CourseParticipant, Problem, ProblemDescriptor, Section, Submission
 from runner.services.section_service import SectionCreateInput, create_section
-from runner.views.contest_leaderboard import build_contest_problem_leaderboards, contest_problem_leaderboard
+from runner.views.contest_leaderboard import (
+    build_contest_overall_leaderboard,
+    build_contest_problem_leaderboards,
+    contest_problem_leaderboard,
+)
 
 User = get_user_model()
 
@@ -157,3 +161,80 @@ class ContestLeaderboardViewTests(TestCase):
         entries = leaderboards[0]["entries"]
         user_ids = {entry["user_id"] for entry in entries}
         self.assertEqual(user_ids, {self.bob.id})
+
+    def test_overall_leaderboard_ioi_scores(self):
+        self._create_submission(self.alice, self.problem_rmse, "rmse", 0.4)
+        self._create_submission(self.bob, self.problem_rmse, "rmse", 0.2)
+        self._create_submission(self.alice, self.problem_accuracy, "accuracy", 0.9)
+        self._create_submission(self.bob, self.problem_accuracy, "accuracy", 0.9)
+
+        overall = build_contest_overall_leaderboard(self.contest)
+        entries = {entry["user_id"]: entry for entry in overall["entries"]}
+
+        self.assertEqual(entries[self.bob.id]["rank"], 1)
+        self.assertEqual(entries[self.alice.id]["rank"], 2)
+        self.assertIsNone(entries[self.charlie.id]["rank"])
+        self.assertAlmostEqual(entries[self.bob.id]["total_score"], 0.7, places=6)
+        self.assertAlmostEqual(entries[self.alice.id]["total_score"], 0.5, places=6)
+
+    def test_overall_leaderboard_icpc_penalty(self):
+        start_time = timezone.now() - timedelta(hours=2)
+        icpc_contest = Contest.objects.create(
+            title="ICPC Contest",
+            course=self.course,
+            created_by=self.teacher,
+            is_published=True,
+            approval_status=Contest.ApprovalStatus.APPROVED,
+            scoring=Contest.Scoring.ICPC,
+            start_time=start_time,
+        )
+        icpc_contest.problems.add(self.problem_rmse, self.problem_accuracy)
+
+        alice_fail = self._create_submission(
+            self.alice,
+            self.problem_rmse,
+            "rmse",
+            1.0,
+            status=Submission.STATUS_FAILED,
+        )
+        alice_ok = self._create_submission(
+            self.alice,
+            self.problem_rmse,
+            "rmse",
+            0.5,
+        )
+        alice_second = self._create_submission(
+            self.alice,
+            self.problem_accuracy,
+            "accuracy",
+            0.8,
+        )
+        bob_ok = self._create_submission(
+            self.bob,
+            self.problem_rmse,
+            "rmse",
+            0.3,
+        )
+
+        Submission.objects.filter(pk=alice_fail.pk).update(
+            submitted_at=start_time + timedelta(minutes=10)
+        )
+        Submission.objects.filter(pk=alice_ok.pk).update(
+            submitted_at=start_time + timedelta(minutes=30)
+        )
+        Submission.objects.filter(pk=alice_second.pk).update(
+            submitted_at=start_time + timedelta(minutes=70)
+        )
+        Submission.objects.filter(pk=bob_ok.pk).update(
+            submitted_at=start_time + timedelta(minutes=20)
+        )
+
+        overall = build_contest_overall_leaderboard(icpc_contest)
+        entries = {entry["user_id"]: entry for entry in overall["entries"]}
+
+        self.assertEqual(entries[self.alice.id]["solved_count"], 2)
+        self.assertEqual(entries[self.bob.id]["solved_count"], 1)
+        self.assertEqual(entries[self.alice.id]["penalty_minutes"], 120)
+        self.assertEqual(entries[self.bob.id]["penalty_minutes"], 20)
+        self.assertEqual(entries[self.alice.id]["rank"], 1)
+        self.assertEqual(entries[self.bob.id]["rank"], 2)

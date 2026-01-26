@@ -23,3 +23,15 @@ export async function getContest(contestId) {
     throw err
   }
 }
+
+export async function getContestLeaderboard(contestId) {
+  if (contestId == null || contestId === '') {
+    return null
+  }
+  try {
+    return await apiGet(`backend/contest/${contestId}/leaderboard/`)
+  } catch (err) {
+    console.error('Failed to load contest leaderboard.', err)
+    throw err
+  }
+}

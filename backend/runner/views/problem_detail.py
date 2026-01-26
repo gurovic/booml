@@ -119,12 +119,12 @@ def problem_detail_api(request):
     descriptor = ProblemDescriptor.objects.filter(problem=problem).first()
 
     def get_file_url(file):
-        file_url = None
-        if file:
-            file_url = request.build_absolute_uri(
-                file.url
-            )
-        return file_url
+        """Return relative URL path for frontend proxy to handle."""
+        if not file:
+            return None
+        # Return relative URL (e.g., /media/problem_data/1/train/file.csv)
+        # The frontend proxy will route this to the backend
+        return file.url
     
     file_urls = {
         "train": None,

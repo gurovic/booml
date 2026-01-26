@@ -23,6 +23,10 @@ module.exports = defineConfig({
 
         changeOrigin: true,
       },
+      '/media': {
+        target: process.env.VUE_APP_BACKEND_URL || 'http://127.0.0.1:8100',
+        changeOrigin: true,
+      },
     },
   }
 })
