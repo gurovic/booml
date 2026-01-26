@@ -8,7 +8,7 @@ from ..models.problem_data import ProblemData
 from ..models.problem_desriptor import ProblemDescriptor
 from ..models.submission import Submission
 from ..services import enqueue_submission_for_evaluation, validation_service
-from .submissions import submission_list
+from .submissions import submission_list, _primary_metric
 from django.http import JsonResponse
 
 
@@ -139,8 +139,6 @@ def problem_detail_api(request):
             "sample_submission": get_file_url(problem_data.sample_submission_file)
         }
 
-    submissions = []
-
     if request.user.is_authenticated:
         raw_submissions = (
             Submission.objects
@@ -148,15 +146,16 @@ def problem_detail_api(request):
             .order_by("-submitted_at")[:5]
         )
 
-        submissions = [
-            {
+        submissions = []
+        for submission in raw_submissions:
+            metric_value = _primary_metric(submission.metrics)
+            submissions.append({
                 "id": submission.id,
                 "submitted_at": submission.submitted_at.strftime("%H:%M"),
                 "status": submission.status,
-                "metric": submission.metrics
-            }
-            for submission in raw_submissions
-        ]
+                "metric": metric_value,
+                "metrics": submission.metrics,
+            })
 
     response = {
         "id": problem.id,

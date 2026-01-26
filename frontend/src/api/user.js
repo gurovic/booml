@@ -1,4 +1,4 @@
-import { apiPost } from './http'
+import { apiGet, apiPost } from './http'
 
 export function login(credentials){
     return apiPost('backend/login/', credentials)
@@ -13,5 +13,5 @@ export function logout(){
 }
 
 export function checkAuth(){
-    return apiPost('backend/check-auth/')
+    return apiGet('backend/check-auth/')
 }

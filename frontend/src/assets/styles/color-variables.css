@@ -27,5 +27,14 @@
   /* ===== Borders / UI ===== */
   --color-border-default: #E0E3F0;
   --color-border-light: #EEF0FA;
+
+  /* ===== Feedback / Messages ===== */
+  --color-success-bg: #d1fae5;
+  --color-success-text: #065f46;
+  --color-success-border: #a7f3d0;
+
+  --color-error-bg: #fee2e2;
+  --color-error-text: #991b1b;
+  --color-error-border: #fecaca;
   --color-border-danger: #F1B6B4;
 }

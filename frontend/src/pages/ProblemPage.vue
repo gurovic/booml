@@ -8,6 +8,34 @@
           <div class="problem__text" v-html="problem.rendered_statement"></div>
         </div>
         <ul class="problem__menu">
+          <li class="problem__submit problem__menu-item" v-if="userStore.isAuthenticated">
+            <h2 class="problem__submit-title problem__item-title">Отправить решение</h2>
+            <div class="problem__submit-form">
+              <input 
+                type="file" 
+                :key="fileInputKey"
+                accept=".csv"
+                @change="handleFileChange"
+                class="problem__file-input"
+                id="file-input"
+              />
+              <label for="file-input" class="problem__file-label">
+                <span v-if="!selectedFile">Выбрать файл</span>
+                <span v-else>{{ selectedFile.name }}</span>
+              </label>
+              <button 
+                @click="handleSubmit"
+                :disabled="!selectedFile || isSubmitting"
+                class="problem__submit-button button button--primary"
+              >
+                <span v-if="!isSubmitting">Отправить</span>
+                <span v-else>Отправка...</span>
+              </button>
+              <div v-if="submitMessage" :class="['problem__submit-message', `problem__submit-message--${submitMessage.type}`]">
+                {{ submitMessage.text }}
+              </div>
+            </div>
+          </li>
           <li class="problem__files problem__menu-item" v-if="availableFiles.length > 0">
             <h2 class="problem__files-title problem__item-title">Файлы</h2>
             <ul class="problem__files-list">
@@ -36,7 +64,7 @@
                 <a class="problem__submission-href" href="#">
                   <p>{{ submission.submitted_at }}</p>
                   <p>{{ submission.status }}</p>
-                  <p>{{ roundMetric(submission.metric.metric_score) }}</p>
+                  <p>{{ roundMetric(submission.metric) }}</p>
                 </a>
               </li>
             </ul>
@@ -54,6 +82,8 @@
 import { ref, onMounted, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { getProblem } from '@/api/problem'
+import { submitSolution } from '@/api/submission'
+import { useUserStore } from '@/stores/UserStore'
 import MarkdownIt from 'markdown-it'
 import mkKatex from 'markdown-it-katex'
 import UiHeader from '@/components/ui/UiHeader.vue'
@@ -64,8 +94,13 @@ const md = new MarkdownIt({
 }).use(mkKatex)
 
 const route = useRoute()
+const userStore = useUserStore()
 
 let problem = ref(null)
+let selectedFile = ref(null)
+let isSubmitting = ref(false)
+let submitMessage = ref(null)
+let fileInputKey = ref(0)
 
 onMounted(async () => {
   try {
@@ -81,7 +116,7 @@ onMounted(async () => {
 })
 
 const availableFiles = computed(() => {
-  if (!problem.value.files) return []
+  if (!problem.value || !problem.value.files) return []
   return Object.entries(problem.value.files)
     .filter(([, url]) => url)
     .map(([name, url]) => ({ name, url }))
@@ -89,7 +124,67 @@ const availableFiles = computed(() => {
 
 const roundMetric = (value) => {
   if (value == null) return '-'
-  return Number(value).toFixed(3)
+  return value.toFixed(3)
+}
+
+const handleFileChange = (event) => {
+  const file = event.target.files[0]
+  if (file) {
+    // Note: Extension validation is done client-side for UX;
+    // server-side validation provides actual security
+    if (!file.name.toLowerCase().endsWith('.csv')) {
+      submitMessage.value = { type: 'error', text: 'Пожалуйста, выберите CSV файл' }
+      selectedFile.value = null
+      clearFileInput()
+      return
+    }
+    selectedFile.value = file
+    submitMessage.value = null
+  }
+}
+
+const clearFileInput = () => {
+  selectedFile.value = null
+  // Force re-render of file input to clear selection
+  fileInputKey.value = (fileInputKey.value + 1) % 1000
+}
+
+const handleSubmit = async () => {
+  if (!selectedFile.value) {
+    submitMessage.value = { type: 'error', text: 'Пожалуйста, выберите файл' }
+    return
+  }
+
+  isSubmitting.value = true
+  submitMessage.value = null
+
+  try {
+    await submitSolution(problem.value.id, selectedFile.value)
+    submitMessage.value = { type: 'success', text: 'Файл успешно отправлен на проверку!' }
+    
+    // Refresh problem data to show new submission
+    try {
+      const res = await getProblem(route.params.id)
+      problem.value = res
+      if (problem.value != null) {
+        problem.value.rendered_statement = md.render(problem.value.statement)
+      }
+    } catch (refreshError) {
+      console.warn('Failed to refresh submissions after upload:', refreshError)
+      submitMessage.value = {
+        type: 'success',
+        text: 'Файл отправлен. Не удалось обновить историю посылок — обновите страницу.'
+      }
+    }
+    
+    // Clear file input for next submission
+    clearFileInput()
+  } catch (err) {
+    console.error('Submission error:', err)
+    submitMessage.value = { type: 'error', text: err.message || 'Ошибка при отправке файла' }
+  } finally {
+    isSubmitting.value = false
+  }
 }
 </script>
 
@@ -246,5 +341,63 @@ const roundMetric = (value) => {
 
 .problem__submission {
   width: 100%;
+}
+
+.problem__submit-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.problem__file-input {
+  display: none;
+}
+
+.problem__file-label {
+  display: block;
+  padding: 12px 20px;
+  background-color: var(--color-button-secondary);
+  color: var(--color-button-text-secondary);
+  border-radius: 10px;
+  text-align: center;
+  cursor: pointer;
+  transition: opacity 0.2s ease;
+  font-weight: 500;
+}
+
+.problem__file-label:hover {
+  opacity: 0.9;
+}
+
+.problem__submit-button {
+  width: 100%;
+  padding: 12px 20px;
+  border: none;
+  font-weight: 500;
+  transition: opacity 0.2s ease;
+}
+
+.problem__submit-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.problem__submit-message {
+  padding: 10px 15px;
+  border-radius: 8px;
+  font-size: 14px;
+  text-align: center;
+}
+
+.problem__submit-message--success {
+  background-color: var(--color-success-bg);
+  color: var(--color-success-text);
+  border: 1px solid var(--color-success-border);
+}
+
+.problem__submit-message--error {
+  background-color: var(--color-error-bg);
+  color: var(--color-error-text);
+  border: 1px solid var(--color-error-border);
 }
 </style>
