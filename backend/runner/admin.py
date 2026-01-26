@@ -1,4 +1,5 @@
 from django.contrib import admin
+from django.utils import timezone
 
 from .models import (
     Report,
@@ -99,7 +100,6 @@ class ContestAdmin(admin.ModelAdmin):
         if obj.is_published and obj.approval_status == Contest.ApprovalStatus.PENDING:
             obj.approval_status = Contest.ApprovalStatus.APPROVED
             obj.approved_by = request.user
-            from django.utils import timezone
             obj.approved_at = timezone.now()
         super().save_model(request, obj, form, change)
 
