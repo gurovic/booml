@@ -5,6 +5,7 @@ import HomePage from '@/pages/HomePage.vue'
 import SectionPage from '@/pages/SectionPage.vue'
 import CoursePage from '@/pages/CoursePage.vue'
 import ContestPage from '@/pages/ContestPage.vue'
+import ContestLeaderboardPage from '@/pages/ContestLeaderboardPage.vue'
 import LoginPage from '@/pages/LoginPage.vue'
 import RegisterPage from '@/pages/RegisterPage.vue'
 
@@ -40,6 +41,11 @@ const router = createRouter({
       path: '/contest/:id',
       name: 'contest',
       component: ContestPage,
+    },
+    {
+      path: '/contest/:id/leaderboard',
+      name: 'contest-leaderboard',
+      component: ContestLeaderboardPage,
     },{
       path: '/login',
       name: 'login',

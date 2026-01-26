@@ -108,51 +108,74 @@ def _collect_contest_participants(contest: Contest) -> List[Dict[str, Any]]:
     return list(participants.values())
 
 
-def build_contest_problem_leaderboards(contest: Contest) -> List[Dict[str, Any]]:
+def _build_contest_leaderboard_data(contest: Contest) -> Dict[str, Any]:
     problems = list(contest.problems.all())
-    if not problems:
-        return []
-
-    participants = _collect_contest_participants(contest)
-    participant_ids = [participant["id"] for participant in participants]
-
-    problem_ids = [problem.id for problem in problems]
-    descriptors = {
-        descriptor.problem_id: descriptor
-        for descriptor in ProblemDescriptor.objects.filter(problem_id__in=problem_ids)
-    }
+    participants = _collect_contest_participants(contest) if problems else []
     problem_settings: Dict[int, Dict[str, Any]] = {}
-    for problem in problems:
-        descriptor = descriptors.get(problem.id)
-        metric_name = ""
-        if descriptor is not None:
-            metric_name = (descriptor.metric or descriptor.metric_name or "").strip()
-        if not metric_name:
-            metric_name = "metric"
-        problem_settings[problem.id] = {
-            "metric": metric_name,
-            "lower_is_better": _metric_is_lower_better(metric_name),
+
+    if problems:
+        problem_ids = [problem.id for problem in problems]
+        descriptors = {
+            descriptor.problem_id: descriptor
+            for descriptor in ProblemDescriptor.objects.filter(problem_id__in=problem_ids)
         }
+        for problem in problems:
+            descriptor = descriptors.get(problem.id)
+            metric_name = ""
+            if descriptor is not None:
+                metric_name = (descriptor.metric or descriptor.metric_name or "").strip()
+            if not metric_name:
+                metric_name = "metric"
+            problem_settings[problem.id] = {
+                "metric": metric_name,
+                "lower_is_better": _metric_is_lower_better(metric_name),
+            }
 
     attempts: Dict[Tuple[int, int], int] = defaultdict(int)
     best_results: Dict[Tuple[int, int], Dict[str, Any]] = {}
-    if participant_ids:
-        submissions = Submission.objects.filter(
-            problem_id__in=problem_ids,
-            user_id__in=participant_ids,
-        ).values(
-            "id",
-            "problem_id",
-            "user_id",
-            "metrics",
-            "status",
-            "submitted_at",
+    first_valid: Dict[Tuple[int, int], Dict[str, Any]] = {}
+    wrong_attempts_before: Dict[Tuple[int, int], int] = defaultdict(int)
+    earliest_submission_at = None
+
+    participant_ids = [participant["id"] for participant in participants]
+    if problems and participant_ids:
+        problem_ids = [problem.id for problem in problems]
+        submissions = (
+            Submission.objects.filter(
+                problem_id__in=problem_ids,
+                user_id__in=participant_ids,
+            )
+            .values(
+                "id",
+                "problem_id",
+                "user_id",
+                "metrics",
+                "status",
+                "submitted_at",
+            )
+            .order_by("submitted_at", "id")
         )
         for row in submissions.iterator(chunk_size=1000):
             key = (row["problem_id"], row["user_id"])
             attempts[key] += 1
-            if row["status"] not in _VALID_STATUSES:
+            submitted_at = row["submitted_at"]
+            if submitted_at is not None and (
+                earliest_submission_at is None or submitted_at < earliest_submission_at
+            ):
+                earliest_submission_at = submitted_at
+
+            is_valid = row["status"] in _VALID_STATUSES
+            if not is_valid:
+                if key not in first_valid:
+                    wrong_attempts_before[key] += 1
                 continue
+
+            if key not in first_valid:
+                first_valid[key] = {
+                    "submission_id": row["id"],
+                    "submitted_at": submitted_at,
+                }
+
             settings = problem_settings.get(row["problem_id"])
             if settings is None:
                 continue
@@ -162,7 +185,7 @@ def build_contest_problem_leaderboards(contest: Contest) -> List[Dict[str, Any]]
             current = best_results.get(key)
             if current is None or _is_better(
                 metric,
-                row["submitted_at"],
+                submitted_at,
                 current["metric"],
                 current["submitted_at"],
                 settings["lower_is_better"],
@@ -170,8 +193,34 @@ def build_contest_problem_leaderboards(contest: Contest) -> List[Dict[str, Any]]
                 best_results[key] = {
                     "metric": metric,
                     "submission_id": row["id"],
-                    "submitted_at": row["submitted_at"],
+                    "submitted_at": submitted_at,
                 }
+
+    return {
+        "problems": problems,
+        "participants": participants,
+        "problem_settings": problem_settings,
+        "attempts": attempts,
+        "best_results": best_results,
+        "first_valid": first_valid,
+        "wrong_attempts_before": wrong_attempts_before,
+        "earliest_submission_at": earliest_submission_at,
+    }
+
+
+def build_contest_problem_leaderboards(
+    contest: Contest,
+    data: Dict[str, Any] | None = None,
+) -> List[Dict[str, Any]]:
+    data = data or _build_contest_leaderboard_data(contest)
+    problems = data["problems"]
+    if not problems:
+        return []
+
+    participants = data["participants"]
+    problem_settings = data["problem_settings"]
+    attempts = data["attempts"]
+    best_results = data["best_results"]
 
     leaderboards: List[Dict[str, Any]] = []
     for problem in problems:
@@ -238,6 +287,151 @@ def build_contest_problem_leaderboards(contest: Contest) -> List[Dict[str, Any]]
     return leaderboards
 
 
+def build_contest_overall_leaderboard(
+    contest: Contest,
+    data: Dict[str, Any] | None = None,
+) -> Dict[str, Any]:
+    data = data or _build_contest_leaderboard_data(contest)
+    problems = data["problems"]
+    if not problems:
+        return {"scoring": contest.scoring, "problems_count": 0, "entries": []}
+
+    participants = data["participants"]
+    problem_settings = data["problem_settings"]
+    best_results = data["best_results"]
+    first_valid = data["first_valid"]
+    wrong_attempts_before = data["wrong_attempts_before"]
+
+    start_reference = contest.start_time or data["earliest_submission_at"]
+    now = timezone.now()
+    fallback_time = datetime.max.replace(tzinfo=now.tzinfo) if timezone.is_aware(now) else datetime.max
+
+    entries: List[Dict[str, Any]] = []
+    for participant in participants:
+        user_id = participant["id"]
+        solved_count = 0
+        total_score = 0.0
+        penalty_minutes = 0
+        last_time = None
+
+        if contest.scoring == Contest.Scoring.ICPC:
+            for problem in problems:
+                key = (problem.id, user_id)
+                solved = first_valid.get(key)
+                if solved is None:
+                    continue
+                solved_count += 1
+                if start_reference is not None and solved["submitted_at"] is not None:
+                    delta = solved["submitted_at"] - start_reference
+                    delta_minutes = max(int(delta.total_seconds() // 60), 0)
+                else:
+                    delta_minutes = 0
+                penalty_minutes += delta_minutes + wrong_attempts_before.get(key, 0) * 20
+                if solved["submitted_at"] is not None:
+                    last_time = solved["submitted_at"] if last_time is None else max(last_time, solved["submitted_at"])
+            total_score_value = float(solved_count) if solved_count else None
+            entry = {
+                "user_id": user_id,
+                "username": participant["username"],
+                "role": participant.get("role"),
+                "is_owner": participant.get("is_owner", False),
+                "solved_count": solved_count,
+                "penalty_minutes": penalty_minutes if solved_count else None,
+                "total_score": total_score_value,
+                "_sort_time": last_time or fallback_time,
+            }
+        else:
+            for problem in problems:
+                key = (problem.id, user_id)
+                best = best_results.get(key)
+                if best is None:
+                    continue
+                solved_count += 1
+                settings = problem_settings.get(problem.id, {"lower_is_better": False})
+                metric = best["metric"]
+                score = -metric if settings["lower_is_better"] else metric
+                total_score += score
+                if best["submitted_at"] is not None:
+                    last_time = best["submitted_at"] if last_time is None else max(last_time, best["submitted_at"])
+            if contest.scoring == Contest.Scoring.PARTIAL and problems:
+                total_score = total_score / len(problems)
+            total_score_value = total_score if solved_count else None
+            entry = {
+                "user_id": user_id,
+                "username": participant["username"],
+                "role": participant.get("role"),
+                "is_owner": participant.get("is_owner", False),
+                "solved_count": solved_count,
+                "penalty_minutes": None,
+                "total_score": total_score_value,
+                "_sort_time": last_time or fallback_time,
+            }
+
+        entries.append(entry)
+
+    if contest.scoring == Contest.Scoring.ICPC:
+        def _sort_key(entry: Dict[str, Any]) -> Tuple[int, int, int, datetime, int]:
+            if entry["solved_count"] == 0:
+                return (1, 0, 0, fallback_time, entry["user_id"])
+            return (
+                0,
+                -entry["solved_count"],
+                entry["penalty_minutes"] or 0,
+                entry["_sort_time"],
+                entry["user_id"],
+            )
+
+        entries.sort(key=_sort_key)
+        rank = 0
+        last_score = None
+        for entry in entries:
+            if entry["solved_count"] == 0:
+                entry["rank"] = None
+                entry.pop("_sort_time", None)
+                continue
+            score_key = (entry["solved_count"], entry["penalty_minutes"])
+            if last_score is None or score_key != last_score:
+                rank += 1
+                last_score = score_key
+            entry["rank"] = rank
+            entry.pop("_sort_time", None)
+    else:
+        def _sort_key(entry: Dict[str, Any]) -> Tuple[int, float, datetime, int]:
+            total = entry["total_score"]
+            if total is None:
+                return (1, 0.0, fallback_time, entry["user_id"])
+            return (0, -total, entry["_sort_time"], entry["user_id"])
+
+        entries.sort(key=_sort_key)
+        rank = 0
+        last_score = None
+        for entry in entries:
+            total = entry["total_score"]
+            if total is None:
+                entry["rank"] = None
+                entry.pop("_sort_time", None)
+                continue
+            if last_score is None or total != last_score:
+                rank += 1
+                last_score = total
+            entry["rank"] = rank
+            entry.pop("_sort_time", None)
+
+    return {
+        "scoring": contest.scoring,
+        "problems_count": len(problems),
+        "entries": entries,
+    }
+
+
+def build_contest_leaderboards(contest: Contest) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    data = _build_contest_leaderboard_data(contest)
+    return (
+        build_contest_problem_leaderboards(contest, data=data),
+        build_contest_overall_leaderboard(contest, data=data),
+    )
+
+
 @login_required
 def contest_problem_leaderboard(request, contest_id: int):
     if request.method != "GET":
@@ -253,11 +447,12 @@ def contest_problem_leaderboard(request, contest_id: int):
     if not contest.is_visible_to(request.user):
         return JsonResponse({"detail": "Forbidden"}, status=403)
 
-    leaderboards = build_contest_problem_leaderboards(contest)
+    leaderboards, overall_leaderboard = build_contest_leaderboards(contest)
     return JsonResponse(
         {
             "contest_id": contest.id,
             "leaderboards": leaderboards,
+            "overall_leaderboard": overall_leaderboard,
         },
         status=200,
     )
