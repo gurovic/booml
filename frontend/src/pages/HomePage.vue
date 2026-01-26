@@ -109,8 +109,8 @@ const toggleNested = id => {
 }
 
 const goToCourse = (item) => {
-  const hasChildren = Array.isArray(item?.children) && item.children.length > 0
-  const name = hasChildren ? 'section' : 'course'
+  // Use the type field from API to determine route, fallback to checking children
+  const name = item.type === 'course' ? 'course' : 'section'
   router.push({ name, params: { id: item.id }, query: { title: item.title } })
 }
 

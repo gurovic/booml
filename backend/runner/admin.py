@@ -78,6 +78,8 @@ class ContestAdmin(admin.ModelAdmin):
         "title",
         "course",
         "is_published",
+        "approval_status",
+        "access_type",
         "is_rated",
         "scoring",
         "registration_type",
@@ -87,9 +89,19 @@ class ContestAdmin(admin.ModelAdmin):
         "created_by",
         "created_at",
     )
-    list_filter = ("is_published", "is_rated", "scoring", "registration_type", "status", "course")
+    list_filter = ("is_published", "approval_status", "access_type", "is_rated", "scoring", "registration_type", "status", "course")
     search_fields = ("title", "course__title", "created_by__username", "source")
-    filter_horizontal = ("problems",)
+    filter_horizontal = ("problems", "allowed_participants")
+    list_editable = ("is_published", "approval_status", "access_type")
+
+    def save_model(self, request, obj, form, change):
+        # Auto-approve contests when admin publishes them
+        if obj.is_published and obj.approval_status == Contest.ApprovalStatus.PENDING:
+            obj.approval_status = Contest.ApprovalStatus.APPROVED
+            obj.approved_by = request.user
+            from django.utils import timezone
+            obj.approved_at = timezone.now()
+        super().save_model(request, obj, form, change)
 
 
 @admin.register(PreValidation)
