@@ -43,16 +43,37 @@ function getCookie(name) {
   return cookieValue;
 }
 
-export { getCookie };
+async function ensureCsrfToken() {
+  const existing = getCookie('csrftoken');
+  if (existing) {
+    return existing;
+  }
+
+  try {
+    const res = await fetch('/backend/csrf-token/', {
+      method: 'GET',
+      credentials: 'include',
+    });
+    if (!res.ok) {
+      return null;
+    }
+    const data = await res.json();
+    return data.csrfToken || getCookie('csrftoken');
+  } catch {
+    return null;
+  }
+}
+
+export { getCookie, ensureCsrfToken };
 
 export async function apiPost(endpoint, data = {}) {
-  const csrftoken = getCookie('csrftoken');
+  const csrftoken = await ensureCsrfToken();
   const url = endpoint
   const res = await fetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'X-CSRFToken': csrftoken
+      ...(csrftoken ? { 'X-CSRFToken': csrftoken } : {})
     },
     body: JSON.stringify({
       ...data

@@ -18,7 +18,7 @@ export const useUserStore = defineStore('user', () => {
 
 
     const isAuthenticated = computed(() => {
-        return !!currentUser.value && !!currentUser.value.accessToken
+        return !!currentUser.value
     })
 
     async function loginUser(username, password) {
@@ -29,13 +29,15 @@ export const useUserStore = defineStore('user', () => {
             })
 
             if (res.success) {
+                const accessToken = res?.tokens?.access || res?.user?.access || null
+                const refreshToken = res?.tokens?.refresh || res?.user?.refresh || null
                 currentUser.value = {
                     'id': res.user.id,
                     'username': res.user.username,
                     'email': res.user.email,
                     'role': res.user.role,
-                    'accessToken': res.user.access,
-                    'refreshToken': res.user.refresh,
+                    'accessToken': accessToken,
+                    'refreshToken': refreshToken,
                 }
 
                 return {
@@ -68,13 +70,15 @@ export const useUserStore = defineStore('user', () => {
             })
 
             if (res.success) {
+                const accessToken = res?.tokens?.access || res?.user?.access || null
+                const refreshToken = res?.tokens?.refresh || res?.user?.refresh || null
                 currentUser.value = {
                     'id': res.user.id,
                     'username': res.user.username,
                     'email': res.user.email,
                     'role': res.user.role,
-                    'accessToken': res.user.access,
-                    'refreshToken': res.user.refresh,
+                    'accessToken': accessToken,
+                    'refreshToken': refreshToken,
                 }
 
                 return {
@@ -114,6 +118,22 @@ export const useUserStore = defineStore('user', () => {
     async function checkAuth() {
         try {
             const res = await user.checkAuth()
+            if (res?.is_authenticated) {
+                if (currentUser.value == null) {
+                    currentUser.value = {
+                        username: res?.user?.username || null,
+                        email: res?.user?.email || null,
+                    }
+                } else {
+                    currentUser.value = {
+                        ...currentUser.value,
+                        username: res?.user?.username ?? currentUser.value.username,
+                        email: res?.user?.email ?? currentUser.value.email,
+                    }
+                }
+            } else {
+                currentUser.value = null
+            }
             return res
         } catch (err) {
             console.error('Failed to check authorisation user:', err)

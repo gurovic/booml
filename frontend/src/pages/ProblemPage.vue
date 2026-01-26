@@ -64,7 +64,7 @@
                 <a class="problem__submission-href" href="#">
                   <p>{{ submission.submitted_at }}</p>
                   <p>{{ submission.status }}</p>
-                  <p>{{ roundMetric(submission.metric.metric_score) }}</p>
+                  <p>{{ formatMetric(submission.metric ?? submission.metrics) }}</p>
                 </a>
               </li>
             </ul>
@@ -116,7 +116,7 @@ onMounted(async () => {
 })
 
 const availableFiles = computed(() => {
-  if (!problem.value.files) return []
+  if (!problem.value || !problem.value.files) return []
   return Object.entries(problem.value.files)
     .filter(([, url]) => url)
     .map(([name, url]) => ({ name, url }))
@@ -124,8 +124,42 @@ const availableFiles = computed(() => {
 
 const roundMetric = (value) => {
   if (value == null) return '-'
-  return Number(value).toFixed(3)
+  const numeric = Number(value)
+  if (Number.isNaN(numeric)) return '-'
+  return numeric.toFixed(3)
 }
+
+const extractMetricValue = (metric) => {
+  if (metric == null) return null
+  if (typeof metric === 'number') return metric
+  if (typeof metric === 'string') {
+    const numeric = Number(metric)
+    return Number.isNaN(numeric) ? null : numeric
+  }
+  if (Array.isArray(metric)) {
+    for (const value of metric) {
+      const candidate = extractMetricValue(value)
+      if (candidate != null) return candidate
+    }
+    return null
+  }
+  if (typeof metric === 'object') {
+    const priorityKeys = ['metric', 'metric_score', 'score', 'accuracy', 'f1', 'auc', 'rmse', 'mse']
+    for (const key of priorityKeys) {
+      if (Object.prototype.hasOwnProperty.call(metric, key)) {
+        const candidate = extractMetricValue(metric[key])
+        if (candidate != null) return candidate
+      }
+    }
+    for (const value of Object.values(metric)) {
+      const candidate = extractMetricValue(value)
+      if (candidate != null) return candidate
+    }
+  }
+  return null
+}
+
+const formatMetric = (metric) => roundMetric(extractMetricValue(metric))
 
 const handleFileChange = (event) => {
   const file = event.target.files[0]
@@ -135,6 +169,7 @@ const handleFileChange = (event) => {
     if (!file.name.toLowerCase().endsWith('.csv')) {
       submitMessage.value = { type: 'error', text: 'Пожалуйста, выберите CSV файл' }
       selectedFile.value = null
+      clearFileInput()
       return
     }
     selectedFile.value = file
@@ -162,10 +197,18 @@ const handleSubmit = async () => {
     submitMessage.value = { type: 'success', text: 'Файл успешно отправлен на проверку!' }
     
     // Refresh problem data to show new submission
-    const res = await getProblem(route.params.id)
-    problem.value = res
-    if (problem.value != null) {
-      problem.value.rendered_statement = md.render(problem.value.statement)
+    try {
+      const res = await getProblem(route.params.id)
+      problem.value = res
+      if (problem.value != null) {
+        problem.value.rendered_statement = md.render(problem.value.statement)
+      }
+    } catch (refreshError) {
+      console.warn('Failed to refresh submissions after upload:', refreshError)
+      submitMessage.value = {
+        type: 'success',
+        text: 'Файл отправлен. Не удалось обновить историю посылок — обновите страницу.'
+      }
     }
     
     // Clear file input for next submission
@@ -391,3 +434,4 @@ const handleSubmit = async () => {
   color: var(--color-error-text);
   border: 1px solid var(--color-error-border);
 }
+</style>
