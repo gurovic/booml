@@ -6,60 +6,38 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: ['3.14']
-
-    defaults:
-      run:
-        working-directory: backend
-
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_DB: booml_ci
-          POSTGRES_USER: booml_ci
-          POSTGRES_PASSWORD: booml_ci
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd="pg_isready -U booml_ci -d booml_ci"
-          --health-interval=10s
-          --health-timeout=5s
-          --health-retries=10
-
-    env:
-      MODE: test
-      DB_ENGINE: django.db.backends.postgresql
-      DB_NAME: booml_ci
-      DB_USER: booml_ci
-      DB_PASSWORD: booml_ci
-      DB_HOST: localhost
-      DB_PORT: "5432"
-
-      SECRET_KEY: ci-secret-key
-      DEBUG: "False"
-      ALLOWED_HOSTS: localhost,127.0.0.1
 
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python-version }}
-          check-latest: true
-          cache: pip
-          cache-dependency-path: backend/requirements.txt
 
-      - name: Install deps
+      - name: Build backend image
+        run: docker compose build backend
+
+      - name: Start services
+        run: docker compose up -d postgres redis
+
+      - name: Wait for postgres
         run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt    # файл лежит в backend/
-      
-      - name: Run migrations
-        run: |
-          python manage.py migrate --noinput
+          for i in $(seq 1 30); do
+            if docker compose exec -T postgres pg_isready -U postgres -d booml; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Postgres did not become ready in time" >&2
+          docker compose logs postgres
+          exit 1
 
       - name: Run tests
         run: |
-          python manage.py test -v 2
+          docker compose run --rm \
+            -e MODE=test \
+            -e DEBUG=False \
+            -e RUNTIME_VM_BACKEND=local \
+            -e RUNTIME_EXECUTION_BACKEND=legacy \
+            backend \
+            sh -c "python manage.py test -v 2"
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v
