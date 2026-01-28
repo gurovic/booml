@@ -243,6 +243,8 @@ class MetricCalculator:
             'mean_absolute_error': MetricCalculator._mae,
             'r2': MetricCalculator._r2_score,
             'r2_score': MetricCalculator._r2_score,
+            'exact_match': MetricCalculator._exact_match,
+            'csv_match': MetricCalculator._exact_match,
         }
         
         if metric_name not in metrics_map:
@@ -265,8 +267,18 @@ class MetricCalculator:
             'precision', 'precision_macro', 'recall', 'recall_macro',
             'auc_roc', 'log_loss',
             # Регрессия
-            'mse', 'rmse', 'mae', 'r2'
+            'mse', 'rmse', 'mae', 'r2',
+            # Exact match
+            'exact_match', 'csv_match',
         ]
+
+    @staticmethod
+    def _exact_match(y_true: np.ndarray, y_pred: np.ndarray) -> float:
+        y_true_arr = np.asarray(y_true)
+        y_pred_arr = np.asarray(y_pred)
+        if y_true_arr.shape != y_pred_arr.shape:
+            return 0.0
+        return float(np.array_equal(y_true_arr, y_pred_arr))
     
     @staticmethod
     def _default_metric(y_true: np.ndarray, y_pred: np.ndarray) -> float:

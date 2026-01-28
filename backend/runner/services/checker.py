@@ -24,6 +24,10 @@ class CheckResult:
 
 
 class SubmissionChecker:
+    CSV_MATCH_METRICS = {"csv_match", "exact_match"}
+    CSV_MATCH_RTOL = 1e-6
+    CSV_MATCH_ATOL = 1e-8
+
     def __init__(self, report_generator: Optional[ReportGenerator] = None):
         self.report_generator = report_generator or ReportGenerator()
 
@@ -57,13 +61,21 @@ class SubmissionChecker:
         if not metric_name and not metric_code:
             return CheckResult(False, errors="Metric name not found for this task")
 
-        metric_result = self._calculate_metric(
-            submission_df,
-            ground_truth_df,
-            descriptor,
-            metric_name,
-            metric_code,
-        )
+        if self._use_csv_match(metric_name, metric_code):
+            metric_result = self._calculate_csv_match(
+                submission_df,
+                ground_truth_df,
+                descriptor,
+                metric_name,
+            )
+        else:
+            metric_result = self._calculate_metric(
+                submission_df,
+                ground_truth_df,
+                descriptor,
+                metric_name,
+                metric_code,
+            )
         if not metric_result["success"]:
             return CheckResult(False, errors=metric_result.get("error", "Metric calculation failed"))
 
@@ -240,6 +252,97 @@ class SubmissionChecker:
             "metrics": metrics_payload,
             "metric_name": metric_name or "metric",
         }
+
+    def _use_csv_match(self, metric_name: Optional[str], metric_code: str) -> bool:
+        if metric_code and metric_code.strip():
+            return False
+        if not metric_name:
+            return False
+        return metric_name.strip().lower() in self.CSV_MATCH_METRICS
+
+    def _calculate_csv_match(
+        self,
+        submission_df: pd.DataFrame,
+        ground_truth_df: pd.DataFrame,
+        descriptor: ProblemDescriptor,
+        metric_name: Optional[str],
+    ) -> Dict[str, Any]:
+        expected_columns = list(ground_truth_df.columns)
+        submission_columns = list(submission_df.columns)
+        missing = [col for col in expected_columns if col not in submission_columns]
+        extra = [col for col in submission_columns if col not in expected_columns]
+        if missing or extra:
+            details = []
+            if missing:
+                details.append(f"missing columns: {', '.join(missing)}")
+            if extra:
+                details.append(f"unexpected columns: {', '.join(extra)}")
+            suffix = f" ({'; '.join(details)})" if details else ""
+            return {
+                "success": False,
+                "error": f"Submission columns do not match answer columns{suffix}",
+                "score": 0.0,
+            }
+
+        submission_df = submission_df[expected_columns]
+
+        expected_rows = len(ground_truth_df)
+        submitted_rows = len(submission_df)
+        if expected_rows != submitted_rows:
+            return {
+                "success": False,
+                "error": (
+                    "Row count mismatch between submission and answer: "
+                    f"expected {expected_rows}, got {submitted_rows}"
+                ),
+                "score": 0.0,
+            }
+
+        id_column = getattr(descriptor, "id_column", None)
+        if id_column and id_column in expected_columns:
+            expected_counts = ground_truth_df[id_column].value_counts(dropna=False).sort_index()
+            submitted_counts = submission_df[id_column].value_counts(dropna=False).sort_index()
+            if not expected_counts.equals(submitted_counts):
+                return {
+                    "success": False,
+                    "error": f"ID column '{id_column}' values do not match answer",
+                    "score": 0.0,
+                }
+
+        check_order = bool(getattr(descriptor, "check_order", False))
+        if not check_order and id_column and id_column in expected_columns:
+            submission_df = submission_df.sort_values(by=id_column, kind="mergesort")
+            ground_truth_df = ground_truth_df.sort_values(by=id_column, kind="mergesort")
+
+        submission_df = submission_df.reset_index(drop=True)
+        ground_truth_df = ground_truth_df.reset_index(drop=True)
+
+        matched = self._frames_match(submission_df, ground_truth_df)
+        score = 1.0 if matched else 0.0
+        metrics = {"metric": score}
+        if metric_name:
+            metrics[metric_name] = score
+
+        return {
+            "success": True,
+            "score": score,
+            "metrics": metrics,
+            "metric_name": metric_name or "csv_match",
+        }
+
+    def _frames_match(self, left: pd.DataFrame, right: pd.DataFrame) -> bool:
+        try:
+            pd.testing.assert_frame_equal(
+                left,
+                right,
+                check_dtype=False,
+                check_exact=False,
+                rtol=self.CSV_MATCH_RTOL,
+                atol=self.CSV_MATCH_ATOL,
+            )
+        except AssertionError:
+            return False
+        return True
 
     def _evaluate_metric(self, y_true, y_pred, metric_name: Optional[str], metric_code: str):
         if metric_code.strip():
