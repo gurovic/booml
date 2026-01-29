@@ -36,6 +36,13 @@ services:
         aliases:
           - redis
 
+  runner-vm:
+    image: runner-vm:latest
+    build:
+      context: ./backend
+      dockerfile: docker/Dockerfile
+    command: ["true"]
+
   backend:
     container_name: booml-backend
     build:
@@ -59,6 +66,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      runner-vm:
+        condition: service_started
     environment:
       DJANGO_SETTINGS_MODULE: core.settings
       SECRET_KEY: dev-secret-key
