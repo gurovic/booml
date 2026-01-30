@@ -1,16 +1,18 @@
 from django.http import JsonResponse
-from django.views.decorators.http import require_http_methods
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+from rest_framework import status
 from ..models.problem import Problem
 
 
-@require_http_methods(["GET"])
+@api_view(['GET'])
 def polygon_problems_api(request):
     """
     GET /backend/polygon/problems
     Returns list of problems created by the current user
     """
     if not request.user.is_authenticated:
-        return JsonResponse({'error': 'Authentication required'}, status=401)
+        return Response({'error': 'Authentication required'}, status=status.HTTP_401_UNAUTHORIZED)
     
     problems = Problem.objects.filter(author=request.user).order_by('-id')
     
@@ -24,33 +26,27 @@ def polygon_problems_api(request):
             'created_at': problem.created_at.strftime('%Y-%m-%d') if problem.created_at else None
         })
     
-    return JsonResponse(data, safe=False)
+    return Response(data, status=status.HTTP_200_OK)
 
 
-@require_http_methods(["POST"])
+@api_view(['POST'])
 def create_polygon_problem_api(request):
     """
     POST /backend/polygon/problems/create
     Creates a new problem
     """
     if not request.user.is_authenticated:
-        return JsonResponse({'error': 'Authentication required'}, status=401)
+        return Response({'error': 'Authentication required'}, status=status.HTTP_401_UNAUTHORIZED)
     
-    import json
-    try:
-        data = json.loads(request.body)
-    except json.JSONDecodeError:
-        return JsonResponse({'error': 'Invalid JSON'}, status=400)
-    
-    title = (data.get('title') or '').strip()
+    title = (request.data.get('title') or '').strip()
     if not title:
-        return JsonResponse({'error': 'Title is required'}, status=400)
+        return Response({'error': 'Title is required'}, status=status.HTTP_400_BAD_REQUEST)
     
-    rating = data.get('rating', 800)
+    rating = request.data.get('rating', 800)
     try:
         rating = int(rating)
     except (TypeError, ValueError):
-        return JsonResponse({'error': 'Rating must be a number'}, status=400)
+        return Response({'error': 'Rating must be a number'}, status=status.HTTP_400_BAD_REQUEST)
     
     problem = Problem.objects.create(
         title=title,
@@ -59,10 +55,10 @@ def create_polygon_problem_api(request):
         is_published=False
     )
     
-    return JsonResponse({
+    return Response({
         'id': problem.id,
         'title': problem.title,
         'rating': problem.rating,
         'is_published': problem.is_published,
         'created_at': problem.created_at.strftime('%Y-%m-%d') if problem.created_at else None
-    }, status=201)
+    }, status=status.HTTP_201_CREATED)
