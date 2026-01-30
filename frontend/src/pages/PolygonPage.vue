@@ -125,11 +125,9 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
 import { getPolygonProblems, createPolygonProblem } from '@/api/polygon'
 import UiHeader from '@/components/ui/UiHeader.vue'
 
-const router = useRouter()
 const problems = ref([])
 const loading = ref(true)
 const error = ref(null)
@@ -171,8 +169,8 @@ const createProblem = async () => {
     }
     const created = await createPolygonProblem(data)
     
-    // Redirect to edit page
-    router.push(`/polygon/problem/${created.id}`)
+    // Redirect to backend's edit page
+    window.location.href = `/polygon/problem/${created.id}/`
   } catch (err) {
     console.error('Не удалось создать задачу', err)
     createError.value = 'Не удалось создать задачу. Попробуйте еще раз.'
@@ -188,7 +186,8 @@ const closeCreateDialog = () => {
 }
 
 const goToEdit = (problemId) => {
-  router.push(`/polygon/problem/${problemId}`)
+  // Redirect to backend's edit page
+  window.location.href = `/polygon/problem/${problemId}/`
 }
 
 const formatDate = (dateStr) => {

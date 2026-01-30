@@ -6,6 +6,16 @@
           Booml
         </button>
 
+        <nav v-if="isAuthorized" class="header__nav">
+          <button 
+            type="button" 
+            class="header__nav-link"
+            @click="router.push('/polygon')"
+          >
+            Полигон
+          </button>
+        </nav>
+
         <button
           class="button button--secondary header__button"
           @click="handleButton"
@@ -88,5 +98,33 @@ const handleHomeClick = () => {
   height: 40px;
   display: flex;
   align-items: center;
+}
+
+.header__nav {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+}
+
+.header__nav-link {
+  background: none;
+  border: none;
+  color: #ffffff;
+  font-family: var(--font-default);
+  font-size: 16px;
+  font-weight: 500;
+  padding: 8px 16px;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: background-color 0.2s ease;
+}
+
+.header__nav-link:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.header__nav-link:focus {
+  outline: 2px solid #ffffff;
+  outline-offset: 2px;
 }
 </style>
