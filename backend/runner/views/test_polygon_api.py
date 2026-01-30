@@ -1,17 +1,17 @@
 from django.contrib.auth import get_user_model
 from django.test import TestCase
-from django.urls import reverse
+import json
 
-from ...models import Problem
+from ..models.problem import Problem
 
 User = get_user_model()
 
 
-class PolygonProblemListTests(TestCase):
+class PolygonProblemsApiTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(username="author", password="pass")
         self.other_user = User.objects.create_user(username="other", password="pass")
-        self.url = reverse("polygon-problem-list")
+        self.url = "/backend/polygon/problems"
 
         # Create problems for different users
         self.problem1 = Problem.objects.create(
@@ -37,7 +37,7 @@ class PolygonProblemListTests(TestCase):
         """Test that listing problems requires authentication"""
         self.client.logout()
         resp = self.client.get(self.url)
-        self.assertIn(resp.status_code, (401, 403))
+        self.assertEqual(resp.status_code, 401)
 
     def test_list_returns_only_user_problems(self):
         """Test that list returns only problems created by the current user"""
@@ -70,23 +70,27 @@ class PolygonProblemListTests(TestCase):
         self.assertIn('created_at', problem)
 
 
-class PolygonProblemCreateTests(TestCase):
+class CreatePolygonProblemApiTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(username="creator", password="pass")
-        self.url = reverse("polygon-problem-create")
+        self.url = "/backend/polygon/problems/create"
 
     def test_create_requires_authentication(self):
         """Test that creating a problem requires authentication"""
         self.client.logout()
-        resp = self.client.post(self.url, {"title": "Test"}, content_type="application/json")
-        self.assertIn(resp.status_code, (401, 403))
+        resp = self.client.post(
+            self.url,
+            data=json.dumps({"title": "Test"}),
+            content_type="application/json"
+        )
+        self.assertEqual(resp.status_code, 401)
 
     def test_create_minimal_problem(self):
         """Test creating a problem with minimal data"""
         self.client.login(username="creator", password="pass")
         resp = self.client.post(
             self.url,
-            {"title": "New Problem"},
+            data=json.dumps({"title": "New Problem"}),
             content_type="application/json"
         )
         self.assertEqual(resp.status_code, 201)
@@ -105,7 +109,7 @@ class PolygonProblemCreateTests(TestCase):
         self.client.login(username="creator", password="pass")
         resp = self.client.post(
             self.url,
-            {"title": "Hard Problem", "rating": 2500},
+            data=json.dumps({"title": "Hard Problem", "rating": 2500}),
             content_type="application/json"
         )
         self.assertEqual(resp.status_code, 201)
@@ -118,7 +122,7 @@ class PolygonProblemCreateTests(TestCase):
         self.client.login(username="creator", password="pass")
         resp = self.client.post(
             self.url,
-            {"rating": 1000},
+            data=json.dumps({"rating": 1000}),
             content_type="application/json"
         )
         self.assertEqual(resp.status_code, 400)
@@ -128,7 +132,7 @@ class PolygonProblemCreateTests(TestCase):
         self.client.login(username="creator", password="pass")
         resp = self.client.post(
             self.url,
-            {"title": "   "},
+            data=json.dumps({"title": "   "}),
             content_type="application/json"
         )
         self.assertEqual(resp.status_code, 400)

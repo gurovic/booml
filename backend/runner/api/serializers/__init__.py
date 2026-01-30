@@ -15,7 +15,3 @@ from .courses import (
     SectionCreateSerializer,
     SectionReadSerializer,
 )
-from .polygon import (
-    ProblemListSerializer,
-    ProblemCreateSerializer,
-)

@@ -18,7 +18,3 @@ from .courses import (
     SectionCreateView,
 )
 from .run_cell import RunCellView
-from .polygon import (
-    PolygonProblemListView,
-    PolygonProblemCreateView,
-)
