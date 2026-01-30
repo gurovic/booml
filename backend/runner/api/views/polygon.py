@@ -20,7 +20,7 @@ class PolygonProblemListView(generics.ListAPIView):
 
 class PolygonProblemCreateView(generics.CreateAPIView):
     """
-    POST /api/polygon/problems/
+    POST /api/polygon/problems/create/
     Creates a new problem
     """
     serializer_class = ProblemCreateSerializer
@@ -28,3 +28,14 @@ class PolygonProblemCreateView(generics.CreateAPIView):
 
     def perform_create(self, serializer):
         serializer.save(author=self.request.user, is_published=False)
+    
+    def create(self, request, *args, **kwargs):
+        # Call parent create to validate and save
+        response = super().create(request, *args, **kwargs)
+        
+        # Get the created object and serialize it with full details
+        problem = Problem.objects.get(id=response.data['id'])
+        serializer = ProblemListSerializer(problem)
+        response.data = serializer.data
+        
+        return response
