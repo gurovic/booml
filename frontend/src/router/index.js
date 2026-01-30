@@ -9,6 +9,7 @@ import ContestLeaderboardPage from '@/pages/ContestLeaderboardPage.vue'
 import LoginPage from '@/pages/LoginPage.vue'
 import RegisterPage from '@/pages/RegisterPage.vue'
 import PolygonPage from '@/pages/PolygonPage.vue'
+import PolygonProblemEditPage from '@/pages/PolygonProblemEditPage.vue'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -59,6 +60,10 @@ const router = createRouter({
       path: '/polygon',
       name: 'polygon',
       component: PolygonPage,
+    },{
+      path: '/polygon/problem/:id',
+      name: 'polygon-problem-edit',
+      component: PolygonProblemEditPage,
     }
   ],
 })
