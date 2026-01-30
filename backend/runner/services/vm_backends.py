@@ -171,6 +171,14 @@ class LocalVmBackend(VmBackend):
         )
 
 
+def _is_windows_host_path(path_str: str) -> bool:
+    """True if path looks like a Windows path (e.g. C:\... or C:/...)."""
+    if not path_str or not path_str.strip():
+        return False
+    s = path_str.strip().replace("\\", "/")
+    return len(s) >= 2 and s[1] == ":" and s[0].isalpha()
+
+
 class DockerVmBackend(VmBackend):
     """Provision VMs as long-lived Docker containers with a workspace mount."""
 
@@ -178,7 +186,19 @@ class DockerVmBackend(VmBackend):
         self.root = Path(root)
         self.root.mkdir(parents=True, exist_ok=True)
         host_root = os.environ.get("RUNTIME_VM_HOST_ROOT")
-        self._host_root = Path(host_root).expanduser().resolve() if host_root else None
+        if host_root:
+            host_root = host_root.strip().replace("\\", "/")
+            if _is_windows_host_path(host_root):
+                # Don't call resolve() inside a Linux container: it would turn
+                # C:/Users/FabLab/booml/backend into /app/C:/Users/...
+                self._host_root = Path(host_root)
+                self._host_root_is_windows = True
+            else:
+                self._host_root = Path(host_root).expanduser().resolve()
+                self._host_root_is_windows = False
+        else:
+            self._host_root = None
+            self._host_root_is_windows = False
         self._container_base = Path(getattr(settings, "BASE_DIR", self.root.parent)).resolve()
         self._docker_bin = _resolve_docker_bin()
 
@@ -319,6 +339,8 @@ class DockerVmBackend(VmBackend):
         When backend itself runs inside Docker, container paths like /app/...
         are not valid bind sources for the host daemon. If RUNTIME_VM_HOST_ROOT
         is set to the host directory corresponding to BASE_DIR, rewrite paths.
+        On Windows hosts, do not call resolve() so the path stays valid for the
+        Docker daemon (e.g. C:/Users/.../backend/media/...).
         """
         if self._host_root is None:
             return str(container_path)
@@ -326,7 +348,11 @@ class DockerVmBackend(VmBackend):
             relative = container_path.relative_to(self._container_base)
         except Exception:
             return str(container_path)
-        return str((self._host_root / relative).resolve())
+        host_path = self._host_root / relative
+        if self._host_root_is_windows:
+            # Keep path as string with forward slashes for Docker on Windows
+            return str(host_path).replace("\\", "/")
+        return str(host_path.resolve())
 
     def _start_agent(self, container_name: str) -> None:
         self._run_docker(
