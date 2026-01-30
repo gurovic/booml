@@ -1,8 +1,8 @@
 <template>
   <div class="app">
-    <main class="app-content">
+    <div class="app-content">
       <router-view />
-    </main>
+    </div>
     <UiFooter />
   </div>
 </template>
