@@ -7,8 +7,10 @@ from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 from django.urls import reverse
+from rest_framework.test import APIRequestFactory, force_authenticate
 from ...models.problem import Problem
 from ...models.submission import Submission
+from .submissions import SubmissionCreateView
 
 User = get_user_model()
 
@@ -24,6 +26,7 @@ class SubmissionAPITests(TestCase):
             title="Demo Problem", statement="predict", created_at=date.today()
         )
         self.url = reverse("submission-create")
+        self.factory = APIRequestFactory()
 
     def tearDown(self):
         self.tmpdir.cleanup()
@@ -55,12 +58,18 @@ class SubmissionAPITests(TestCase):
         mock_validate.return_value = mock_preval
 
         f = SimpleUploadedFile("preds.csv", b"id,pred\n1,0.1\n", content_type="text/csv")
-        self.client.post(self.url, {"problem_id": self.problem.id, "file": f})
+        request = self.factory.post(self.url, {"problem_id": self.problem.id, "file": f}, format="multipart")
+        force_authenticate(request, user=self.user)
+        response = SubmissionCreateView.as_view()(request)
+        self.assertEqual(response.status_code, 201)
         self.assertTrue(mock_enqueue.called)
 
         mock_preval.is_valid = False
         mock_enqueue.reset_mock()
 
         f2 = SimpleUploadedFile("preds2.csv", b"id,pred\n1,0.1\n1,0.2\n", content_type="text/csv")
-        self.client.post(self.url, {"problem_id": self.problem.id, "file": f2})
+        request2 = self.factory.post(self.url, {"problem_id": self.problem.id, "file": f2}, format="multipart")
+        force_authenticate(request2, user=self.user)
+        response2 = SubmissionCreateView.as_view()(request2)
+        self.assertEqual(response2.status_code, 400)
         self.assertFalse(mock_enqueue.called)

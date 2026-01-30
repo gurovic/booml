@@ -20,6 +20,7 @@ class SubmissionAPITests(TestCase):
         self.media_root = Path(self.tmpdir.name)
 
         self.user = User.objects.create_user(username="u1", password="pass")
+        self.client.login(username="u1", password="pass")
         self.problem = Problem.objects.create(
             title="Demo Problem", statement="predict", created_at=date.today()
         )
