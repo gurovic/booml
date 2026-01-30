@@ -21,5 +21,17 @@ class Notebook(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    class Meta:
+        indexes = [
+            models.Index(fields=['owner', 'problem'], name='notebook_owner_problem_idx'),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=['owner', 'problem'],
+                condition=models.Q(owner__isnull=False) & models.Q(problem__isnull=False),
+                name='unique_owner_problem_notebook'
+            ),
+        ]
+
     def __str__(self):
         return self.title

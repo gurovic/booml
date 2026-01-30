@@ -7,6 +7,7 @@ from ..models.problem import Problem
 from ..models.problem_data import ProblemData
 from ..models.problem_desriptor import ProblemDescriptor
 from ..models.submission import Submission
+from ..models.notebook import Notebook
 from ..services import enqueue_submission_for_evaluation, validation_service
 from .submissions import submission_list, _primary_metric
 from django.http import JsonResponse
@@ -160,7 +161,6 @@ def problem_detail_api(request):
             })
         
         # Get user's notebook for this problem
-        from ..models.notebook import Notebook
         user_notebook = Notebook.objects.filter(
             owner=request.user,
             problem=problem

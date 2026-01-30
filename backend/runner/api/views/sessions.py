@@ -64,7 +64,7 @@ class CreateNotebookView(APIView):
         
         # If problem_id is provided, set title based on problem
         if problem_id:
-            problem = get_object_or_404(Problem, pk=problem_id)
+            problem = serializer.problem or get_object_or_404(Problem, pk=problem_id)
             title = f"Блокнот для задачи: {problem.title}"
             
             # Check if notebook for this problem already exists for this user
