@@ -9,6 +9,7 @@ from django.test import TestCase, override_settings
 from django.urls import reverse
 from rest_framework.test import APIRequestFactory, force_authenticate
 from ...models.problem import Problem
+from ...models.problem_desriptor import ProblemDescriptor
 from ...models.submission import Submission
 from ..views.submissions import SubmissionCreateView
 
@@ -23,6 +24,12 @@ class SubmissionAPITests(TestCase):
         self.client.login(username="u1", password="pass")
         self.problem = Problem.objects.create(
             title="Demo Problem", statement="predict", created_at=date.today()
+        )
+        ProblemDescriptor.objects.create(
+            problem=self.problem,
+            id_column="id",
+            target_column="pred",
+            target_type="float",
         )
         self.url = reverse("submission-create")
         self.factory = APIRequestFactory()
