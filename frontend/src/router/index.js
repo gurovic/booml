@@ -8,6 +8,7 @@ import ContestPage from '@/pages/ContestPage.vue'
 import ContestLeaderboardPage from '@/pages/ContestLeaderboardPage.vue'
 import LoginPage from '@/pages/LoginPage.vue'
 import RegisterPage from '@/pages/RegisterPage.vue'
+import PolygonPage from '@/pages/PolygonPage.vue'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -54,6 +55,10 @@ const router = createRouter({
       path: '/register',
       name: 'register',
       component: RegisterPage,
+    },{
+      path: '/polygon',
+      name: 'polygon',
+      component: PolygonPage,
     }
   ],
 })

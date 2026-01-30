@@ -14,6 +14,8 @@ from .views import (
     SessionFileDownloadView,
     SessionFileUploadView,
     StopSessionView,
+    PolygonProblemListView,
+    PolygonProblemCreateView,
 )
 
 urlpatterns = [
@@ -39,4 +41,6 @@ urlpatterns = [
         CourseSelfEnrollView.as_view(),
         name="course-self-enroll",
     ),
+    path("polygon/problems/", PolygonProblemListView.as_view(), name="polygon-problem-list"),
+    path("polygon/problems/create/", PolygonProblemCreateView.as_view(), name="polygon-problem-create"),
 ]
