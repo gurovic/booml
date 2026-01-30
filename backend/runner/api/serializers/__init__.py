@@ -1,5 +1,6 @@
 from .submissions import SubmissionCreateSerializer, SubmissionReadSerializer
 from .sessions import (
+    NotebookCreateSerializer,
     NotebookSessionCreateSerializer,
     SessionResetSerializer,
     SessionFilesQuerySerializer,

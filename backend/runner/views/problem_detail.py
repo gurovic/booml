@@ -139,6 +139,9 @@ def problem_detail_api(request):
             "sample_submission": get_file_url(problem_data.sample_submission_file)
         }
 
+    submissions = []
+    notebook_id = None
+    
     if request.user.is_authenticated:
         raw_submissions = (
             Submission.objects
@@ -146,7 +149,6 @@ def problem_detail_api(request):
             .order_by("-submitted_at")[:5]
         )
 
-        submissions = []
         for submission in raw_submissions:
             metric_value = _primary_metric(submission.metrics)
             submissions.append({
@@ -156,13 +158,24 @@ def problem_detail_api(request):
                 "metric": metric_value,
                 "metrics": submission.metrics,
             })
+        
+        # Get user's notebook for this problem
+        from ..models.notebook import Notebook
+        user_notebook = Notebook.objects.filter(
+            owner=request.user,
+            problem=problem
+        ).first()
+        
+        if user_notebook:
+            notebook_id = user_notebook.id
 
     response = {
         "id": problem.id,
         "title": problem.title,
         "statement": problem.statement,
         "files": file_urls,
-        "submissions": submissions
+        "submissions": submissions,
+        "notebook_id": notebook_id,
     }
 
     return JsonResponse(response)

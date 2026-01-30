@@ -11,6 +11,7 @@ from rest_framework.views import APIView
 from typing import Optional
 
 from ...models.notebook import Notebook
+from ...models.problem import Problem
 from ...services.runtime import (
     RuntimeSession,
     SessionNotFoundError,
@@ -20,6 +21,7 @@ from ...services.runtime import (
     stop_session,
 )
 from ..serializers import (
+    NotebookCreateSerializer,
     NotebookSessionCreateSerializer,
     SessionResetSerializer,
     SessionFilesQuerySerializer,
@@ -48,6 +50,61 @@ def ensure_notebook_access(user, notebook: Notebook) -> None:
     owner_id = notebook.owner_id
     if owner_id not in (None, user.id) and not user.is_staff:
         raise PermissionDenied("Недостаточно прав для работы с этим блокнотом")
+
+
+class CreateNotebookView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        serializer = NotebookCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        problem_id = serializer.validated_data.get("problem_id")
+        title = serializer.validated_data.get("title") or "Новый блокнот"
+        
+        # If problem_id is provided, set title based on problem
+        if problem_id:
+            problem = get_object_or_404(Problem, pk=problem_id)
+            title = f"Блокнот для задачи: {problem.title}"
+            
+            # Check if notebook for this problem already exists for this user
+            existing_notebook = Notebook.objects.filter(
+                owner=request.user,
+                problem=problem
+            ).first()
+            
+            if existing_notebook:
+                return Response(
+                    {
+                        "id": existing_notebook.id,
+                        "title": existing_notebook.title,
+                        "problem_id": existing_notebook.problem_id,
+                        "created_at": existing_notebook.created_at,
+                        "message": "Notebook already exists for this problem"
+                    },
+                    status=status.HTTP_200_OK
+                )
+            
+            notebook = Notebook.objects.create(
+                owner=request.user,
+                problem=problem,
+                title=title
+            )
+        else:
+            notebook = Notebook.objects.create(
+                owner=request.user,
+                title=title
+            )
+
+        return Response(
+            {
+                "id": notebook.id,
+                "title": notebook.title,
+                "problem_id": notebook.problem_id,
+                "created_at": notebook.created_at,
+            },
+            status=status.HTTP_201_CREATED
+        )
 
 
 class CreateNotebookSessionView(APIView):
