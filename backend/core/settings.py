@@ -78,6 +78,10 @@ INSTALLED_APPS = [
     'corsheaders'
 ]
 
+REST_FRAMEWORK = {
+    "EXCEPTION_HANDLER": "runner.api.exception_handlers.custom_exception_handler",
+}
+
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
