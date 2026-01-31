@@ -20,7 +20,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Install a minimal toolset for notebook sessions.
 COPY docker_requirements.txt /tmp/docker_requirements.txt
-RUN uv pip install --system --prefer-binary -r /tmp/docker_requirements.txt && \
+RUN uv pip install --system -r /tmp/docker_requirements.txt && \
     rm /tmp/docker_requirements.txt
 
 # Контейнер держится живым; агент стартует через docker exec.
