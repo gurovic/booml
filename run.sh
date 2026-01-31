@@ -113,6 +113,7 @@ shift || true
 
 case "$command" in
   dev)
+    (cd "$ROOT_DIR/backend" && python3 docker/docker_build.py)
     ${COMPOSE[@]} up --build
     ;;
   migrate)
