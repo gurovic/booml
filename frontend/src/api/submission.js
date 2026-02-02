@@ -53,6 +53,33 @@ export async function submitSolution(problemId, file) {
   return await res.json()
 }
 
+export async function getSubmission(submissionId) {
+  const res = await fetch(`/api/submissions/${submissionId}/`, {
+    method: 'GET',
+    credentials: 'include'
+  })
+
+  if (!res.ok) {
+    let errorMessage = `API Error: ${res.status}`
+    const errorText = await res.text()
+    if (errorText) {
+      try {
+        const errorData = JSON.parse(errorText)
+        if (errorData.detail) {
+          errorMessage = errorData.detail
+        } else {
+          errorMessage = errorText
+        }
+      } catch {
+        errorMessage = errorText
+      }
+    }
+    throw new Error(errorMessage)
+  }
+
+  return await res.json()
+}
+
 export async function getProblemSubmissions(problemId, page = 1) {
   const res = await fetch(`/api/submissions/problem/${problemId}/?page=${page}`, {
     method: 'GET',

@@ -6,7 +6,7 @@ from rest_framework.pagination import PageNumberPagination
 
 from ...models.submission import Submission
 from ...models.problem import Problem
-from ..serializers import SubmissionCreateSerializer, SubmissionReadSerializer
+from ..serializers import SubmissionCreateSerializer, SubmissionReadSerializer, SubmissionDetailSerializer
 
 from ...services import validation_service
 from ...services import enqueue_submission_for_evaluation
@@ -125,6 +125,17 @@ class MySubmissionsListView(generics.ListAPIView):
         return Submission.objects.filter(user=self.request.user).order_by("-submitted_at")
 
 
+class SubmissionDetailView(generics.RetrieveAPIView):
+    """
+    GET /api/submissions/<id>/ — детали посылки с преvalidation отчётом.
+    """
+    serializer_class = SubmissionDetailSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        return Submission.objects.filter(user=self.request.user).select_related("problem", "prevalidation")
+
+
 class SubmissionsPagination(PageNumberPagination):
     """
     Pagination for submissions list - 10 items per page (fixed).
@@ -146,7 +157,7 @@ class ProblemSubmissionsListView(generics.ListAPIView):
             problem = Problem.objects.get(pk=problem_id)
         except Problem.DoesNotExist:
             return Submission.objects.none()
-        
+
         return Submission.objects.filter(
             user=self.request.user,
             problem=problem

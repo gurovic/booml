@@ -50,12 +50,14 @@ if MODE	== "prod":
 
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:8101",
+    "http://127.0.0.1:8101",
     "http://booml.letovo.site",
     "https://booml.letovo.site",
 ]
 
 CSRF_TRUSTED_ORIGINS = [
     "http://localhost:8101",
+    "http://127.0.0.1:8101",
     "http://booml.letovo.site",
     "https://booml.letovo.site",
     "http://backend.booml.letovo.site",
