@@ -120,10 +120,26 @@ export function getSection(sectionId) {
   if (!Number.isFinite(numericId)) {
     return Promise.resolve(null)
   }
-  const found = flattenCourses(mockData).find(item => item.id === numericId)
+  
+  // Search through the tree to find the section
+  const findSection = (nodes, id) => {
+    for (const node of nodes) {
+      if (node.id === id) {
+        return node
+      }
+      if (Array.isArray(node.children)) {
+        const found = findSection(node.children, id)
+        if (found) return found
+      }
+    }
+    return null
+  }
+  
+  const found = findSection(mockData, numericId)
   if (!found) {
     return Promise.resolve(null)
   }
+  
   return Promise.resolve({
     id: found.id,
     title: found.title,

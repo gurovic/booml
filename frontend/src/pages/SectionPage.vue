@@ -67,7 +67,7 @@ const sectionData = ref(null)
 const isLoading = ref(false)
 const error = ref('')
 
-const sectionTitle = computed(() => sectionData.value?.title || queryTitle.value || 'Section')
+const sectionTitle = computed(() => sectionData.value?.title || queryTitle.value || 'Раздел')
 
 const childSections = computed(() => {
   if (!sectionData.value || !Array.isArray(sectionData.value.children)) {
@@ -85,7 +85,7 @@ const courses = computed(() => {
 
 const courseItems = computed(() => {
   return courses.value.map(course => ({
-    text: course.title || `Course ${course.id}`,
+    text: course.title || 'Курс',
     route: { name: 'course', params: { id: course.id }},
   }))
 })
