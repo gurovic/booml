@@ -123,7 +123,7 @@ const goToPage = (page) => {
 
 const navigateToSubmission = (submissionId) => {
   // Navigate to the submission detail page
-  window.location.href = `/runner/submission/${submissionId}/`
+  window.location.href = `/submission/${submissionId}/`
 }
 
 const formatDateTime = (dateString) => {
