@@ -12,7 +12,7 @@
             <h2 class="problem__notebook-title problem__item-title">Блокнот</h2>
             <div v-if="problem.notebook_id" class="problem__notebook-exists">
               <p class="problem__notebook-message">У вас есть блокнот для этой задачи</p>
-              <a :href="`/notebooks/${problem.notebook_id}`" class="button button--primary">
+              <a :href="`/notebook/${problem.notebook_id}`" class="button button--primary">
                 Открыть блокнот
               </a>
             </div>
@@ -230,7 +230,7 @@ const handleCreateNotebook = async () => {
     
     // Redirect to notebook page after a short delay
     setTimeout(() => {
-      window.location.href = `/notebooks/${result.id}`
+      window.location.href = `/notebook/${result.id}`
     }, 1000)
   } catch (err) {
     console.error('Notebook creation error:', err)
