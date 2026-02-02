@@ -2,9 +2,7 @@ FROM python:3.14-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    PIP_ROOT_USER_ACTION=ignore
+    UV_NO_PROGRESS=1
 
 WORKDIR /workspace
 
@@ -20,11 +18,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libjpeg-dev \
         libpng-dev \
         libfreetype6-dev \
+        curl \
+    && curl -LsSf https://astral.sh/uv/install.sh | UV_INSTALL_DIR="/usr/local/bin" sh \
     && rm -rf /var/lib/apt/lists/*
 
 # Install a minimal toolset for notebook sessions.
 COPY docker_requirements.txt /tmp/docker_requirements.txt
-RUN python -m pip install --prefer-binary -r /tmp/docker_requirements.txt && \
+RUN uv pip install --system -r /tmp/docker_requirements.txt && \
     rm /tmp/docker_requirements.txt
 
 # Контейнер держится живым; агент стартует через docker exec.
