@@ -221,7 +221,7 @@ const formatFileSize = (bytes) => {
 }
 
 const formatStatValue = (value) => {
-  if (typeof value === 'number') {
+  if (typeof value === 'number' && Number.isFinite(value)) {
     return value.toFixed(4)
   }
   if (typeof value === 'object') {
