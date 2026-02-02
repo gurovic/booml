@@ -4,7 +4,7 @@ from rest_framework import generics, permissions, parsers, status
 from rest_framework.response import Response
 
 from ...models.submission import Submission
-from ..serializers import SubmissionCreateSerializer, SubmissionReadSerializer
+from ..serializers import SubmissionCreateSerializer, SubmissionReadSerializer, SubmissionDetailSerializer
 
 from ...services import validation_service
 from ...services import enqueue_submission_for_evaluation
@@ -121,3 +121,14 @@ class MySubmissionsListView(generics.ListAPIView):
 
     def get_queryset(self):
         return Submission.objects.filter(user=self.request.user).order_by("-submitted_at")
+
+
+class SubmissionDetailView(generics.RetrieveAPIView):
+    """
+    GET /api/submissions/<id>/ — детали посылки с преvalidation отчётом.
+    """
+    serializer_class = SubmissionDetailSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        return Submission.objects.filter(user=self.request.user).select_related("problem", "prevalidation")

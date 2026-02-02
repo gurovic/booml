@@ -11,7 +11,8 @@ from rest_framework.test import APIRequestFactory, force_authenticate
 from ...models.problem import Problem
 from ...models.problem_desriptor import ProblemDescriptor
 from ...models.submission import Submission
-from .submissions import SubmissionCreateView
+from ...models.prevalidation import PreValidation
+from .submissions import SubmissionCreateView, SubmissionDetailView
 
 User = get_user_model()
 
@@ -80,3 +81,76 @@ class SubmissionAPITests(TestCase):
         response2 = SubmissionCreateView.as_view()(request2)
         self.assertEqual(response2.status_code, 400)
         self.assertFalse(mock_enqueue.called)
+
+    @override_settings(MEDIA_ROOT=tempfile.gettempdir())
+    def test_submission_detail_view(self):
+        """Test getting submission details with prevalidation data."""
+        f = SimpleUploadedFile("preds.csv", b"id,pred\n1,0.1\n2,0.2\n", content_type="text/csv")
+        submission = Submission.objects.create(
+            user=self.user,
+            problem=self.problem,
+            file=f,
+            status=Submission.STATUS_ACCEPTED,
+            metrics={"accuracy": 0.95}
+        )
+        
+        # Create a prevalidation report for the submission
+        PreValidation.objects.create(
+            submission=submission,
+            valid=True,
+            status="passed",
+            errors_count=0,
+            warnings_count=1,
+            rows_total=2,
+            unique_ids=2,
+            duration_ms=100,
+            warnings=["Some warning"],
+            stats={"test_stat": 123}
+        )
+        
+        detail_url = reverse("submission-detail", kwargs={"pk": submission.id})
+        resp = self.client.get(detail_url)
+        
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        
+        # Check basic submission data
+        self.assertEqual(data["id"], submission.id)
+        self.assertEqual(data["problem_id"], self.problem.id)
+        self.assertEqual(data["problem_title"], self.problem.title)
+        self.assertEqual(data["status"], Submission.STATUS_ACCEPTED)
+        self.assertEqual(data["metrics"]["accuracy"], 0.95)
+        
+        # Check file_url is present and is a relative path (not absolute URL)
+        self.assertIn("file_url", data)
+        self.assertIsNotNone(data["file_url"])
+        self.assertIsInstance(data["file_url"], str)
+        self.assertTrue(data["file_url"].startswith("/media/submissions/"))
+        # Ensure it's not an absolute URL with hostname
+        self.assertNotIn("http://", data["file_url"])
+        self.assertNotIn("backend:", data["file_url"])
+        
+        # Check prevalidation data
+        self.assertIn("prevalidation", data)
+        self.assertTrue(data["prevalidation"]["valid"])
+        self.assertEqual(data["prevalidation"]["status"], "passed")
+        self.assertEqual(data["prevalidation"]["rows_total"], 2)
+        self.assertEqual(data["prevalidation"]["warnings_count"], 1)
+
+    @override_settings(MEDIA_ROOT=tempfile.gettempdir())
+    def test_submission_detail_unauthorized(self):
+        """Test that users can only view their own submissions."""
+        other_user = User.objects.create_user(username="u2", password="pass")
+        f = SimpleUploadedFile("preds.csv", b"id,pred\n1,0.1\n", content_type="text/csv")
+        submission = Submission.objects.create(
+            user=other_user,
+            problem=self.problem,
+            file=f,
+            status=Submission.STATUS_PENDING
+        )
+        
+        detail_url = reverse("submission-detail", kwargs={"pk": submission.id})
+        resp = self.client.get(detail_url)
+        
+        # Should return 404 since the submission doesn't belong to the authenticated user
+        self.assertEqual(resp.status_code, 404)
