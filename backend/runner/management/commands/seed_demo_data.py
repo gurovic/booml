@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import sqlite3
+import json
 from collections import OrderedDict
 from pathlib import Path
 
@@ -22,14 +22,9 @@ from runner.services.section_service import ROOT_SECTION_TITLES
 
 
 class Command(BaseCommand):
-    help = "Seed demo tasks, courses, and contests from bundled sqlite database."
+    help = "Seed demo tasks, courses, and contests from bundled JSON data."
 
     def add_arguments(self, parser):
-        parser.add_argument(
-            "--sqlite-path",
-            default=str(Path(settings.BASE_DIR) / "db.sqlite3"),
-            help="Path to sqlite database with demo problems.",
-        )
         parser.add_argument(
             "--force",
             action="store_true",
@@ -37,16 +32,16 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
-        sqlite_path = Path(options["sqlite_path"]).resolve()
-        if not sqlite_path.exists():
-            self.stdout.write(self.style.WARNING(f"SQLite seed DB not found: {sqlite_path}"))
+        data_path = Path(settings.BASE_DIR) / "runner" / "fixtures" / "demo_tasks.json"
+        if not data_path.exists():
+            self.stdout.write(self.style.WARNING(f"Demo data JSON not found: {data_path}"))
             return
 
         owner = self._ensure_owner()
 
         with transaction.atomic():
             problems_by_source_id = self._import_problems(
-                sqlite_path,
+                data_path,
                 owner,
                 force_update=options["force"],
             )
@@ -73,18 +68,18 @@ class Command(BaseCommand):
         self.stdout.write(self.style.WARNING("Created default admin user (username: admin, password: admin)."))
         return owner
 
-    def _import_problems(self, sqlite_path: Path, owner, *, force_update: bool):
-        conn = sqlite3.connect(str(sqlite_path))
-        cur = conn.cursor()
-        cur.execute(
-            "SELECT id, title, statement, created_at, rating, is_published "
-            "FROM runner_problem ORDER BY id"
-        )
-        rows = cur.fetchall()
+    def _import_problems(self, data_path: Path, owner, *, force_update: bool):
+        payload = json.loads(data_path.read_text(encoding="utf-8"))
+        rows = payload.get("problems", [])
         problems_by_source_id = {}
         created = 0
         for row in rows:
-            source_id, title, statement, created_at, rating, is_published = row
+            source_id = row["id"]
+            title = row["title"]
+            statement = row.get("statement") or ""
+            created_at = row.get("created_at")
+            rating = row.get("rating")
+            is_published = row.get("is_published")
             problem, was_created = Problem.objects.get_or_create(
                 title=title,
                 defaults={
@@ -113,70 +108,50 @@ class Command(BaseCommand):
             if was_created:
                 created += 1
 
-        self.stdout.write(f"Imported {created} problems from sqlite.")
+        self.stdout.write(f"Imported {created} problems from JSON.")
 
-        cur.execute(
-            "SELECT problem_id, train_file, test_file, sample_submission_file, answer_file "
-            "FROM runner_problemdata ORDER BY id"
-        )
-        pdata_rows = cur.fetchall()
+        pdata_rows = payload.get("problem_data", [])
         pdata_created = 0
-        for problem_id, train, test, sample, answer in pdata_rows:
-            problem = problems_by_source_id.get(problem_id)
+        for row in pdata_rows:
+            problem = problems_by_source_id.get(row["problem_id"])
             if not problem:
                 continue
             _, created = ProblemData.objects.update_or_create(
                 problem=problem,
                 defaults={
-                    "train_file": train or "",
-                    "test_file": test or "",
-                    "sample_submission_file": sample or "",
-                    "answer_file": answer or "",
+                    "train_file": row.get("train_file") or "",
+                    "test_file": row.get("test_file") or "",
+                    "sample_submission_file": row.get("sample_submission_file") or "",
+                    "answer_file": row.get("answer_file") or "",
                 },
             )
             if created:
                 pdata_created += 1
         self.stdout.write(f"Imported {pdata_created} problem data records.")
 
-        cur.execute(
-            "SELECT problem_id, id_column, target_column, id_type, target_type, "
-            "check_order, metric, metric_name, metric_code "
-            "FROM runner_problemdescriptor ORDER BY id"
-        )
-        descriptor_rows = cur.fetchall()
+        descriptor_rows = payload.get("problem_descriptors", [])
         desc_created = 0
-        for (
-            problem_id,
-            id_column,
-            target_column,
-            id_type,
-            target_type,
-            check_order,
-            metric,
-            metric_name,
-            metric_code,
-        ) in descriptor_rows:
-            problem = problems_by_source_id.get(problem_id)
+        for row in descriptor_rows:
+            problem = problems_by_source_id.get(row["problem_id"])
             if not problem:
                 continue
             _, created = ProblemDescriptor.objects.update_or_create(
                 problem=problem,
                 defaults={
-                    "id_column": id_column or "id",
-                    "target_column": target_column or "prediction",
-                    "id_type": id_type or "int",
-                    "target_type": target_type or "float",
-                    "check_order": bool(check_order),
-                    "metric": metric or "",
-                    "metric_name": metric_name or "rmse",
-                    "metric_code": metric_code or "",
+                    "id_column": row.get("id_column") or "id",
+                    "target_column": row.get("target_column") or "prediction",
+                    "id_type": row.get("id_type") or "int",
+                    "target_type": row.get("target_type") or "float",
+                    "check_order": bool(row.get("check_order")),
+                    "metric": row.get("metric") or "",
+                    "metric_name": row.get("metric_name") or "rmse",
+                    "metric_code": row.get("metric_code") or "",
                 },
             )
             if created:
                 desc_created += 1
         self.stdout.write(f"Imported {desc_created} problem descriptors.")
 
-        conn.close()
         return problems_by_source_id
 
     def _ensure_sections_courses_contests(self, owner, problems_by_source_id):
@@ -190,17 +165,7 @@ class Command(BaseCommand):
             roots[title] = section
 
         olymp_section = roots.get("Олимпиады")
-        author_root = roots.get("Авторские")
-
-        author_section = None
-        if author_root:
-            author_section_title = f"Авторские: {owner.username}"[:255]
-            author_section, _ = Section.objects.get_or_create(
-                title=author_section_title,
-                parent=author_root,
-                owner=owner,
-                defaults={"description": ""},
-            )
+        thematic_section = roots.get("Тематические")
 
         olympiad_courses = OrderedDict(
             [
@@ -208,7 +173,7 @@ class Command(BaseCommand):
                 ("ML-блиц финал", [9]),
             ]
         )
-        author_courses = OrderedDict(
+        thematic_courses = OrderedDict(
             [
                 ("Классификация", [1, 2, 3, 4, 5]),
                 ("Тестовые задания", [6, 7]),
@@ -225,14 +190,14 @@ class Command(BaseCommand):
         for title, problem_ids in olympiad_courses.items():
             if not olymp_section:
                 continue
-            course = self._get_or_create_course(title, olymp_section, owner)
+            course = self._get_or_create_course("Олимпиады", olymp_section, owner)
             contest = self._get_or_create_contest(title, course, owner)
             self._attach_problems(contest, problem_ids, problems_by_source_id)
 
-        for title, problem_ids in author_courses.items():
-            if not author_section:
+        for title, problem_ids in thematic_courses.items():
+            if not thematic_section:
                 continue
-            course = self._get_or_create_course(title, author_section, owner)
+            course = self._get_or_create_course("Тематические задачи", thematic_section, owner)
             contest = self._get_or_create_contest(title, course, owner)
             self._attach_problems(contest, problem_ids, problems_by_source_id)
 
