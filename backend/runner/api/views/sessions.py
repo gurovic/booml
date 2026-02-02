@@ -53,6 +53,31 @@ def ensure_notebook_access(user, notebook: Notebook) -> None:
 
 
 class CreateNotebookView(APIView):
+    """
+    POST /api/notebooks/ - Create a notebook for the authenticated user.
+
+    If ``problem_id`` is provided in the request body, a notebook linked to that
+    problem is created. If a notebook for the given ``problem_id`` already exists
+    for the current user, the existing notebook is returned instead of creating
+    a new one.
+
+    Request body (JSON):
+      - title (str, optional): Custom notebook title. If omitted, a default
+        title is used. When ``problem_id`` is provided, the title is derived
+        from the problem title.
+      - problem_id (int, optional): ID of the problem to link the notebook to.
+
+    Responses:
+      - 200 OK: Existing notebook for the (user, problem) pair already exists
+        and is returned.
+      - 201 Created: New notebook successfully created.
+
+    Response body (JSON):
+      - id (int): Notebook ID.
+      - title (str): Notebook title.
+      - problem_id (int|null): Linked problem ID, if any.
+      - created_at (str): Notebook creation timestamp.
+    """
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
@@ -64,7 +89,9 @@ class CreateNotebookView(APIView):
         
         # If problem_id is provided, set title based on problem
         if problem_id:
-            problem = serializer.problem or get_object_or_404(Problem, pk=problem_id)
+            problem = serializer.problem
+            if problem is None:
+                problem = get_object_or_404(Problem, pk=problem_id)
             title = f"Блокнот для задачи: {problem.title}"
             
             # Check if notebook for this problem already exists for this user

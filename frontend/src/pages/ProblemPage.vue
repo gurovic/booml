@@ -8,22 +8,31 @@
           <div class="problem__text" v-html="problem.rendered_statement"></div>
         </div>
         <ul class="problem__menu">
+          <li class="problem__files problem__menu-item" v-if="availableFiles.length > 0">
+            <h2 class="problem__files-title problem__item-title">Файлы</h2>
+            <ul class="problem__files-list">
+              <li
+                class="problem__file"
+                v-for="file in availableFiles"
+                :key="file.name"
+              >
+                <a class="problem__file-href button button--secondary" :href="file.url" :download="file.name">{{ file.name }}</a>
+            </li>
+            </ul>
+          </li>
           <li class="problem__notebook problem__menu-item" v-if="userStore.isAuthenticated">
-            <h2 class="problem__notebook-title problem__item-title">Блокнот</h2>
             <div v-if="problem.notebook_id" class="problem__notebook-exists">
-              <p class="problem__notebook-message">У вас есть блокнот для этой задачи</p>
-              <a :href="`/notebook/${problem.notebook_id}`" class="button button--primary">
-                Открыть блокнот
+              <a :href="`/notebook/${problem.notebook_id}`" class="problem__notebook-button">
+                Перейти в блокнот
               </a>
             </div>
             <div v-else class="problem__notebook-create">
-              <p class="problem__notebook-message">Создайте блокнот для работы с задачей</p>
               <button 
                 @click="handleCreateNotebook"
                 :disabled="isCreatingNotebook"
-                class="button button--primary"
+                class="problem__notebook-button"
               >
-                <span v-if="!isCreatingNotebook">Создать блокнот</span>
+                <span v-if="!isCreatingNotebook">Перейти в блокнот</span>
                 <span v-else>Создание...</span>
               </button>
               <div v-if="notebookMessage" :class="['problem__notebook-feedback', `problem__notebook-feedback--${notebookMessage.type}`]">
@@ -32,7 +41,7 @@
             </div>
           </li>
           <li class="problem__submit problem__menu-item" v-if="userStore.isAuthenticated">
-            <h2 class="problem__submit-title problem__item-title">Отправить решение</h2>
+            <h2 class="problem__submit-title problem__item-title">Отправка решения</h2>
             <div class="problem__submit-form">
               <input 
                 type="file" 
@@ -58,18 +67,6 @@
                 {{ submitMessage.text }}
               </div>
             </div>
-          </li>
-          <li class="problem__files problem__menu-item" v-if="availableFiles.length > 0">
-            <h2 class="problem__files-title problem__item-title">Файлы</h2>
-            <ul class="problem__files-list">
-              <li
-                class="problem__file"
-                v-for="file in availableFiles"
-                :key="file.name"
-              >
-                <a class="problem__file-href button button--secondary" :href="file.url" :download="file.name">{{ file.name }}</a>
-            </li>
-            </ul>
           </li>
           <li class="problem__submissions problem__menu-item">
             <h2 class="problem__submissions-title problem__item-title">Последние посылки</h2>
@@ -457,10 +454,29 @@ const handleCreateNotebook = async () => {
   border: 1px solid var(--color-error-border);
 }
 
-.problem__notebook-message {
-  margin-bottom: 15px;
-  font-size: 14px;
-  color: var(--color-text-primary);
+.problem__notebook-button {
+  display: block;
+  width: 100%;
+  padding: 16px 20px;
+  background-color: #2c3e67;
+  color: white;
+  border: none;
+  border-radius: 12px;
+  text-align: center;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  font-weight: 500;
+  font-size: 16px;
+  text-decoration: none;
+}
+
+.problem__notebook-button:hover {
+  background-color: #3d5180;
+}
+
+.problem__notebook-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .problem__notebook-exists,
