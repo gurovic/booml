@@ -1,4 +1,4 @@
-from .submissions import SubmissionCreateSerializer, SubmissionReadSerializer
+from .submissions import SubmissionCreateSerializer, SubmissionReadSerializer, SubmissionDetailSerializer
 from .sessions import (
     NotebookCreateSerializer,
     NotebookSessionCreateSerializer,

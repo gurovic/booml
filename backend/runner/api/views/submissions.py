@@ -1,9 +1,10 @@
+from django.conf import settings
 from django.db import transaction
 from rest_framework import generics, permissions, parsers, status
 from rest_framework.response import Response
 
 from ...models.submission import Submission
-from ..serializers import SubmissionCreateSerializer, SubmissionReadSerializer
+from ..serializers import SubmissionCreateSerializer, SubmissionReadSerializer, SubmissionDetailSerializer
 
 from ...services import validation_service
 from ...services import enqueue_submission_for_evaluation
@@ -60,7 +61,20 @@ class SubmissionCreateView(generics.CreateAPIView):
         # 2) Пре-валидация
         problem = submission.problem
         descriptor = build_descriptor_from_problem(problem)
-        report = validation_service.run_pre_validation(submission, descriptor=descriptor)
+        try:
+            report = validation_service.run_pre_validation(submission, descriptor=descriptor)
+        except Exception as exc:  # pragma: no cover - defensive
+            submission.status = Submission.STATUS_FAILED
+            submission.save(update_fields=["status"])
+            payload = {
+                "message": "Не удалось выполнить предварительную проверку файла.",
+                "submission": SubmissionReadSerializer(
+                    submission, context={"request": request}
+                ).data,
+            }
+            if settings.DEBUG:
+                payload["detail"] = str(exc)
+            return Response(payload, status=status.HTTP_400_BAD_REQUEST)
 
         # 3) Ветвление по результату
         data = SubmissionReadSerializer(submission, context={"request": request}).data
@@ -74,8 +88,25 @@ class SubmissionCreateView(generics.CreateAPIView):
         if report_valid:
             self._enqueue_submission(submission.id)
             return Response(data, status=status.HTTP_201_CREATED)
-        else:
-            return Response(data, status=status.HTTP_400_BAD_REQUEST)
+
+        errors = getattr(report, "errors", None)
+        details = None
+        if errors:
+            if isinstance(errors, list) and errors:
+                details = errors[0]
+            else:
+                details = str(errors)
+        payload = {
+            "message": "Файл не прошёл предварительную проверку.",
+            "detail": details,
+            "errors": errors,
+            "submission": data,
+        }
+        if payload["detail"] is None:
+            payload.pop("detail")
+        if payload["errors"] in (None, []):
+            payload.pop("errors")
+        return Response(payload, status=status.HTTP_400_BAD_REQUEST)
 
     def _enqueue_submission(self, submission_id: int) -> None:
         enqueue_submission_for_evaluation(submission_id)
@@ -90,3 +121,14 @@ class MySubmissionsListView(generics.ListAPIView):
 
     def get_queryset(self):
         return Submission.objects.filter(user=self.request.user).order_by("-submitted_at")
+
+
+class SubmissionDetailView(generics.RetrieveAPIView):
+    """
+    GET /api/submissions/<id>/ — детали посылки с преvalidation отчётом.
+    """
+    serializer_class = SubmissionDetailSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        return Submission.objects.filter(user=self.request.user).select_related("problem", "prevalidation")

@@ -50,12 +50,14 @@ if MODE	== "prod":
 
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:8101",
+    "http://127.0.0.1:8101",
     "http://booml.letovo.site",
     "https://booml.letovo.site",
 ]
 
 CSRF_TRUSTED_ORIGINS = [
     "http://localhost:8101",
+    "http://127.0.0.1:8101",
     "http://booml.letovo.site",
     "https://booml.letovo.site",
     "http://backend.booml.letovo.site",
@@ -77,6 +79,10 @@ INSTALLED_APPS = [
     'rest_framework',
     'corsheaders'
 ]
+
+REST_FRAMEWORK = {
+    "EXCEPTION_HANDLER": "runner.api.exception_handlers.custom_exception_handler",
+}
 
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
@@ -205,7 +211,6 @@ RUNTIME_VM_NET_ALLOWLIST = tuple(
 )
 RUNTIME_VM_ROOT = Path(os.environ.get("RUNTIME_VM_ROOT", str(BASE_DIR / "media" / "notebook_sessions")))
 RUNTIME_EXECUTION_BACKEND = os.environ.get("RUNTIME_EXECUTION_BACKEND", "legacy")
-# To use jupyter interface, set RUNTIME_EXECUTION_BACKEND to "jupyter"
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field

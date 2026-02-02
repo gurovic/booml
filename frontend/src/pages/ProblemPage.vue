@@ -72,6 +72,7 @@
             <h2 class="problem__submissions-title problem__item-title">Последние посылки</h2>
             <ul class="problem__submissions-list">
               <li class="problem__submission-head">
+                <p>ID</p>
                 <p>Время</p>
                 <p>Статус</p>
                 <p>Метрика</p>
@@ -81,11 +82,15 @@
                 v-for="submission in problem.submissions"
                 :key="submission.id"
               >
-                <a class="problem__submission-href" href="#">
+                <router-link 
+                  :to="{ name: 'submission', params: { id: submission.id } }"
+                  class="problem__submission-href"
+                >
+                  <p>{{ submission.id }}</p>
                   <p>{{ submission.submitted_at }}</p>
                   <p>{{ submission.status }}</p>
                   <p>{{ roundMetric(submission.metric) }}</p>
-                </a>
+                </router-link>
               </li>
             </ul>
           </li>
@@ -365,7 +370,7 @@ const handleCreateNotebook = async () => {
   padding: 10px 20px;
   width: 100%;
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-columns: 0.5fr 1.5fr 1fr 1fr;
   align-items: center;
 }
 
@@ -375,6 +380,12 @@ const handleCreateNotebook = async () => {
 
 .problem__submission-href {
   background-color: var(--color-button-secondary);
+  text-decoration: none;
+  transition: opacity 0.2s ease;
+}
+
+.problem__submission-href:hover {
+  opacity: 0.85;
 }
 
 .problem__submission-head p,
