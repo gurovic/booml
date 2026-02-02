@@ -3,6 +3,7 @@ from django.contrib.auth import get_user_model
 
 from ...models.submission import Submission
 from ...models.problem import Problem
+from ...models.prevalidation import PreValidation
 
 User = get_user_model()
 
@@ -49,5 +50,30 @@ class SubmissionReadSerializer(serializers.ModelSerializer):
         fields = [
             "id", "problem_id", "problem_title", "file_url",
             "submitted_at", "status", "code_size", "metrics",
+        ]
+
+
+class PreValidationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PreValidation
+        fields = [
+            "id", "valid", "status", "errors_count", "warnings_count",
+            "rows_total", "unique_ids", "first_id", "last_id",
+            "duration_ms", "errors", "warnings", "stats", "created_at",
+        ]
+
+
+class SubmissionDetailSerializer(serializers.ModelSerializer):
+    problem_id = serializers.IntegerField(source="problem.id", read_only=True)
+    problem_title = serializers.CharField(source="problem.title", read_only=True)
+    file_url = serializers.FileField(source="file", read_only=True)
+    prevalidation = PreValidationSerializer(read_only=True)
+
+    class Meta:
+        model = Submission
+        fields = [
+            "id", "problem_id", "problem_title", "file_url",
+            "submitted_at", "status", "code_size", "metrics",
+            "prevalidation",
         ]
 
