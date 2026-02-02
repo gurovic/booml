@@ -43,7 +43,7 @@ class SubmissionCreateSerializer(serializers.ModelSerializer):
 class SubmissionReadSerializer(serializers.ModelSerializer):
     problem_id = serializers.IntegerField(source="problem.id", read_only=True)
     problem_title = serializers.CharField(source="problem.title", read_only=True)
-    file_url = serializers.FileField(source="file", read_only=True)
+    file_url = serializers.SerializerMethodField()
 
     class Meta:
         model = Submission
@@ -51,6 +51,14 @@ class SubmissionReadSerializer(serializers.ModelSerializer):
             "id", "problem_id", "problem_title", "file_url",
             "submitted_at", "status", "code_size", "metrics",
         ]
+    
+    def get_file_url(self, obj):
+        if obj.file:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.file.url)
+            return obj.file.url
+        return None
 
 
 class PreValidationSerializer(serializers.ModelSerializer):
@@ -66,7 +74,7 @@ class PreValidationSerializer(serializers.ModelSerializer):
 class SubmissionDetailSerializer(serializers.ModelSerializer):
     problem_id = serializers.IntegerField(source="problem.id", read_only=True)
     problem_title = serializers.CharField(source="problem.title", read_only=True)
-    file_url = serializers.FileField(source="file", read_only=True)
+    file_url = serializers.SerializerMethodField()
     prevalidation = PreValidationSerializer(read_only=True)
 
     class Meta:
@@ -76,4 +84,12 @@ class SubmissionDetailSerializer(serializers.ModelSerializer):
             "submitted_at", "status", "code_size", "metrics",
             "prevalidation",
         ]
+    
+    def get_file_url(self, obj):
+        if obj.file:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.file.url)
+            return obj.file.url
+        return None
 
