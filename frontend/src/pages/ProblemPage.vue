@@ -68,6 +68,12 @@
                 </a>
               </li>
             </ul>
+            <router-link 
+              :to="{ name: 'problem-submissions', params: { id: problem.id } }"
+              class="problem__all-submissions-button button button--primary"
+            >
+              Все посылки
+            </router-link>
           </li>
         </ul>
       </div>
@@ -399,5 +405,20 @@ const handleSubmit = async () => {
   background-color: var(--color-error-bg);
   color: var(--color-error-text);
   border: 1px solid var(--color-error-border);
+}
+
+.problem__all-submissions-button {
+  width: 100%;
+  margin-top: 15px;
+  padding: 12px 20px;
+  text-align: center;
+  text-decoration: none;
+  font-weight: 500;
+  transition: opacity 0.2s ease;
+  display: block;
+}
+
+.problem__all-submissions-button:hover {
+  opacity: 0.9;
 }
 </style>
