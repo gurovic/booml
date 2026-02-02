@@ -101,10 +101,6 @@ class CreateNotebookView(APIView):
     for the current user, the existing notebook is returned instead of creating
     a new one.
 
-    When a notebook is created with a problem, a session is automatically created
-    and the problem's data files (train.csv, test.csv, sample_submission.csv) are
-    copied to the session workdir for immediate use.
-
     Request body (JSON):
       - title (str, optional): Custom notebook title. If omitted, a default
         title is used. When ``problem_id`` is provided, the title is derived
@@ -161,17 +157,6 @@ class CreateNotebookView(APIView):
                 problem=problem,
                 title=title
             )
-            
-            # Create session and copy problem files
-            try:
-                session_id = build_notebook_session_id(notebook.id)
-                session = create_session(session_id)
-                copy_problem_files_to_session(problem, session)
-            except Exception as e:
-                # Log error but don't fail notebook creation
-                import logging
-                logger = logging.getLogger(__name__)
-                logger.warning(f"Failed to initialize session or copy files: {e}")
         else:
             notebook = Notebook.objects.create(
                 owner=request.user,
@@ -190,6 +175,13 @@ class CreateNotebookView(APIView):
 
 
 class CreateNotebookSessionView(APIView):
+    """
+    POST /api/sessions/notebook/ - Create a runtime session for a notebook.
+    
+    If the notebook is linked to a problem, the problem's data files (train.csv,
+    test.csv, sample_submission.csv) are automatically copied to the session
+    workdir for immediate use.
+    """
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
@@ -205,11 +197,28 @@ class CreateNotebookSessionView(APIView):
 
         session_id = build_notebook_session_id(notebook.id)
         session = create_session(session_id)
+        
+        # Copy problem files if notebook is linked to a problem
+        if notebook.problem:
+            try:
+                copy_problem_files_to_session(notebook.problem, session)
+            except Exception as e:
+                # Log error but don't fail session creation
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(f"Failed to copy problem files to session: {e}")
+        
         payload = _build_session_payload(session_id, session, status_label="created")
         return Response(payload, status=status.HTTP_201_CREATED)
 
 
 class ResetSessionView(APIView):
+    """
+    POST /api/sessions/reset/ - Reset a runtime session.
+    
+    If the session belongs to a notebook linked to a problem, the problem's data
+    files are re-copied to the session workdir.
+    """
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
@@ -218,6 +227,7 @@ class ResetSessionView(APIView):
 
         session_id = serializer.validated_data["session_id"]
         notebook_id = extract_notebook_id(session_id)
+        notebook = None
         if notebook_id is not None:
             notebook = get_object_or_404(Notebook, pk=notebook_id)
             ensure_notebook_access(request.user, notebook)
@@ -226,6 +236,17 @@ class ResetSessionView(APIView):
             session = reset_session(session_id)
         except SessionNotFoundError:
             raise Http404("Session not found")
+        
+        # Copy problem files if notebook is linked to a problem
+        if notebook and notebook.problem:
+            try:
+                copy_problem_files_to_session(notebook.problem, session)
+            except Exception as e:
+                # Log error but don't fail session reset
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(f"Failed to copy problem files to reset session: {e}")
+        
         payload = _build_session_payload(session_id, session, status_label="reset")
         return Response(payload, status=status.HTTP_200_OK)
 
