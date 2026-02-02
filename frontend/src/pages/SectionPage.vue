@@ -93,17 +93,25 @@ const toggleNested = nestedId => {
 }
 
 const navigateTo = (item) => {
-  const name = item.type === 'course' ? 'course' : 'section'
-  router.push({ name, params: { id: item.id }, query: { title: item.title } })
+  // Navigate to course or section page based on item type
+  if (item.type === 'course') {
+    router.push({ name: 'course', params: { id: item.id }, query: { title: item.title } })
+  } else if (item.type === 'section') {
+    router.push({ name: 'section', params: { id: item.id }, query: { title: item.title } })
+  } else {
+    console.warn('Unknown item type:', item.type)
+  }
 }
 
 const findSectionById = (items, targetId) => {
+  // Convert targetId to number for comparison
+  const numericId = Number(targetId)
   for (const item of items) {
-    if (item.id == targetId && item.type === 'section') {
+    if (item.id === numericId && item.type === 'section') {
       return item
     }
     if (item.children) {
-      const found = findSectionById(item.children, targetId)
+      const found = findSectionById(item.children, numericId)
       if (found) return found
     }
   }
