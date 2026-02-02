@@ -35,7 +35,7 @@
                 <td>{{ submission.id }}</td>
                 <td>{{ formatDateTime(submission.submitted_at) }}</td>
                 <td>
-                  <span :class="['status', `status--${getStatusClass(submission.status)}`]">
+                  <span class="status">
                     {{ getStatusLabel(submission.status) }}
                   </span>
                 </td>
@@ -166,17 +166,6 @@ const getStatusLabel = (status) => {
   return statusMap[status] || status
 }
 
-const getStatusClass = (status) => {
-  const classMap = {
-    'pending': 'pending',
-    'running': 'running',
-    'accepted': 'success',
-    'failed': 'error',
-    'validated': 'success'
-  }
-  return classMap[status] || 'default'
-}
-
 onMounted(async () => {
   // Fetch problem details
   try {
@@ -257,39 +246,54 @@ onMounted(async () => {
 
 .submissions__table {
   width: 100%;
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
   font-size: 16px;
 }
 
 .submissions__table thead tr {
-  background-color: var(--color-button-primary);
+  background-color: #9480C9;
 }
 
 .submissions__table th {
   padding: 15px 20px;
   text-align: left;
   font-weight: 500;
-  color: var(--color-button-text-primary);
+  color: #ffffff;
   border-radius: 0;
 }
 
 .submissions__table thead tr th:first-child {
-  border-top-left-radius: 10px;
-  border-bottom-left-radius: 10px;
+  border-top-left-radius: 20px;
+  border-bottom-left-radius: 20px;
 }
 
 .submissions__table thead tr th:last-child {
-  border-top-right-radius: 10px;
-  border-bottom-right-radius: 10px;
+  border-top-right-radius: 20px;
+  border-bottom-right-radius: 20px;
 }
 
 .submissions__table tbody tr {
-  background-color: var(--color-button-secondary);
+  background-color: #E4DAFF;
   transition: opacity 0.2s ease;
+}
+
+.submissions__table tbody tr:nth-child(even) {
+  background-color: #EDE6FF;
 }
 
 .submissions__table tbody tr:hover {
   opacity: 0.9;
+}
+
+.submissions__table tbody tr td:first-child {
+  border-top-left-radius: 20px;
+  border-bottom-left-radius: 20px;
+}
+
+.submissions__table tbody tr td:last-child {
+  border-top-right-radius: 20px;
+  border-bottom-right-radius: 20px;
 }
 
 .submissions__table tbody tr + tr {
@@ -298,40 +302,14 @@ onMounted(async () => {
 
 .submissions__table td {
   padding: 15px 20px;
-  color: var(--color-text-primary);
+  color: #333333;
 }
 
 .status {
-  padding: 4px 12px;
-  border-radius: 6px;
   font-size: 14px;
   font-weight: 500;
   display: inline-block;
-}
-
-.status--pending {
-  background-color: #fff3cd;
-  color: #856404;
-}
-
-.status--running {
-  background-color: #cfe2ff;
-  color: #084298;
-}
-
-.status--success {
-  background-color: #d1e7dd;
-  color: #0f5132;
-}
-
-.status--error {
-  background-color: #f8d7da;
-  color: #842029;
-}
-
-.status--default {
-  background-color: #e9ecef;
-  color: #495057;
+  color: #333333;
 }
 
 .submissions__pagination {
