@@ -114,3 +114,21 @@ export function getCourse(courseId) {
     description: found.description || '',
   })
 }
+
+export function getSection(sectionId) {
+  const numericId = Number(sectionId)
+  if (!Number.isFinite(numericId)) {
+    return Promise.resolve(null)
+  }
+  const found = flattenCourses(mockData).find(item => item.id === numericId)
+  if (!found) {
+    return Promise.resolve(null)
+  }
+  return Promise.resolve({
+    id: found.id,
+    title: found.title,
+    description: found.description || '',
+    children: found.children || [],
+    type: 'section',
+  })
+}

@@ -13,3 +13,26 @@ export async function getCourse(courseId) {
   }
   return await apiGet(`backend/course/${courseId}/`)
 }
+
+export async function getSection(sectionId) {
+  if (sectionId == null || sectionId === '') {
+    return null
+  }
+  // Get the full tree and find the section
+  const tree = await getCourses()
+  
+  const findSection = (items, id) => {
+    for (const item of items) {
+      if (item.type === 'section' && item.id === id) {
+        return item
+      }
+      if (item.children && item.children.length > 0) {
+        const found = findSection(item.children, id)
+        if (found) return found
+      }
+    }
+    return null
+  }
+  
+  return findSection(tree, Number(sectionId))
+}
