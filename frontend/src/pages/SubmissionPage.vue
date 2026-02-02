@@ -110,21 +110,6 @@
                 </li>
               </ul>
             </div>
-            
-            <!-- Stats -->
-            <div v-if="submission.prevalidation.stats && Object.keys(submission.prevalidation.stats).length > 0" class="prevalidation__stats">
-              <h3 class="prevalidation__subtitle">Дополнительная статистика</h3>
-              <div class="prevalidation__stats-grid">
-                <div 
-                  v-for="(value, key) in submission.prevalidation.stats" 
-                  :key="key"
-                  class="prevalidation__stat-item"
-                >
-                  <span class="prevalidation__stat-key">{{ key }}:</span>
-                  <span class="prevalidation__stat-value">{{ formatStatValue(value) }}</span>
-                </div>
-              </div>
-            </div>
           </div>
         </div>
       </div>
@@ -200,13 +185,13 @@ const formatMetrics = (metrics) => {
     const primaryKeys = ['metric', 'score', 'accuracy', 'f1', 'auc']
     for (const key of primaryKeys) {
       if (key in metrics && typeof metrics[key] === 'number') {
-        return `${key}: ${metrics[key].toFixed(4)}`
+        return metrics[key].toFixed(4)
       }
     }
     // Return first numeric value
     for (const [key, value] of Object.entries(metrics)) {
       if (typeof value === 'number') {
-        return `${key}: ${value.toFixed(4)}`
+        return value.toFixed(4)
       }
     }
     return JSON.stringify(metrics)
@@ -218,16 +203,6 @@ const formatFileSize = (bytes) => {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(2)} KB`
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`
-}
-
-const formatStatValue = (value) => {
-  if (typeof value === 'number' && Number.isFinite(value)) {
-    return value.toFixed(4)
-  }
-  if (typeof value === 'object') {
-    return JSON.stringify(value)
-  }
-  return String(value)
 }
 </script>
 
@@ -396,8 +371,7 @@ const formatStatValue = (value) => {
 }
 
 .prevalidation__errors,
-.prevalidation__warnings,
-.prevalidation__stats {
+.prevalidation__warnings {
   margin-top: 24px;
 }
 
@@ -425,30 +399,6 @@ const formatStatValue = (value) => {
   background: #fff3cd;
   color: #856404;
   border-left: 4px solid #ffc107;
-}
-
-.prevalidation__stats-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-  gap: 12px;
-}
-
-.prevalidation__stat-item {
-  padding: 10px 16px;
-  background: var(--color-bg-light);
-  border-radius: 8px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.prevalidation__stat-key {
-  font-weight: 500;
-  color: var(--color-text-secondary);
-}
-
-.prevalidation__stat-value {
-  color: var(--color-text-primary);
 }
 
 .submission__error,
