@@ -31,7 +31,12 @@
               </tr>
             </thead>
             <tbody>
-              <tr v-for="submission in submissions" :key="submission.id">
+              <tr 
+                v-for="submission in submissions" 
+                :key="submission.id"
+                @click="navigateToSubmission(submission.id)"
+                class="submissions__table-row--clickable"
+              >
                 <td>{{ submission.id }}</td>
                 <td>{{ formatDateTime(submission.submitted_at) }}</td>
                 <td>
@@ -114,6 +119,11 @@ const goToPage = (page) => {
   if (page >= 1 && page <= totalPages.value) {
     fetchSubmissions(page)
   }
+}
+
+const navigateToSubmission = (submissionId) => {
+  // Navigate to the submission detail page
+  window.location.href = `/runner/submission/${submissionId}/`
 }
 
 const formatDateTime = (dateString) => {
@@ -278,6 +288,10 @@ onMounted(async () => {
 
 .submissions__table tbody tr:nth-child(even) {
   background-color: #EDE6FF;
+}
+
+.submissions__table-row--clickable {
+  cursor: pointer;
 }
 
 .submissions__table tbody tr:hover {
