@@ -265,12 +265,10 @@ onMounted(async () => {
 
 .submissions__table thead tr th:first-child {
   border-top-left-radius: 20px;
-  border-bottom-left-radius: 20px;
 }
 
 .submissions__table thead tr th:last-child {
   border-top-right-radius: 20px;
-  border-bottom-right-radius: 20px;
 }
 
 .submissions__table tbody tr {
@@ -286,13 +284,11 @@ onMounted(async () => {
   opacity: 0.9;
 }
 
-.submissions__table tbody tr td:first-child {
-  border-top-left-radius: 20px;
+.submissions__table tbody tr:last-child td:first-child {
   border-bottom-left-radius: 20px;
 }
 
-.submissions__table tbody tr td:last-child {
-  border-top-right-radius: 20px;
+.submissions__table tbody tr:last-child td:last-child {
   border-bottom-right-radius: 20px;
 }
 
