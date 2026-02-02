@@ -55,6 +55,8 @@ class RuntimeExecutionResult:
     stderr: str
     error: str | None
     variables: Dict[str, str]
+    outputs: List[Dict[str, object]]
+    artifacts: List[Dict[str, object]]
 
 
 @dataclass
@@ -70,6 +72,8 @@ class _KernelResult:
     stderr: str
     error: str | None
     variables: Dict[str, str]
+    outputs: List[Dict[str, object]]
+    artifacts: List[Dict[str, object]]
 
 
 _sessions: Dict[str, RuntimeSession] = {}
@@ -337,6 +341,8 @@ class LegacyExecutionBackend(ExecutionBackend):
             stderr=result_payload.get("stderr", ""),
             error=result_payload.get("error"),
             variables=result_payload.get("variables", {}),
+            outputs=result_payload.get("outputs", []),
+            artifacts=result_payload.get("artifacts", []),
         )
 
 
@@ -412,6 +418,8 @@ class JupyterExecutionBackend(ExecutionBackend):
                 stderr=result_payload.get("stderr", ""),
                 error=result_payload.get("error"),
                 variables=result_payload.get("variables", {}),
+                outputs=result_payload.get("outputs", []),
+                artifacts=result_payload.get("artifacts", []),
             )
 
         kernel = self._ensure_kernel(session_id, session)
@@ -424,6 +432,8 @@ class JupyterExecutionBackend(ExecutionBackend):
             stderr=kernel_result.stderr,
             error=kernel_result.error,
             variables=kernel_result.variables,
+            outputs=kernel_result.outputs,
+            artifacts=kernel_result.artifacts,
         )
 
     # --- kernel lifecycle -------------------------------------------------
@@ -614,6 +624,8 @@ def _booml_snapshot_vars():
             stderr="".join(stderr_parts),
             error=error_text,
             variables=variables,
+            outputs=[],
+            artifacts=[],
         )
 
     def _wait_for_reply(self, client, msg_id: str) -> dict:

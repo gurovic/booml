@@ -154,6 +154,16 @@ class RuntimeServiceTests(SimpleTestCase):
         result = run_code(session_id, "import os\nprint(os.getcwd())")
         self.assertIn(str(session.workdir), (result.stdout or ""))
 
+    def test_run_code_captures_display_outputs(self) -> None:
+        session_id = "sess-display"
+        create_session(session_id)
+        code = "import pandas as pd\npd.DataFrame({'a': [1, 2]})"
+        result = run_code(session_id, code)
+        self.assertIsNone(result.error)
+        self.assertTrue(result.outputs)
+        types = {item.get("type") for item in result.outputs}
+        self.assertIn("text/html", types)
+
     def test_auto_cleanup_on_create(self) -> None:
         base = timezone.now()
         expired = create_session("auto-expired", now=base)

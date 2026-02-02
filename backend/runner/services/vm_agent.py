@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import ast
+import base64
 import io
 import json
 import os
@@ -11,7 +13,8 @@ import uuid
 from abc import ABC, abstractmethod
 from contextlib import contextmanager, redirect_stderr, redirect_stdout
 from pathlib import Path
-from typing import Dict
+from typing import Dict, Iterable
+from uuid import uuid4
 import logging
 
 from .vm_models import VirtualMachine
@@ -73,18 +76,51 @@ class LocalVmAgent(VmAgent):
         stdout_buffer = io.StringIO()
         stderr_buffer = io.StringIO()
         error = None
+        outputs: list[dict[str, object]] = []
+        artifacts: list[dict[str, str]] = []
+
+        def push_output(item: dict[str, object]) -> None:
+            if item:
+                outputs.append(item)
+
+        def register_artifact(item: dict[str, object]) -> None:
+            path = item.get("path")
+            if not path:
+                return
+            name = item.get("name") or path
+            artifacts.append({"name": str(name), "path": str(path)})
+
+        def display(*values: object) -> None:
+            if not values:
+                return
+            for value in values:
+                item = _convert_display_value(value, session=self.session)
+                if item:
+                    push_output(item)
+                    register_artifact(item)
+
+        namespace.setdefault("display", display)
         with _workspace_cwd(self.session.workdir), redirect_stdout(stdout_buffer), redirect_stderr(stderr_buffer):
             try:
+                _configure_pandas_display(namespace)
+                _configure_matplotlib_defaults(namespace)
+                _configure_plotly_defaults(namespace, display)
                 code = _handle_shell_commands(code, self.session.workdir, stdout_buffer, stderr_buffer, self.session.python_exec)
                 if code.strip():
-                    exec(code, namespace, namespace)
+                    _execute_with_optional_displayhook(code, namespace, display)
             except Exception:
                 error = traceback.format_exc()
+            else:
+                for item in _capture_matplotlib_figures(self.session):
+                    push_output(item)
+                    register_artifact(item)
         return {
             "stdout": stdout_buffer.getvalue(),
             "stderr": stderr_buffer.getvalue(),
             "error": error,
             "variables": _snapshot_variables(namespace),
+            "outputs": outputs,
+            "artifacts": artifacts,
         }
 
 
@@ -160,6 +196,309 @@ def _snapshot_variables(namespace: Dict[str, object]) -> Dict[str, str]:
         except Exception:
             snapshot[key] = f"<unrepresentable {type(value).__name__}>"
     return snapshot
+
+
+def _configure_pandas_display(namespace: Dict[str, object]) -> None:
+    if namespace.get("_booml_pandas_configured"):
+        return
+    try:
+        import pandas as pd
+    except Exception:
+        namespace["_booml_pandas_configured"] = True
+        return
+
+    def _read_int_env(name: str, default: int) -> int:
+        raw = os.environ.get(name)
+        if raw is None or raw == "":
+            return default
+        try:
+            return max(1, int(raw))
+        except ValueError:
+            return default
+
+    max_rows = _read_int_env("RUNTIME_DF_MAX_ROWS", 20)
+    min_rows = _read_int_env("RUNTIME_DF_MIN_ROWS", 10)
+    max_cols = _read_int_env("RUNTIME_DF_MAX_COLUMNS", 20)
+    max_colwidth = _read_int_env("RUNTIME_DF_MAX_COLWIDTH", 100)
+
+    pd.set_option("display.max_rows", max_rows)
+    pd.set_option("display.min_rows", min_rows)
+    pd.set_option("display.max_columns", max_cols)
+    pd.set_option("display.max_colwidth", max_colwidth)
+    pd.set_option("display.large_repr", "truncate")
+    pd.set_option("display.show_dimensions", "truncate")
+    namespace["_booml_pandas_configured"] = True
+
+
+def _configure_matplotlib_defaults(namespace: Dict[str, object]) -> None:
+    if namespace.get("_booml_matplotlib_configured"):
+        return
+    try:
+        import matplotlib as mpl
+    except Exception:
+        namespace["_booml_matplotlib_configured"] = True
+        return
+    try:
+        mpl.rcParams["figure.dpi"] = 120
+        mpl.rcParams["savefig.dpi"] = 120
+        mpl.rcParams["figure.figsize"] = (6, 4)
+        mpl.rcParams["axes.grid"] = True
+        mpl.rcParams["grid.alpha"] = 0.2
+        mpl.rcParams["savefig.bbox"] = "tight"
+    except Exception:
+        pass
+    try:
+        import matplotlib.pyplot as plt
+        try:
+            plt.style.use("seaborn-v0_8-whitegrid")
+        except Exception:
+            plt.style.use("ggplot")
+    except Exception:
+        pass
+    namespace["_booml_matplotlib_configured"] = True
+
+
+def _configure_plotly_defaults(namespace: Dict[str, object], display) -> None:
+    if namespace.get("_booml_plotly_configured"):
+        return
+    try:
+        import plotly.graph_objects as go
+    except Exception:
+        namespace["_booml_plotly_configured"] = True
+        return
+    try:
+        original_show = go.Figure.show
+
+        def _booml_show(self, *args, **kwargs):  # noqa: ANN001 - runtime signature
+            try:
+                return display(self)
+            except Exception:
+                return original_show(self, *args, **kwargs)
+
+        go.Figure.show = _booml_show
+    except Exception:
+        pass
+    namespace["_booml_plotly_configured"] = True
+
+
+def _execute_with_optional_displayhook(code: str, namespace: Dict[str, object], display) -> None:
+    try:
+        parsed = ast.parse(code, mode="exec")
+    except SyntaxError:
+        exec(code, namespace, namespace)
+        return
+
+    if not parsed.body:
+        return
+
+    has_future_import = any(
+        isinstance(node, ast.ImportFrom) and node.module == "__future__"
+        for node in parsed.body
+    )
+    last_node = parsed.body[-1]
+    if has_future_import or not isinstance(last_node, ast.Expr):
+        exec(compile(parsed, "<cell>", "exec"), namespace, namespace)
+        return
+
+    body = parsed.body[:-1]
+    if body:
+        exec(compile(ast.Module(body=body, type_ignores=[]), "<cell>", "exec"), namespace, namespace)
+
+    expr = ast.Expression(last_node.value)
+    result = eval(compile(expr, "<cell>", "eval"), namespace, namespace)
+    if result is not None:
+        display(result)
+
+
+def _convert_display_value(value: object, *, session) -> dict[str, object] | None:
+    if value is None:
+        return None
+
+    if isinstance(value, dict) and value.get("type"):
+        return {
+            "type": str(value.get("type")),
+            "data": value.get("data"),
+            "metadata": value.get("metadata"),
+            "name": value.get("name"),
+            "path": value.get("path"),
+        }
+
+    dataframe_payload = _try_describe_dataframe(value)
+    if dataframe_payload:
+        return dataframe_payload
+
+    html_export = getattr(value, "to_html", None)
+    if callable(html_export):
+        try:
+            html = html_export(full_html=False, include_plotlyjs="cdn")
+            if html:
+                return {"type": "text/html", "data": html}
+        except TypeError:
+            try:
+                html = html_export()
+                if html:
+                    return {"type": "text/html", "data": html}
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+    html_repr = getattr(value, "_repr_html_", None)
+    if callable(html_repr):
+        try:
+            html = html_repr()
+            if html:
+                return {"type": "text/html", "data": html}
+        except Exception:
+            pass
+
+    md_repr = getattr(value, "_repr_markdown_", None)
+    if callable(md_repr):
+        try:
+            md = md_repr()
+            if md:
+                return {"type": "text/markdown", "data": md}
+        except Exception:
+            pass
+
+    image_payload = _try_encode_image(value, session)
+    if image_payload:
+        return image_payload
+
+    return {"type": "text/plain", "data": repr(value)}
+
+
+def _try_encode_image(value: object, session) -> dict[str, object] | None:
+    try:
+        from PIL import Image
+    except Exception:
+        Image = None
+
+    if Image is not None and isinstance(value, Image.Image):
+        buffer = io.BytesIO()
+        value.save(buffer, format="PNG")
+        return _build_image_output(buffer.getvalue(), "image/png", session=session)
+    return None
+
+
+def _try_describe_dataframe(value: object) -> dict[str, object] | None:
+    try:
+        import pandas as pd
+    except Exception:
+        return None
+
+    if not isinstance(value, pd.DataFrame):
+        return None
+
+    try:
+        html = value.to_html()
+    except Exception:
+        return None
+
+    try:
+        nulls_total = int(value.isna().sum().sum())
+    except Exception:
+        nulls_total = None
+    try:
+        memory_bytes = int(value.memory_usage(deep=True).sum())
+    except Exception:
+        memory_bytes = None
+
+    columns_preview = []
+    truncated = False
+    preview_limit = 12
+    try:
+        for idx, (name, dtype) in enumerate(value.dtypes.items()):
+            if idx >= preview_limit:
+                truncated = True
+                break
+            col = value[name]
+            try:
+                non_null = int(col.notna().sum())
+                nulls = int(col.isna().sum())
+            except Exception:
+                non_null = None
+                nulls = None
+            columns_preview.append(
+                {
+                    "name": str(name),
+                    "dtype": str(dtype),
+                    "non_null": non_null,
+                    "nulls": nulls,
+                }
+            )
+    except Exception:
+        columns_preview = []
+
+    dtype_counts = None
+    try:
+        dtype_counts = value.dtypes.astype(str).value_counts().to_dict()
+    except Exception:
+        dtype_counts = None
+
+    metadata = {
+        "rows": int(value.shape[0]),
+        "columns": int(value.shape[1]),
+        "nulls_total": nulls_total,
+        "memory_bytes": memory_bytes,
+        "dtype_counts": dtype_counts,
+        "columns_preview": columns_preview,
+        "columns_truncated": truncated,
+    }
+    return {"type": "text/html", "data": html, "metadata": metadata}
+
+
+def _capture_matplotlib_figures(session) -> Iterable[dict[str, object]]:
+    try:
+        import matplotlib.pyplot as plt
+    except Exception:
+        return []
+
+    figures = []
+    try:
+        fig_nums = plt.get_fignums()
+    except Exception:
+        return []
+
+    for num in fig_nums:
+        try:
+            fig = plt.figure(num)
+        except Exception:
+            continue
+        buffer = io.BytesIO()
+        try:
+            fig.savefig(buffer, format="png", bbox_inches="tight")
+        except Exception:
+            continue
+        finally:
+            try:
+                plt.close(fig)
+            except Exception:
+                pass
+        figures.append(_build_image_output(buffer.getvalue(), "image/png", session=session))
+    return figures
+
+
+def _build_image_output(payload: bytes, mime_type: str, *, session) -> dict[str, object]:
+    if not payload:
+        return {}
+    inline_limit = int(os.environ.get("RUNTIME_OUTPUT_INLINE_MAX_BYTES", "300000"))
+    if len(payload) <= inline_limit:
+        encoded = base64.b64encode(payload).decode("ascii")
+        return {"type": mime_type, "data": encoded}
+    outputs_dir = session.workdir / ".outputs"
+    outputs_dir.mkdir(parents=True, exist_ok=True)
+    ext = "png" if mime_type == "image/png" else "img"
+    filename = f"output-{uuid4().hex}.{ext}"
+    target = outputs_dir / filename
+    target.write_bytes(payload)
+    relative = target.relative_to(session.workdir)
+    return {
+        "type": mime_type,
+        "data": None,
+        "name": filename,
+        "path": relative.as_posix(),
+    }
 
 
 @contextmanager

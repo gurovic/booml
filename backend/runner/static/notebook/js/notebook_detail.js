@@ -319,6 +319,7 @@ const notebookDetail = {
                 return;
             }
             this.rememberOutputSnapshot(cellId, outputElement.innerHTML);
+            this.enhanceOutputElement(outputElement);
         });
     },
 
@@ -480,8 +481,9 @@ const notebookDetail = {
 
             const formattedOutput = NotebookUtils.formatCellRunResult(data);
             outputElement.innerHTML = formattedOutput;
+            this.enhanceOutputElement(outputElement);
             outputElement.className = data.error ? 'output error' : 'output success';
-            this.renderArtifacts(cellId, []);
+            this.renderArtifacts(cellId, data.artifacts || []);
             const finalStatus = data.error ? 'error' : 'success';
             const durationMs = Math.max(
                 0,
@@ -526,6 +528,262 @@ const notebookDetail = {
             this.rememberOutputSnapshot(cellId, errorHtml);
             await this.saveCellState(cellId, code, errorHtml, saveOutputUrl);
         }
+    },
+
+    enhanceOutputElement(outputElement) {
+        if (!outputElement) {
+            return;
+        }
+        const containers = outputElement.querySelectorAll('.dataframe-container');
+        containers.forEach((container) => {
+            if (container.dataset.enhanced === 'true') {
+                return;
+            }
+            const table = container.querySelector('table');
+            if (!table) {
+                return;
+            }
+            const toolbar = this.buildDataframeToolbar(container, table);
+            if (toolbar) {
+                container.insertAdjacentElement('beforebegin', toolbar);
+            }
+            this.highlightNullCells(table);
+            container.dataset.enhanced = 'true';
+        });
+    },
+
+    buildDataframeToolbar(container, table) {
+        const toolbar = document.createElement('div');
+        toolbar.className = 'dataframe-toolbar';
+
+        const summary = document.createElement('span');
+        summary.className = 'dataframe-summary';
+        const { rows, cols } = this.getTableShape(table);
+        summary.textContent = `Строк: ${rows} · Столбцов: ${cols}`;
+
+        const toggleButton = document.createElement('button');
+        toggleButton.type = 'button';
+        toggleButton.className = 'dataframe-toggle';
+        toggleButton.textContent = 'Показать всё';
+        toggleButton.addEventListener('click', () => {
+            const expanded = container.classList.toggle('dataframe-expanded');
+            toggleButton.textContent = expanded ? 'Свернуть' : 'Показать всё';
+        });
+
+        const searchInput = document.createElement('input');
+        searchInput.type = 'search';
+        searchInput.className = 'dataframe-search';
+        searchInput.placeholder = 'Поиск...';
+        searchInput.addEventListener('input', () => {
+            this.filterTableRows(table, searchInput.value);
+        });
+
+        const copyButton = document.createElement('button');
+        copyButton.type = 'button';
+        copyButton.className = 'dataframe-copy';
+        copyButton.textContent = 'Копировать CSV';
+        copyButton.addEventListener('click', () => this.copyTableCsv(table, copyButton));
+
+        const downloadButton = document.createElement('button');
+        downloadButton.type = 'button';
+        downloadButton.className = 'dataframe-download';
+        downloadButton.textContent = 'Скачать CSV';
+        downloadButton.addEventListener('click', () => this.downloadTableCsv(table));
+
+        const infoButton = document.createElement('button');
+        infoButton.type = 'button';
+        infoButton.className = 'dataframe-info-toggle';
+        infoButton.textContent = 'Инфо';
+
+        toolbar.appendChild(summary);
+        toolbar.appendChild(searchInput);
+        toolbar.appendChild(toggleButton);
+        toolbar.appendChild(copyButton);
+        toolbar.appendChild(downloadButton);
+        toolbar.appendChild(infoButton);
+        this.attachDataframeInfo(container, table, toolbar, infoButton);
+        return toolbar;
+    },
+
+    getTableShape(table) {
+        const headerRow = table.querySelector('thead tr');
+        const cols = headerRow ? headerRow.querySelectorAll('th').length - 1 : 0;
+        const bodyRows = table.querySelectorAll('tbody tr').length;
+        return { rows: bodyRows, cols: Math.max(cols, 0) };
+    },
+
+    highlightNullCells(table) {
+        const nullValues = new Set(['NaN', 'NaT', 'None', 'null']);
+        const cells = table.querySelectorAll('td');
+        cells.forEach((cell) => {
+            const value = (cell.textContent || '').trim();
+            if (nullValues.has(value)) {
+                cell.classList.add('df-null');
+            }
+        });
+    },
+
+    attachDataframeInfo(container, table, toolbar, infoButton) {
+        const rawMeta = container.dataset.meta;
+        let meta = null;
+        if (rawMeta) {
+            try {
+                meta = JSON.parse(decodeURIComponent(rawMeta));
+            } catch (_error) {
+                try {
+                    meta = JSON.parse(rawMeta);
+                } catch (_error2) {
+                    meta = null;
+                }
+            }
+        }
+
+        const panel = document.createElement('div');
+        panel.className = 'dataframe-info';
+        panel.hidden = true;
+
+        const items = [];
+        if (meta) {
+            if (typeof meta.nulls_total === 'number') {
+                items.push(`<div><strong>Пропуски:</strong> ${meta.nulls_total}</div>`);
+            }
+            if (typeof meta.memory_bytes === 'number') {
+                items.push(`<div><strong>Память:</strong> ${this.formatBytes(meta.memory_bytes)}</div>`);
+            }
+            if (meta.dtype_counts && typeof meta.dtype_counts === 'object') {
+                const parts = Object.entries(meta.dtype_counts).map(([dtype, count]) => `${dtype}: ${count}`);
+                if (parts.length) {
+                    items.push(`<div><strong>Типы:</strong> ${parts.join(', ')}</div>`);
+                }
+            }
+            if (Array.isArray(meta.columns_preview) && meta.columns_preview.length) {
+                const rows = meta.columns_preview.map((col) => {
+                    const nulls = typeof col.nulls === 'number' ? `, null: ${col.nulls}` : '';
+                    return `<tr><td>${NotebookUtils.escapeHtml(col.name)}</td><td>${NotebookUtils.escapeHtml(col.dtype)}</td><td>${col.non_null ?? ''}${nulls}</td></tr>`;
+                }).join('');
+                const more = meta.columns_truncated ? '<div class="df-info-note">Показаны первые колонки.</div>' : '';
+                items.push(`
+                    <div class="df-info-columns">
+                        <div class="df-info-title">Колонки</div>
+                        <table>
+                            <thead><tr><th>Имя</th><th>Тип</th><th>Незаполн.</th></tr></thead>
+                            <tbody>${rows}</tbody>
+                        </table>
+                        ${more}
+                    </div>
+                `);
+            }
+        } else if (table) {
+            const nulls = table.querySelectorAll('td.df-null').length;
+            items.push(`<div><strong>Пропуски:</strong> ${nulls}</div>`);
+            items.push('<div class="df-info-note">Полная статистика недоступна (metadata не передан).</div>');
+        }
+        panel.innerHTML = items.join('');
+        if (!panel.innerHTML) {
+            infoButton.disabled = true;
+            return;
+        }
+
+        infoButton.addEventListener('click', () => {
+            const next = panel.hidden;
+            panel.hidden = !next;
+            infoButton.textContent = next ? 'Скрыть инфо' : 'Инфо';
+        });
+        toolbar.insertAdjacentElement('afterend', panel);
+    },
+
+    formatBytes(value) {
+        const bytes = Number(value);
+        if (!Number.isFinite(bytes) || bytes < 0) {
+            return '';
+        }
+        if (bytes >= 1024 * 1024) {
+            return `${(bytes / (1024 * 1024)).toFixed(1)} МБ`;
+        }
+        if (bytes >= 1024) {
+            return `${(bytes / 1024).toFixed(1)} КБ`;
+        }
+        return `${Math.round(bytes)} Б`;
+    },
+
+    copyTableCsv(table, button) {
+        const csv = this.tableToCsv(table);
+        if (!csv) {
+            return;
+        }
+        const done = () => {
+            const original = button.textContent;
+            button.textContent = 'Скопировано';
+            setTimeout(() => {
+                button.textContent = original;
+            }, 1200);
+        };
+        if (navigator.clipboard?.writeText) {
+            navigator.clipboard.writeText(csv).then(done, done);
+        } else {
+            const textarea = document.createElement('textarea');
+            textarea.value = csv;
+            textarea.style.position = 'fixed';
+            textarea.style.opacity = '0';
+            document.body.appendChild(textarea);
+            textarea.select();
+            try {
+                document.execCommand('copy');
+            } catch (_error) {
+                // ignore
+            }
+            textarea.remove();
+            done();
+        }
+    },
+
+    downloadTableCsv(table) {
+        const csv = this.tableToCsv(table);
+        if (!csv) {
+            return;
+        }
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = 'dataframe.csv';
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 0);
+    },
+
+    filterTableRows(table, query) {
+        const normalized = (query || '').trim().toLowerCase();
+        const rows = table.querySelectorAll('tbody tr');
+        rows.forEach((row) => {
+            if (!normalized) {
+                row.style.display = '';
+                return;
+            }
+            const cells = row.querySelectorAll('th, td');
+            const match = Array.from(cells).some((cell) => {
+                const text = (cell.textContent || '').toLowerCase();
+                return text.includes(normalized);
+            });
+            row.style.display = match ? '' : 'none';
+        });
+    },
+
+    tableToCsv(table) {
+        const rows = Array.from(table.querySelectorAll('tr'));
+        if (!rows.length) {
+            return '';
+        }
+        const escapeCell = (value) => {
+            const safe = String(value ?? '');
+            const escaped = safe.replace(/"/g, '""');
+            return `"${escaped}"`;
+        };
+        return rows.map((row) => {
+            const cells = Array.from(row.querySelectorAll('th, td'));
+            return cells.map((cell) => escapeCell(cell.textContent)).join(',');
+        }).join('\n');
     },
 
     initActivityTracking() {
@@ -1762,7 +2020,7 @@ const notebookDetail = {
 
         const items = artifacts.map(artifact => {
             const name = NotebookUtils.escapeHtml(artifact?.name || 'artifact');
-            const url = typeof artifact?.url === 'string' ? encodeURI(artifact.url) : '#';
+            const url = this.buildArtifactUrl(artifact);
 
             return `<li><a href="${url}" download target="_blank" rel="noopener noreferrer">${name}</a></li>`;
         }).join('');
@@ -1772,6 +2030,20 @@ const notebookDetail = {
             <ul class="artifacts-list">${items}</ul>
         `;
         container.classList.add('has-artifacts');
+    },
+
+    buildArtifactUrl(artifact) {
+        const direct = typeof artifact?.url === 'string' ? artifact.url.trim() : '';
+        if (direct) {
+            return encodeURI(direct);
+        }
+        const path = typeof artifact?.path === 'string' ? artifact.path : '';
+        if (!path || !this.sessionFileDownloadUrl || !this.sessionId) {
+            return '#';
+        }
+        const sessionId = encodeURIComponent(this.sessionId);
+        const encodedPath = encodeURIComponent(path);
+        return `${this.sessionFileDownloadUrl}?session_id=${sessionId}&path=${encodedPath}`;
     },
 
     async deleteCell(cellId, cellElement) {

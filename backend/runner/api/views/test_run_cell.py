@@ -58,6 +58,7 @@ class RunCellViewTests(TestCase):
         self.assertEqual(data["stdout"].strip(), "2")
         self.assertIsNone(data["error"])
         self.assertEqual(data["variables"]["x"], "2")
+        self.assertIn("outputs", data)
 
     def test_run_cell_forbidden_for_other_user(self):
         another = User.objects.create_user(username="alien", password="pass456")
@@ -117,3 +118,25 @@ class RunCellViewTests(TestCase):
         data = resp.json()
         self.assertIsNone(data["error"])
         self.assertIn("success", data["stdout"])
+
+    def test_run_cell_returns_rich_outputs(self):
+        session_id = f"notebook:{self.notebook.id}"
+        create_session(session_id)
+        cell = Cell.objects.create(
+            notebook=self.notebook,
+            cell_type=Cell.CODE,
+            content="import pandas as pd\npd.DataFrame({'a': [1, 2]})"
+        )
+        resp = self.client.post(
+            self.url,
+            {
+                "session_id": session_id,
+                "cell_id": cell.id,
+            },
+        )
+        self.assertEqual(resp.status_code, HTTPStatus.OK)
+        data = resp.json()
+        self.assertIsNone(data["error"])
+        outputs = data.get("outputs") or []
+        types = {item.get("type") for item in outputs}
+        self.assertIn("text/html", types)

@@ -16,6 +16,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         pkg-config \
         libopenblas-dev \
         liblapack-dev \
+        zlib1g-dev \
+        libjpeg-dev \
+        libpng-dev \
+        libfreetype6-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Install a minimal toolset for notebook sessions.
