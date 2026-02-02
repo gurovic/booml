@@ -189,7 +189,7 @@ const formatMetrics = (metrics) => {
       }
     }
     // Return first numeric value
-    for (const [key, value] of Object.entries(metrics)) {
+    for (const [, value] of Object.entries(metrics)) {
       if (typeof value === 'number') {
         return value.toFixed(4)
       }
