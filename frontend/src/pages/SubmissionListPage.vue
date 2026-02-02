@@ -79,7 +79,7 @@ import UiHeader from '@/components/ui/UiHeader.vue'
 const route = useRoute()
 const problemId = route.params.id
 
-// Pagination configuration matching backend
+// Pagination configuration - must match backend SubmissionsPagination.page_size
 const PAGE_SIZE = 10
 
 const problem = ref(null)

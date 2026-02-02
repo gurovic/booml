@@ -127,10 +127,9 @@ class MySubmissionsListView(generics.ListAPIView):
 
 class SubmissionsPagination(PageNumberPagination):
     """
-    Pagination for submissions list - 10 items per page.
+    Pagination for submissions list - 10 items per page (fixed).
     """
     page_size = 10
-    max_page_size = 100
 
 
 class ProblemSubmissionsListView(generics.ListAPIView):
