@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 
 from django.http import FileResponse, Http404
@@ -12,6 +13,7 @@ from typing import Optional
 
 from ...models.notebook import Notebook
 from ...models.problem import Problem
+from ...models.problem_data import ProblemData
 from ...services.runtime import (
     RuntimeSession,
     SessionNotFoundError,
@@ -52,6 +54,44 @@ def ensure_notebook_access(user, notebook: Notebook) -> None:
         raise PermissionDenied("Недостаточно прав для работы с этим блокнотом")
 
 
+def copy_problem_files_to_session(problem: Problem, session: RuntimeSession) -> None:
+    """
+    Copy problem data files (train, test, sample_submission) to the notebook session workdir.
+    """
+    try:
+        problem_data = ProblemData.objects.filter(problem=problem).first()
+        if not problem_data:
+            return
+        
+        workdir = session.workdir
+        workdir.mkdir(parents=True, exist_ok=True)
+        
+        # Copy each file if it exists
+        files_to_copy = [
+            (problem_data.train_file, 'train.csv'),
+            (problem_data.test_file, 'test.csv'),
+            (problem_data.sample_submission_file, 'sample_submission.csv'),
+        ]
+        
+        for file_field, target_name in files_to_copy:
+            if file_field and file_field.name:
+                try:
+                    source_path = Path(file_field.path)
+                    if source_path.exists():
+                        target_path = workdir / target_name
+                        shutil.copy2(source_path, target_path)
+                except Exception as e:
+                    # Log error but don't fail notebook creation
+                    import logging
+                    logger = logging.getLogger(__name__)
+                    logger.warning(f"Failed to copy {target_name}: {e}")
+    except Exception as e:
+        # Don't fail notebook creation if file copying fails
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning(f"Failed to copy problem files: {e}")
+
+
 class CreateNotebookView(APIView):
     """
     POST /api/notebooks/ - Create a notebook for the authenticated user.
@@ -60,6 +100,10 @@ class CreateNotebookView(APIView):
     problem is created. If a notebook for the given ``problem_id`` already exists
     for the current user, the existing notebook is returned instead of creating
     a new one.
+
+    When a notebook is created with a problem, a session is automatically created
+    and the problem's data files (train.csv, test.csv, sample_submission.csv) are
+    copied to the session workdir for immediate use.
 
     Request body (JSON):
       - title (str, optional): Custom notebook title. If omitted, a default
@@ -117,6 +161,17 @@ class CreateNotebookView(APIView):
                 problem=problem,
                 title=title
             )
+            
+            # Create session and copy problem files
+            try:
+                session_id = build_notebook_session_id(notebook.id)
+                session = create_session(session_id)
+                copy_problem_files_to_session(problem, session)
+            except Exception as e:
+                # Log error but don't fail notebook creation
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(f"Failed to initialize session or copy files: {e}")
         else:
             notebook = Notebook.objects.create(
                 owner=request.user,
