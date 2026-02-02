@@ -79,6 +79,9 @@ import UiHeader from '@/components/ui/UiHeader.vue'
 const route = useRoute()
 const problemId = route.params.id
 
+// Pagination configuration matching backend
+const PAGE_SIZE = 10
+
 const problem = ref(null)
 const submissions = ref([])
 const loading = ref(false)
@@ -96,8 +99,8 @@ const fetchSubmissions = async (page = 1) => {
     submissions.value = response.results || []
     totalCount.value = response.count || 0
     
-    // Calculate total pages (10 items per page)
-    totalPages.value = Math.ceil(totalCount.value / 10)
+    // Calculate total pages
+    totalPages.value = Math.ceil(totalCount.value / PAGE_SIZE)
     currentPage.value = page
   } catch (err) {
     console.error('Failed to fetch submissions:', err)
