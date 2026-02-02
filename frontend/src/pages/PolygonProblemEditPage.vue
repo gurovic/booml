@@ -16,13 +16,6 @@
 
       <div v-else class="polygon-edit__message">
         <p>Страница редактирования задачи в разработке.</p>
-        <p>Пока используйте старую версию по адресу: <a :href="`/polygon/problem/${problemId}/`">/polygon/problem/{{ problemId }}/</a></p>
-        <button 
-          class="button button--primary" 
-          @click="goToOldEdit"
-        >
-          Открыть старую версию редактора
-        </button>
         <button 
           class="button button--secondary" 
           @click="goBack"
@@ -36,18 +29,12 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import { useRouter, useRoute } from 'vue-router'
+import { useRouter } from 'vue-router'
 import UiHeader from '@/components/ui/UiHeader.vue'
 
 const router = useRouter()
-const route = useRoute()
-const problemId = ref(route.params.id)
 const loading = ref(false)
 const error = ref(null)
-
-const goToOldEdit = () => {
-  window.location.href = `/polygon/problem/${problemId.value}/`
-}
 
 const goBack = () => {
   router.push('/polygon')
