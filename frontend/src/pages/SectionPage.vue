@@ -31,9 +31,8 @@
 
           <!-- Courses -->
           <div v-if="courses.length > 0" class="courses">
-            <h2 class="subsection-header">Курсы</h2>
             <UiLinkList
-              :title="''"
+              title="Курсы"
               :items="courseItems"
             />
           </div>
