@@ -54,9 +54,8 @@ class SubmissionReadSerializer(serializers.ModelSerializer):
     
     def get_file_url(self, obj):
         if obj.file:
-            request = self.context.get('request')
-            if request:
-                return request.build_absolute_uri(obj.file.url)
+            # Return relative URL path (e.g., /media/submissions/file.csv)
+            # Browser will resolve it relative to current origin
             return obj.file.url
         return None
 
@@ -87,9 +86,8 @@ class SubmissionDetailSerializer(serializers.ModelSerializer):
     
     def get_file_url(self, obj):
         if obj.file:
-            request = self.context.get('request')
-            if request:
-                return request.build_absolute_uri(obj.file.url)
+            # Return relative URL path (e.g., /media/submissions/file.csv)
+            # Browser will resolve it relative to current origin
             return obj.file.url
         return None
 

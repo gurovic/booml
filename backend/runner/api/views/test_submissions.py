@@ -121,11 +121,14 @@ class SubmissionAPITests(TestCase):
         self.assertEqual(data["status"], Submission.STATUS_ACCEPTED)
         self.assertEqual(data["metrics"]["accuracy"], 0.95)
         
-        # Check file_url is present and is a string (URL)
+        # Check file_url is present and is a relative path (not absolute URL)
         self.assertIn("file_url", data)
         self.assertIsNotNone(data["file_url"])
         self.assertIsInstance(data["file_url"], str)
-        self.assertIn("/media/submissions/", data["file_url"])
+        self.assertTrue(data["file_url"].startswith("/media/submissions/"))
+        # Ensure it's not an absolute URL with hostname
+        self.assertNotIn("http://", data["file_url"])
+        self.assertNotIn("backend:", data["file_url"])
         
         # Check prevalidation data
         self.assertIn("prevalidation", data)
