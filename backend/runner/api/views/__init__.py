@@ -1,5 +1,6 @@
 from .submissions import build_descriptor_from_problem, SubmissionCreateView, MySubmissionsListView, SubmissionDetailView
 from .sessions import (
+    CreateNotebookView,
     CreateNotebookSessionView,
     ResetSessionView,
     StopSessionView,

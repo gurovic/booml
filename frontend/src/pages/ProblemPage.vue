@@ -8,8 +8,40 @@
           <div class="problem__text" v-html="problem.rendered_statement"></div>
         </div>
         <ul class="problem__menu">
+          <li class="problem__files problem__menu-item" v-if="availableFiles.length > 0">
+            <h2 class="problem__files-title problem__item-title">Файлы</h2>
+            <ul class="problem__files-list">
+              <li
+                class="problem__file"
+                v-for="file in availableFiles"
+                :key="file.name"
+              >
+                <a class="problem__file-href button button--secondary" :href="file.url" :download="file.name">{{ file.name }}</a>
+            </li>
+            </ul>
+          </li>
+          <li class="problem__notebook problem__menu-item" v-if="userStore.isAuthenticated">
+            <div v-if="problem.notebook_id" class="problem__notebook-exists">
+              <a :href="`/notebook/${problem.notebook_id}`" class="problem__notebook-button">
+                Перейти в блокнот
+              </a>
+            </div>
+            <div v-else class="problem__notebook-create">
+              <button 
+                @click="handleCreateNotebook"
+                :disabled="isCreatingNotebook"
+                class="problem__notebook-button"
+              >
+                <span v-if="!isCreatingNotebook">Перейти в блокнот</span>
+                <span v-else>Создание...</span>
+              </button>
+              <div v-if="notebookMessage" :class="['problem__notebook-feedback', `problem__notebook-feedback--${notebookMessage.type}`]">
+                {{ notebookMessage.text }}
+              </div>
+            </div>
+          </li>
           <li class="problem__submit problem__menu-item" v-if="userStore.isAuthenticated">
-            <h2 class="problem__submit-title problem__item-title">Отправить решение</h2>
+            <h2 class="problem__submit-title problem__item-title">Отправка решения</h2>
             <div class="problem__submit-form">
               <input 
                 type="file" 
@@ -35,18 +67,6 @@
                 {{ submitMessage.text }}
               </div>
             </div>
-          </li>
-          <li class="problem__files problem__menu-item" v-if="availableFiles.length > 0">
-            <h2 class="problem__files-title problem__item-title">Файлы</h2>
-            <ul class="problem__files-list">
-              <li
-                class="problem__file"
-                v-for="file in availableFiles"
-                :key="file.name"
-              >
-                <a class="problem__file-href button button--secondary" :href="file.url" :download="file.name">{{ file.name }}</a>
-            </li>
-            </ul>
           </li>
           <li class="problem__submissions problem__menu-item">
             <h2 class="problem__submissions-title problem__item-title">Последние посылки</h2>
@@ -88,6 +108,7 @@ import { ref, onMounted, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { getProblem } from '@/api/problem'
 import { submitSolution } from '@/api/submission'
+import { createNotebook } from '@/api/notebook'
 import { useUserStore } from '@/stores/UserStore'
 import MarkdownIt from 'markdown-it'
 import mkKatex from 'markdown-it-katex'
@@ -106,6 +127,8 @@ let selectedFile = ref(null)
 let isSubmitting = ref(false)
 let submitMessage = ref(null)
 let fileInputKey = ref(0)
+let isCreatingNotebook = ref(false)
+let notebookMessage = ref(null)
 
 onMounted(async () => {
   try {
@@ -189,6 +212,36 @@ const handleSubmit = async () => {
     submitMessage.value = { type: 'error', text: err.message || 'Ошибка при отправке файла' }
   } finally {
     isSubmitting.value = false
+  }
+}
+
+const handleCreateNotebook = async () => {
+  isCreatingNotebook.value = true
+  notebookMessage.value = null
+
+  try {
+    const result = await createNotebook(problem.value.id)
+    
+    // Update problem with the new notebook_id
+    problem.value.notebook_id = result.id
+    
+    notebookMessage.value = { 
+      type: 'success', 
+      text: 'Блокнот успешно создан!' 
+    }
+    
+    // Redirect to notebook page after a short delay
+    setTimeout(() => {
+      window.location.href = `/notebook/${result.id}`
+    }, 1000)
+  } catch (err) {
+    console.error('Notebook creation error:', err)
+    notebookMessage.value = { 
+      type: 'error', 
+      text: err.message || 'Ошибка при создании блокнота' 
+    }
+  } finally {
+    isCreatingNotebook.value = false
   }
 }
 </script>
@@ -407,6 +460,57 @@ const handleSubmit = async () => {
 }
 
 .problem__submit-message--error {
+  background-color: var(--color-error-bg);
+  color: var(--color-error-text);
+  border: 1px solid var(--color-error-border);
+}
+
+.problem__notebook-button {
+  display: block;
+  width: 100%;
+  padding: 16px 20px;
+  background-color: #2c3e67;
+  color: white;
+  border: none;
+  border-radius: 12px;
+  text-align: center;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  font-weight: 500;
+  font-size: 16px;
+  text-decoration: none;
+}
+
+.problem__notebook-button:hover {
+  background-color: #3d5180;
+}
+
+.problem__notebook-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.problem__notebook-exists,
+.problem__notebook-create {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.problem__notebook-feedback {
+  padding: 10px 15px;
+  border-radius: 8px;
+  font-size: 14px;
+  text-align: center;
+}
+
+.problem__notebook-feedback--success {
+  background-color: var(--color-success-bg);
+  color: var(--color-success-text);
+  border: 1px solid var(--color-success-border);
+}
+
+.problem__notebook-feedback--error {
   background-color: var(--color-error-bg);
   color: var(--color-error-text);
   border: 1px solid var(--color-error-border);

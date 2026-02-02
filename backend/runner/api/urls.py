@@ -7,6 +7,7 @@ from .views import (
     SectionCreateView,
     SubmissionCreateView,
     MySubmissionsListView,
+    CreateNotebookView,
     SubmissionDetailView,
     CreateNotebookSessionView,
     ResetSessionView,
@@ -20,6 +21,7 @@ from .views import (
 urlpatterns = [
     path("submissions/", SubmissionCreateView.as_view(), name="submission-create"),
     path("submissions/mine/", MySubmissionsListView.as_view(), name="submission-list-mine"),
+    path("notebooks/", CreateNotebookView.as_view(), name="notebook-create"),
     path("submissions/<int:pk>/", SubmissionDetailView.as_view(), name="submission-detail"),
     path("sessions/notebook/", CreateNotebookSessionView.as_view(), name="notebook-session-create"),
     path("sessions/reset/", ResetSessionView.as_view(), name="session-reset"),

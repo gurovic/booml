@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 
 from django.http import FileResponse, Http404
@@ -11,6 +12,8 @@ from rest_framework.views import APIView
 from typing import Optional
 
 from ...models.notebook import Notebook
+from ...models.problem import Problem
+from ...models.problem_data import ProblemData
 from ...services.runtime import (
     RuntimeSession,
     SessionNotFoundError,
@@ -20,6 +23,7 @@ from ...services.runtime import (
     stop_session,
 )
 from ..serializers import (
+    NotebookCreateSerializer,
     NotebookSessionCreateSerializer,
     SessionResetSerializer,
     SessionFilesQuerySerializer,
@@ -50,7 +54,134 @@ def ensure_notebook_access(user, notebook: Notebook) -> None:
         raise PermissionDenied("Недостаточно прав для работы с этим блокнотом")
 
 
+def copy_problem_files_to_session(problem: Problem, session: RuntimeSession) -> None:
+    """
+    Copy problem data files (train, test, sample_submission) to the notebook session workdir.
+    """
+    try:
+        problem_data = ProblemData.objects.filter(problem=problem).first()
+        if not problem_data:
+            return
+        
+        workdir = session.workdir
+        workdir.mkdir(parents=True, exist_ok=True)
+        
+        # Copy each file if it exists
+        files_to_copy = [
+            (problem_data.train_file, 'train.csv'),
+            (problem_data.test_file, 'test.csv'),
+            (problem_data.sample_submission_file, 'sample_submission.csv'),
+        ]
+        
+        for file_field, target_name in files_to_copy:
+            if file_field and file_field.name:
+                try:
+                    source_path = Path(file_field.path)
+                    if source_path.exists():
+                        target_path = workdir / target_name
+                        shutil.copy2(source_path, target_path)
+                except Exception as e:
+                    # Log error but don't fail notebook creation
+                    import logging
+                    logger = logging.getLogger(__name__)
+                    logger.warning(f"Failed to copy {target_name}: {e}")
+    except Exception as e:
+        # Don't fail notebook creation if file copying fails
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning(f"Failed to copy problem files: {e}")
+
+
+class CreateNotebookView(APIView):
+    """
+    POST /api/notebooks/ - Create a notebook for the authenticated user.
+
+    If ``problem_id`` is provided in the request body, a notebook linked to that
+    problem is created. If a notebook for the given ``problem_id`` already exists
+    for the current user, the existing notebook is returned instead of creating
+    a new one.
+
+    Request body (JSON):
+      - title (str, optional): Custom notebook title. If omitted, a default
+        title is used. When ``problem_id`` is provided, the title is derived
+        from the problem title.
+      - problem_id (int, optional): ID of the problem to link the notebook to.
+
+    Responses:
+      - 200 OK: Existing notebook for the (user, problem) pair already exists
+        and is returned.
+      - 201 Created: New notebook successfully created.
+
+    Response body (JSON):
+      - id (int): Notebook ID.
+      - title (str): Notebook title.
+      - problem_id (int|null): Linked problem ID, if any.
+      - created_at (str): Notebook creation timestamp.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        serializer = NotebookCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        problem_id = serializer.validated_data.get("problem_id")
+        title = serializer.validated_data.get("title") or "Новый блокнот"
+        
+        # If problem_id is provided, set title based on problem
+        if problem_id:
+            problem = serializer.problem
+            if problem is None:
+                problem = get_object_or_404(Problem, pk=problem_id)
+            title = f"Блокнот для задачи: {problem.title}"
+            
+            # Check if notebook for this problem already exists for this user
+            existing_notebook = Notebook.objects.filter(
+                owner=request.user,
+                problem=problem
+            ).first()
+            
+            if existing_notebook:
+                return Response(
+                    {
+                        "id": existing_notebook.id,
+                        "title": existing_notebook.title,
+                        "problem_id": existing_notebook.problem_id,
+                        "created_at": existing_notebook.created_at,
+                        "message": "Notebook already exists for this problem"
+                    },
+                    status=status.HTTP_200_OK
+                )
+            
+            notebook = Notebook.objects.create(
+                owner=request.user,
+                problem=problem,
+                title=title
+            )
+        else:
+            notebook = Notebook.objects.create(
+                owner=request.user,
+                title=title
+            )
+
+        return Response(
+            {
+                "id": notebook.id,
+                "title": notebook.title,
+                "problem_id": notebook.problem_id,
+                "created_at": notebook.created_at,
+            },
+            status=status.HTTP_201_CREATED
+        )
+
+
 class CreateNotebookSessionView(APIView):
+    """
+    POST /api/sessions/notebook/ - Create a runtime session for a notebook.
+    
+    If the notebook is linked to a problem, the problem's data files (train.csv,
+    test.csv, sample_submission.csv) are automatically copied to the session
+    workdir for immediate use.
+    """
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
@@ -66,11 +197,28 @@ class CreateNotebookSessionView(APIView):
 
         session_id = build_notebook_session_id(notebook.id)
         session = create_session(session_id)
+        
+        # Copy problem files if notebook is linked to a problem
+        if notebook.problem:
+            try:
+                copy_problem_files_to_session(notebook.problem, session)
+            except Exception as e:
+                # Log error but don't fail session creation
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(f"Failed to copy problem files to session: {e}")
+        
         payload = _build_session_payload(session_id, session, status_label="created")
         return Response(payload, status=status.HTTP_201_CREATED)
 
 
 class ResetSessionView(APIView):
+    """
+    POST /api/sessions/reset/ - Reset a runtime session.
+    
+    If the session belongs to a notebook linked to a problem, the problem's data
+    files are re-copied to the session workdir.
+    """
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
@@ -79,6 +227,7 @@ class ResetSessionView(APIView):
 
         session_id = serializer.validated_data["session_id"]
         notebook_id = extract_notebook_id(session_id)
+        notebook = None
         if notebook_id is not None:
             notebook = get_object_or_404(Notebook, pk=notebook_id)
             ensure_notebook_access(request.user, notebook)
@@ -87,6 +236,17 @@ class ResetSessionView(APIView):
             session = reset_session(session_id)
         except SessionNotFoundError:
             raise Http404("Session not found")
+        
+        # Copy problem files if notebook is linked to a problem
+        if notebook and notebook.problem:
+            try:
+                copy_problem_files_to_session(notebook.problem, session)
+            except Exception as e:
+                # Log error but don't fail session reset
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(f"Failed to copy problem files to reset session: {e}")
+        
         payload = _build_session_payload(session_id, session, status_label="reset")
         return Response(payload, status=status.HTTP_200_OK)
 
