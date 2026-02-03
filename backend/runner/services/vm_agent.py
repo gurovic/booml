@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+import builtins
 import io
 import json
 import os
+import queue
 import subprocess
 import sys
+import threading
 import time
-import traceback
 import uuid
 from abc import ABC, abstractmethod
 from contextlib import contextmanager, redirect_stderr, redirect_stdout
@@ -17,7 +19,47 @@ import logging
 from .vm_models import VirtualMachine
 
 _AGENT_CACHE: Dict[str, VmAgent] = {}
+_ACTIVE_RUNS: Dict[str, "InteractiveRun"] = {}
 logger = logging.getLogger(__name__)
+
+
+def _format_cell_error(code: str, exc: BaseException, file_label: str) -> str:
+    lines = (code or "").splitlines()
+    tb = exc.__traceback__
+    lineno = None
+    while tb:
+        if tb.tb_frame.f_code.co_filename == "<string>":
+            lineno = tb.tb_lineno
+        tb = tb.tb_next
+    lineno = lineno or 1
+    if isinstance(exc, SyntaxError):
+        if exc.lineno:
+            lineno = exc.lineno
+        if getattr(exc, "text", None):
+            text = exc.text.rstrip("\n")
+            try:
+                lines[lineno - 1] = text
+            except Exception:
+                pass
+    header = [
+        "---------------------------------------------------------------------------",
+        f"{type(exc).__name__}                         Traceback (most recent call last)",
+        f"{file_label} in <cell line: 0>()",
+    ]
+    start = max(1, lineno - 1)
+    if start > 1 and (start - 1) <= len(lines) and lines[start - 1].strip() == "" and lineno - 2 >= 1:
+        start = lineno - 2
+    end = min(len(lines), lineno + 1)
+    numbered = [f"{idx:>6} {lines[idx - 1]}" for idx in range(start, end + 1)]
+    target_line = lines[lineno - 1] if 0 < lineno <= len(lines) else ""
+    arrow = f"{'--->':>4} {lineno} {target_line}".rstrip()
+    if start <= lineno <= end:
+        numbered[lineno - start] = arrow
+    tail = [
+        "",
+        f"{type(exc).__name__}: {exc}",
+    ]
+    return "\n".join([*header, *numbered, *tail])
 
 
 def _handle_shell_commands(code: str, workdir: Path, stdout_buffer: io.StringIO, stderr_buffer: io.StringIO, python_exec: Path | None = None) -> str:
@@ -54,7 +96,14 @@ class VmAgent(ABC):
     """Executes code within a VM and returns stdout/stderr/errors."""
 
     @abstractmethod
-    def exec_code(self, code: str) -> Dict[str, object]:
+    def exec_code(
+        self,
+        code: str,
+        *,
+        stdin: str | None = None,
+        run_id: str | None = None,
+        stdin_eof: bool = False,
+    ) -> Dict[str, object]:
         ...
 
     def shutdown(self) -> None:
@@ -68,24 +117,32 @@ class LocalVmAgent(VmAgent):
     def __init__(self, session):
         self.session = session
 
-    def exec_code(self, code: str) -> Dict[str, object]:
+    def exec_code(
+        self,
+        code: str,
+        *,
+        stdin: str | None = None,
+        run_id: str | None = None,
+        stdin_eof: bool = False,
+    ) -> Dict[str, object]:
         namespace = self.session.namespace
-        stdout_buffer = io.StringIO()
-        stderr_buffer = io.StringIO()
-        error = None
-        with _workspace_cwd(self.session.workdir), redirect_stdout(stdout_buffer), redirect_stderr(stderr_buffer):
-            try:
-                code = _handle_shell_commands(code, self.session.workdir, stdout_buffer, stderr_buffer, self.session.python_exec)
-                if code.strip():
-                    exec(code, namespace, namespace)
-            except Exception:
-                error = traceback.format_exc()
-        return {
-            "stdout": stdout_buffer.getvalue(),
-            "stderr": stderr_buffer.getvalue(),
-            "error": error,
-            "variables": _snapshot_variables(namespace),
-        }
+        if run_id and run_id in _ACTIVE_RUNS:
+            active_run = _ACTIVE_RUNS[run_id]
+            active_run.provide_input(stdin or "", eof=stdin_eof)
+            event = active_run.wait_for_event()
+            result = active_run.build_result()
+            if event == "finished":
+                _ACTIVE_RUNS.pop(run_id, None)
+            return result
+
+        run = InteractiveRun(uuid.uuid4().hex, self.session, code)
+        _ACTIVE_RUNS[run.run_id] = run
+        run.start()
+        event = run.wait_for_event()
+        result = run.build_result()
+        if event == "finished":
+            _ACTIVE_RUNS.pop(run.run_id, None)
+        return result
 
 
 class FilesystemVmAgent(VmAgent):
@@ -97,9 +154,16 @@ class FilesystemVmAgent(VmAgent):
         self.commands_dir = vm.workspace_path / ".vm_agent" / "commands"
         self.results_dir = vm.workspace_path / ".vm_agent" / "results"
 
-    def exec_code(self, code: str) -> Dict[str, object]:
+    def exec_code(
+        self,
+        code: str,
+        *,
+        stdin: str | None = None,
+        run_id: str | None = None,
+        stdin_eof: bool = False,
+    ) -> Dict[str, object]:
         command_id = uuid.uuid4().hex
-        payload = {"code": code}
+        payload = {"code": code, "stdin": stdin or "", "stdin_eof": stdin_eof, "run_id": run_id}
         tmp_path = self.commands_dir / f"{command_id}.json.tmp"
         final_path = self.commands_dir / f"{command_id}.json"
         self.commands_dir.mkdir(parents=True, exist_ok=True)
@@ -119,6 +183,154 @@ class FilesystemVmAgent(VmAgent):
                     pass
             time.sleep(0.05)
         raise RuntimeError("VM agent timed out waiting for execution result")
+
+
+class _InteractiveStdin:
+    def __init__(self, run: "InteractiveRun"):
+        self._run = run
+
+    @property
+    def closed(self) -> bool:
+        return self._run.closed
+
+    def readable(self) -> bool:
+        return True
+
+    def isatty(self) -> bool:
+        return True
+
+    def _read_from_buffer(self) -> str | None:
+        if not self._run._input_buffer:
+            return None
+        if "\n" in self._run._input_buffer:
+            line, rest = self._run._input_buffer.split("\n", 1)
+            self._run._input_buffer = rest
+            return f"{line}\n"
+        if self._run.closed:
+            data = self._run._input_buffer
+            self._run._input_buffer = ""
+            return data
+        return None
+
+    def readline(self, _size: int = -1) -> str:
+        while True:
+            chunk = self._read_from_buffer()
+            if chunk is not None:
+                return chunk
+            if self._run.closed:
+                return ""
+            self._run.wait_for_input(prompt=None)
+
+    def read(self, _size: int = -1) -> str:
+        raise RuntimeError("sys.stdin.read() is not supported in this notebook runner")
+
+    def __iter__(self):
+        raise RuntimeError("Iteration over sys.stdin is not supported in this notebook runner")
+
+
+class InteractiveRun:
+    def __init__(self, run_id: str, session, code: str):
+        self.run_id = run_id
+        self.session = session
+        self.code = code
+        self.stdout_buffer = io.StringIO()
+        self.stderr_buffer = io.StringIO()
+        self.error: str | None = None
+        self.prompt: str | None = None
+        self.status = "running"
+        self.closed = False
+        self._event_queue: "queue.Queue[str]" = queue.Queue()
+        self._input_condition = threading.Condition()
+        self._input_buffer = ""
+        self._waiting_for_input = False
+        self._thread = threading.Thread(target=self._execute, daemon=True)
+
+    def start(self) -> None:
+        self._thread.start()
+
+    def wait_for_event(self, timeout: float | None = None) -> str:
+        return self._event_queue.get(timeout=timeout)
+
+    def wait_for_input(self, prompt: str | None) -> None:
+        with self._input_condition:
+            self.prompt = prompt
+            self.status = "input_required"
+            self._waiting_for_input = True
+            self._event_queue.put("input_required")
+            while self._waiting_for_input and not self.closed:
+                self._input_condition.wait()
+
+    def provide_input(self, text: str, *, eof: bool = False) -> None:
+        with self._input_condition:
+            if eof:
+                self.closed = True
+            if text:
+                normalized = text if text.endswith("\n") else f"{text}\n"
+                self._input_buffer += normalized
+            if self.prompt and not str(self.prompt).endswith("\n"):
+                self._write_stdout("\n")
+            self._waiting_for_input = False
+            self.status = "running"
+            self._input_condition.notify_all()
+
+    def build_result(self) -> Dict[str, object]:
+        return {
+            "status": self.status,
+            "prompt": self.prompt,
+            "run_id": self.run_id,
+            "stdout": self.stdout_buffer.getvalue(),
+            "stderr": self.stderr_buffer.getvalue(),
+            "error": self.error,
+            "variables": _snapshot_variables(self.session.namespace),
+        }
+
+    def _write_stdout(self, text: str) -> None:
+        if text:
+            self.stdout_buffer.write(text)
+
+    def _execute(self) -> None:
+        namespace = self.session.namespace
+        original_stdin = sys.stdin
+        original_input = builtins.input
+        try:
+            sys.stdin = _InteractiveStdin(self)
+
+            def _input(prompt: str = "") -> str:
+                if prompt:
+                    self._write_stdout(prompt)
+                self.wait_for_input(prompt or "")
+                line = sys.stdin.readline()
+                return line.rstrip("\n")
+
+            builtins.input = _input
+
+            try:
+                import fileinput as _fileinput
+
+                def _blocked_fileinput(*_args, **_kwargs):
+                    raise RuntimeError("fileinput.input() is not supported in this notebook runner")
+
+                _fileinput.input = _blocked_fileinput
+            except Exception:
+                pass
+
+            with _workspace_cwd(self.session.workdir), redirect_stdout(self.stdout_buffer), redirect_stderr(self.stderr_buffer):
+                filtered_code = _handle_shell_commands(
+                    self.code,
+                    self.session.workdir,
+                    self.stdout_buffer,
+                    self.stderr_buffer,
+                    self.session.python_exec,
+                )
+                if filtered_code.strip():
+                    exec(filtered_code, namespace, namespace)
+        except Exception as exc:
+            self.error = _format_cell_error(self.code, exc, "<string>")
+        finally:
+            builtins.input = original_input
+            sys.stdin = original_stdin
+            self.status = "error" if self.error else "success"
+            self._event_queue.put("finished")
 
 
 def get_vm_agent(session_id: str, session) -> VmAgent:

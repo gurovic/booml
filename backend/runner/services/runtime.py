@@ -52,6 +52,9 @@ class RuntimeExecutionResult:
     stderr: str
     error: str | None
     variables: Dict[str, str]
+    status: str = "success"
+    prompt: str | None = None
+    run_id: str | None = None
 
 
 _sessions: Dict[str, RuntimeSession] = {}
@@ -186,7 +189,15 @@ class ExecutionBackend:
     def create_session(self, session_id: str, *, now: datetime | None = None) -> RuntimeSession:  # pragma: no cover - abstract
         raise NotImplementedError
 
-    def run_code(self, session_id: str, code: str) -> RuntimeExecutionResult:  # pragma: no cover - abstract
+    def run_code(
+        self,
+        session_id: str,
+        code: str,
+        *,
+        stdin: str | None = None,
+        run_id: str | None = None,
+        stdin_eof: bool = False,
+    ) -> RuntimeExecutionResult:  # pragma: no cover - abstract
         raise NotImplementedError
 
     def stop_session(self, session_id: str) -> bool:  # pragma: no cover - abstract
@@ -285,10 +296,18 @@ class LegacyExecutionBackend(ExecutionBackend):
                 _clear_directory(session.workdir)
         return removed
 
-    def run_code(self, session_id: str, code: str) -> RuntimeExecutionResult:
+    def run_code(
+        self,
+        session_id: str,
+        code: str,
+        *,
+        stdin: str | None = None,
+        run_id: str | None = None,
+        stdin_eof: bool = False,
+    ) -> RuntimeExecutionResult:
         session = self._require_session(session_id)
         agent = get_vm_agent(session_id, session)
-        result_payload = agent.exec_code(code)
+        result_payload = agent.exec_code(code, stdin=stdin, run_id=run_id, stdin_eof=stdin_eof)
         session.updated_at = _resolve_now()
 
         return RuntimeExecutionResult(
@@ -296,6 +315,9 @@ class LegacyExecutionBackend(ExecutionBackend):
             stderr=result_payload.get("stderr", ""),
             error=result_payload.get("error"),
             variables=result_payload.get("variables", {}),
+            status=result_payload.get("status", "success"),
+            prompt=result_payload.get("prompt"),
+            run_id=result_payload.get("run_id"),
         )
 
 
@@ -358,8 +380,21 @@ def cleanup_all_sessions() -> None:
     return _get_backend().cleanup_all_sessions()
 
 
-def run_code(session_id: str, code: str) -> RuntimeExecutionResult:
-    return _get_backend().run_code(session_id, code)
+def run_code(
+    session_id: str,
+    code: str,
+    *,
+    stdin: str | None = None,
+    run_id: str | None = None,
+    stdin_eof: bool = False,
+) -> RuntimeExecutionResult:
+    return _get_backend().run_code(
+        session_id,
+        code,
+        stdin=stdin,
+        run_id=run_id,
+        stdin_eof=stdin_eof,
+    )
 
 
 def register_runtime_shutdown_hooks() -> None:

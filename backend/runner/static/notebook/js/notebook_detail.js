@@ -187,6 +187,8 @@ const notebookDetail = {
                 return 'Отменено';
             case 'reset':
                 return 'Нужен повторный запуск';
+            case 'input':
+                return 'Ожидает ввода';
             default:
                 return 'Ожидание';
         }
@@ -304,6 +306,129 @@ const notebookDetail = {
             return '';
         }
         return this.cellOutputSnapshots[cellId] || '';
+    },
+
+    insertStdinInput(outputElement, promptText) {
+        if (!outputElement) {
+            return null;
+        }
+        let pre = outputElement.querySelector('.output-text pre');
+        if (!pre) {
+            const container = document.createElement('div');
+            container.className = 'output-text';
+            pre = document.createElement('pre');
+            container.appendChild(pre);
+            outputElement.appendChild(container);
+        }
+        const wrapper = document.createElement('span');
+        wrapper.className = 'stdin-inline';
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.autocomplete = 'off';
+        input.spellcheck = false;
+        input.className = 'stdin-input';
+        input.style.font = 'inherit';
+        input.style.background = 'transparent';
+        input.style.border = 'none';
+        input.style.outline = 'none';
+        input.style.color = 'inherit';
+        if (promptText) {
+            const promptLen = Math.max(0, String(promptText).length);
+            input.style.width = `calc(100% - ${promptLen}ch)`;
+            input.style.minWidth = '8ch';
+        } else {
+            input.style.width = '100%';
+        }
+        wrapper.appendChild(input);
+        pre.appendChild(wrapper);
+        input.focus();
+        return input;
+    },
+
+    async handleStdinLoop({
+        cellId,
+        cellNumericId,
+        outputElement,
+        sessionId,
+        saveOutputUrl,
+        code,
+        startedAt,
+        job,
+        data,
+    }) {
+        return new Promise((resolve, reject) => {
+            const attach = (payload) => {
+                const input = this.insertStdinInput(outputElement, payload?.prompt);
+                if (!input) {
+                    reject(new Error('Не удалось создать поле ввода'));
+                    return;
+                }
+                const onKey = async (event) => {
+                    if (event.key !== 'Enter') {
+                        return;
+                    }
+                    event.preventDefault();
+                    input.removeEventListener('keydown', onKey);
+                    input.disabled = true;
+                    try {
+                        const response = await fetch(this.runCellUrl, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRFToken': this.config.csrfToken
+                            },
+                            body: JSON.stringify({
+                                session_id: sessionId,
+                                cell_id: cellNumericId,
+                                run_id: payload?.run_id,
+                                stdin: `${input.value}\n`
+                            }),
+                            signal: job.controller?.signal
+                        });
+                        const nextData = await response.json();
+                        if (!response.ok) {
+                            const message = nextData?.detail || nextData?.error || 'Не удалось выполнить ячейку';
+                            const error = new Error(message);
+                            error.status = response.status;
+                            throw error;
+                        }
+
+                        const hasOutput = Boolean(nextData.stdout || nextData.stderr || nextData.error);
+                        let formatted = '';
+                        if (nextData.status === 'input_required' && !hasOutput) {
+                            outputElement.innerHTML = '';
+                        } else {
+                            formatted = NotebookUtils.formatCellRunResult(nextData);
+                            outputElement.innerHTML = formatted;
+                        }
+                        outputElement.className = nextData.error ? 'output error' : 'output success';
+                        this.renderArtifacts(cellId, []);
+
+                        if (nextData.status === 'input_required') {
+                            outputElement.className = 'output running';
+                            this.setCellStatus(cellId, 'input');
+                            attach(nextData);
+                            return;
+                        }
+
+                        const finalStatus = nextData.error ? 'error' : 'success';
+                        const durationMs = Math.max(
+                            0,
+                            (typeof performance !== 'undefined' ? performance.now() : Date.now()) - startedAt,
+                        );
+                        const meta = finalStatus === 'success' ? { durationMs } : null;
+                        this.setCellStatus(cellId, finalStatus, meta);
+                        this.rememberOutputSnapshot(cellId, formatted);
+                        await this.saveCellState(cellId, code, formatted, saveOutputUrl);
+                        resolve();
+                    } catch (error) {
+                        reject(error);
+                    }
+                };
+                input.addEventListener('keydown', onKey);
+            };
+            attach(data);
+        });
     },
 
     captureInitialOutputs() {
@@ -474,10 +599,32 @@ const notebookDetail = {
                 throw error;
             }
 
-            const formattedOutput = NotebookUtils.formatCellRunResult(data);
-            outputElement.innerHTML = formattedOutput;
+            const hasAnyOutput = Boolean(data.stdout || data.stderr || data.error);
+            let formattedOutput = '';
+            if (data.status === 'input_required' && !hasAnyOutput) {
+                outputElement.innerHTML = '';
+            } else {
+                formattedOutput = NotebookUtils.formatCellRunResult(data);
+                outputElement.innerHTML = formattedOutput;
+            }
             outputElement.className = data.error ? 'output error' : 'output success';
             this.renderArtifacts(cellId, []);
+            if (data.status === 'input_required') {
+                outputElement.className = 'output running';
+                this.setCellStatus(cellId, 'input');
+                await this.handleStdinLoop({
+                    cellId,
+                    cellNumericId,
+                    outputElement,
+                    sessionId,
+                    saveOutputUrl,
+                    code,
+                    startedAt,
+                    job,
+                    data,
+                });
+                return;
+            }
             const finalStatus = data.error ? 'error' : 'success';
             const durationMs = Math.max(
                 0,
@@ -514,7 +661,7 @@ const notebookDetail = {
             }
             console.error('Ошибка выполнения ячейки:', error);
             const message = error?.message || 'Не удалось выполнить ячейку';
-            const errorHtml = `<div class="output-error"><strong>Ошибка:</strong> ${NotebookUtils.escapeHtml(message)}</div>`;
+            const errorHtml = `<div class="output-error">${NotebookUtils.escapeHtml(message)}</div>`;
             outputElement.innerHTML = errorHtml;
             outputElement.className = 'output error';
             this.renderArtifacts(cellId, []);

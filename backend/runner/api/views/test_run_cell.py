@@ -117,3 +117,191 @@ class RunCellViewTests(TestCase):
         data = resp.json()
         self.assertIsNone(data["error"])
         self.assertIn("success", data["stdout"])
+
+    def test_run_cell_with_input_prompt(self):
+        session_id = f"notebook:{self.notebook.id}"
+        create_session(session_id)
+        cell = Cell.objects.create(
+            notebook=self.notebook,
+            cell_type=Cell.CODE,
+            content="name = input('Name: ')\nprint(f'Hello {name}')",
+        )
+        resp = self.client.post(
+            self.url,
+            {
+                "session_id": session_id,
+                "cell_id": cell.id,
+            },
+        )
+        self.assertEqual(resp.status_code, HTTPStatus.OK)
+        data = resp.json()
+        self.assertEqual(data.get("status"), "input_required")
+        self.assertIsNotNone(data.get("run_id"))
+
+        follow = self.client.post(
+            self.url,
+            {
+                "session_id": session_id,
+                "cell_id": cell.id,
+                "run_id": data.get("run_id"),
+                "stdin": "Alice\n",
+            },
+        )
+        self.assertEqual(follow.status_code, HTTPStatus.OK)
+        follow_data = follow.json()
+        self.assertEqual(follow_data.get("status"), "success")
+        self.assertIsNone(follow_data.get("error"))
+        self.assertEqual(follow_data.get("stdout", "").count("Name: "), 1)
+        self.assertIn("Hello Alice", follow_data.get("stdout", ""))
+
+    def test_run_cell_with_readline(self):
+        session_id = f"notebook:{self.notebook.id}"
+        create_session(session_id)
+        cell = Cell.objects.create(
+            notebook=self.notebook,
+            cell_type=Cell.CODE,
+            content="import sys\nline = sys.stdin.readline()\nprint(line.rstrip('\\n'))",
+        )
+        resp = self.client.post(
+            self.url,
+            {
+                "session_id": session_id,
+                "cell_id": cell.id,
+            },
+        )
+        self.assertEqual(resp.status_code, HTTPStatus.OK)
+        data = resp.json()
+        self.assertEqual(data.get("status"), "input_required")
+
+        follow = self.client.post(
+            self.url,
+            {
+                "session_id": session_id,
+                "cell_id": cell.id,
+                "run_id": data.get("run_id"),
+                "stdin": "123\n",
+            },
+        )
+        self.assertEqual(follow.status_code, HTTPStatus.OK)
+        follow_data = follow.json()
+        self.assertEqual(follow_data.get("status"), "success")
+        self.assertIn("123", follow_data.get("stdout", ""))
+
+    def test_run_cell_input_no_echo(self):
+        session_id = f"notebook:{self.notebook.id}"
+        create_session(session_id)
+        cell = Cell.objects.create(
+            notebook=self.notebook,
+            cell_type=Cell.CODE,
+            content="print(input())",
+        )
+        resp = self.client.post(
+            self.url,
+            {
+                "session_id": session_id,
+                "cell_id": cell.id,
+            },
+        )
+        self.assertEqual(resp.status_code, HTTPStatus.OK)
+        data = resp.json()
+        self.assertEqual(data.get("status"), "input_required")
+
+        follow = self.client.post(
+            self.url,
+            {
+                "session_id": session_id,
+                "cell_id": cell.id,
+                "run_id": data.get("run_id"),
+                "stdin": "123\n",
+            },
+        )
+        self.assertEqual(follow.status_code, HTTPStatus.OK)
+        follow_data = follow.json()
+        self.assertEqual(follow_data.get("status"), "success")
+        stdout = follow_data.get("stdout", "")
+        self.assertEqual(stdout.strip(), "123")
+
+    def test_run_cell_disallows_stdin_read(self):
+        session_id = f"notebook:{self.notebook.id}"
+        create_session(session_id)
+        cell = Cell.objects.create(
+            notebook=self.notebook,
+            cell_type=Cell.CODE,
+            content="import sys\nsys.stdin.read()",
+        )
+        resp = self.client.post(
+            self.url,
+            {
+                "session_id": session_id,
+                "cell_id": cell.id,
+            },
+        )
+        data = resp.json()
+        self.assertEqual(data.get("status"), "error")
+        self.assertIn("RuntimeError", data.get("error", ""))
+        self.assertIn("sys.stdin.read()", data.get("error", ""))
+
+    def test_run_cell_disallows_fileinput(self):
+        session_id = f"notebook:{self.notebook.id}"
+        create_session(session_id)
+        cell = Cell.objects.create(
+            notebook=self.notebook,
+            cell_type=Cell.CODE,
+            content="import fileinput\nnext(fileinput.input())",
+        )
+        resp = self.client.post(
+            self.url,
+            {
+                "session_id": session_id,
+                "cell_id": cell.id,
+            },
+        )
+        data = resp.json()
+        self.assertEqual(data.get("status"), "error")
+        self.assertIn("RuntimeError", data.get("error", ""))
+        self.assertIn("fileinput.input()", data.get("error", ""))
+
+    def test_run_cell_error_formatting(self):
+        session_id = f"notebook:{self.notebook.id}"
+        create_session(session_id)
+        cell = Cell.objects.create(
+            notebook=self.notebook,
+            cell_type=Cell.CODE,
+            content="print('test')\na = 1/0",
+        )
+        resp = self.client.post(
+            self.url,
+            {
+                "session_id": session_id,
+                "cell_id": cell.id,
+            },
+        )
+        data = resp.json()
+        self.assertEqual(data.get("status"), "error")
+        error_text = data.get("error", "")
+        self.assertIn("Traceback (most recent call last)", error_text)
+        self.assertIn("ZeroDivisionError", error_text)
+        self.assertIn("---> 2 a = 1/0", error_text)
+        self.assertNotIn("Ошибка:", error_text)
+
+    def test_run_cell_syntax_error_formatting(self):
+        session_id = f"notebook:{self.notebook.id}"
+        create_session(session_id)
+        cell = Cell.objects.create(
+            notebook=self.notebook,
+            cell_type=Cell.CODE,
+            content="print(123)\nprint('test')\n\nprint(input()\n",
+        )
+        resp = self.client.post(
+            self.url,
+            {
+                "session_id": session_id,
+                "cell_id": cell.id,
+            },
+        )
+        data = resp.json()
+        self.assertEqual(data.get("status"), "error")
+        error_text = data.get("error", "")
+        self.assertIn("SyntaxError", error_text)
+        self.assertIn("---> 4 print(input()", error_text)
+        self.assertIn("print('test')", error_text)
