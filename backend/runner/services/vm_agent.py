@@ -329,6 +329,11 @@ class InteractiveRun:
             self.stdout_buffer.write(text)
 
     def _execute(self) -> None:
+        # Note: We don't hold _namespace_lock during exec() to avoid deadlocks.
+        # The executed code may call input() which waits, and during that wait
+        # the main thread should be able to call build_result() and take a snapshot.
+        # The lock in build_result() protects the dict.copy() operation, which is
+        # sufficient to prevent "dictionary changed size during iteration" errors.
         namespace = self.session.namespace
         original_stdin = sys.stdin
         original_input = builtins.input
