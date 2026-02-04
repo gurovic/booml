@@ -339,9 +339,9 @@ def _convert_display_value(value: object, *, session) -> dict[str, object] | Non
                 if html:
                     return {"type": "text/html", "data": html}
             except Exception:
-                pass
+                logger.debug("Failed to render HTML export", exc_info=True)
         except Exception:
-            pass
+            logger.debug("Failed to render HTML export", exc_info=True)
 
     html_repr = getattr(value, "_repr_html_", None)
     if callable(html_repr):
@@ -350,7 +350,7 @@ def _convert_display_value(value: object, *, session) -> dict[str, object] | Non
             if html:
                 return {"type": "text/html", "data": html}
         except Exception:
-            pass
+            logger.debug("Failed to render HTML repr", exc_info=True)
 
     md_repr = getattr(value, "_repr_markdown_", None)
     if callable(md_repr):
@@ -359,7 +359,7 @@ def _convert_display_value(value: object, *, session) -> dict[str, object] | Non
             if md:
                 return {"type": "text/markdown", "data": md}
         except Exception:
-            pass
+            logger.debug("Failed to render Markdown repr", exc_info=True)
 
     image_payload = _try_encode_image(value, session)
     if image_payload:
@@ -474,7 +474,7 @@ def _capture_matplotlib_figures(session) -> Iterable[dict[str, object]]:
             try:
                 plt.close(fig)
             except Exception:
-                pass
+                logger.debug("Failed to close matplotlib figure", exc_info=True)
         figures.append(_build_image_output(buffer.getvalue(), "image/png", session=session))
     return figures
 

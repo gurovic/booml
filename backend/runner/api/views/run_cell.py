@@ -1,3 +1,5 @@
+from urllib.parse import urlencode
+
 from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -58,9 +60,8 @@ def _attach_output_urls(request, session_id: str, outputs: list[dict]) -> list[d
         next_item = dict(item)
         path = next_item.get("path")
         if path:
-            next_item["url"] = request.build_absolute_uri(
-                f"{url_template}?session_id={session_id}&path={path}"
-            )
+            query = urlencode({"session_id": session_id, "path": path})
+            next_item["url"] = request.build_absolute_uri(f"{url_template}?{query}")
         hydrated.append(next_item)
     return hydrated
 

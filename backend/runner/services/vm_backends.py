@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import shutil
 import subprocess
@@ -23,6 +24,8 @@ from .vm_models import (
     VmResources,
     VmSpec,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class VmBackend(ABC):
@@ -239,12 +242,17 @@ class DockerVmBackend(VmBackend):
                     self._start_agent(container_name)
                     self._wait_for_agent(agent_dir)
                     spec = cpu_spec
+                    logger.warning(
+                        "GPU VM creation failed; fell back to CPU for %s: %s",
+                        vm_id,
+                        exc,
+                    )
                 except Exception:
                     shutil.rmtree(vm_dir, ignore_errors=True)
                     raise
             else:
                 shutil.rmtree(vm_dir, ignore_errors=True)
-                raise exc
+                raise
 
         vm = VirtualMachine(
             id=vm_id,
