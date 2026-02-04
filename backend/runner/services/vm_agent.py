@@ -53,10 +53,19 @@ def _format_cell_error(code: str, exc: BaseException, file_label: str) -> str:
         f"{file_label} in <cell line: 0>()",
     ]
     start = max(1, lineno - 1)
-    if start > 1 and (start - 1) <= len(lines) and lines[start - 1].strip() == "" and lineno - 2 >= 1:
+    if (
+        start > 1
+        and 0 <= (start - 1) < len(lines)
+        and lines[start - 1].strip() == ""
+        and lineno - 2 >= 1
+    ):
         start = lineno - 2
     end = min(len(lines), lineno + 1)
-    numbered = [f"{idx:>6} {lines[idx - 1]}" for idx in range(start, end + 1)]
+    numbered = [
+        f"{idx:>6} {lines[idx - 1]}"
+        for idx in range(start, end + 1)
+        if 1 <= idx <= len(lines)
+    ]
     target_line = lines[lineno - 1] if 0 < lineno <= len(lines) else ""
     arrow = f"{'--->':>4} {lineno} {target_line}".rstrip()
     if start <= lineno <= end:
