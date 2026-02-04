@@ -8,8 +8,8 @@ from ...models.cell import Cell
 class CellRunSerializer(serializers.Serializer):
     session_id = serializers.CharField(max_length=255, allow_blank=False)
     cell_id = serializers.IntegerField(min_value=1)
-    stdin = serializers.CharField(required=False, allow_blank=True)
-    run_id = serializers.CharField(required=False, allow_blank=True)
+    stdin = serializers.CharField(required=False, allow_null=True)
+    run_id = serializers.CharField(required=False, allow_null=True)
     stdin_eof = serializers.BooleanField(required=False, default=False)
 
     def validate_cell_id(self, value: int) -> int:
