@@ -289,6 +289,8 @@ class InteractiveRun:
             if text:
                 normalized = text if text.endswith("\n") else f"{text}\n"
                 self._input_buffer += normalized
+            if self.prompt and not str(self.prompt).endswith("\n"):
+                self._write_stdout("\n")
             self._waiting_for_input = False
             self.status = "running"
             self._input_condition.notify_all()
