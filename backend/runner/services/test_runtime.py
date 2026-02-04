@@ -21,6 +21,13 @@ from runner.services.runtime import (
     run_code,
     SessionNotFoundError,
 )
+from runner.services.vm_models import (
+    VirtualMachine,
+    VmNetworkPolicy,
+    VmResources,
+    VmSpec,
+    VirtualMachineState,
+)
 
 
 
