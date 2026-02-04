@@ -98,14 +98,9 @@ const toggleNested = nestedId => {
 }
 
 const navigateTo = (item) => {
-  // Navigate to course or section page based on item type
-  if (item.type === 'course') {
-    router.push({ name: 'course', params: { id: item.id }, query: { title: item.title } })
-  } else if (item.type === 'section') {
-    router.push({ name: 'section', params: { id: item.id }, query: { title: item.title } })
-  } else {
-    console.warn('Unknown item type:', item.type)
-  }
+  // Use the type field from API to determine route, fallback to section for non-course types
+  const name = item.type === 'course' ? 'course' : 'section'
+  router.push({ name, params: { id: item.id }, query: { title: item.title } })
 }
 
 const findSectionById = (items, targetId) => {
