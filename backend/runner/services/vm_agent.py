@@ -312,7 +312,8 @@ class InteractiveRun:
 
                 _fileinput.input = _blocked_fileinput
             except Exception:
-                pass
+                # Best-effort: if disabling fileinput fails, continue execution but log for debugging.
+                logger.debug("Failed to disable fileinput.input() in notebook runner", exc_info=True)
 
             with _workspace_cwd(self.session.workdir), redirect_stdout(self.stdout_buffer), redirect_stderr(self.stderr_buffer):
                 filtered_code = _handle_shell_commands(
