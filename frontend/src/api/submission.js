@@ -79,3 +79,26 @@ export async function getSubmission(submissionId) {
 
   return await res.json()
 }
+
+export async function getProblemSubmissions(problemId, page = 1) {
+  const res = await fetch(`/api/submissions/problem/${problemId}/?page=${page}`, {
+    method: 'GET',
+    credentials: 'include'
+  })
+
+  if (!res.ok) {
+    let errorMessage = `API Error: ${res.status}`
+    const errorText = await res.text()
+    if (errorText) {
+      try {
+        const errorData = JSON.parse(errorText)
+        errorMessage = errorData.detail || errorData.message || errorText
+      } catch {
+        errorMessage = errorText
+      }
+    }
+    throw new Error(errorMessage)
+  }
+
+  return await res.json()
+}

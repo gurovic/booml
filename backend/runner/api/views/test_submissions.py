@@ -12,7 +12,7 @@ from ...models.problem import Problem
 from ...models.problem_desriptor import ProblemDescriptor
 from ...models.submission import Submission
 from ...models.prevalidation import PreValidation
-from .submissions import SubmissionCreateView, SubmissionDetailView
+from .submissions import SubmissionCreateView, SubmissionDetailView, ProblemSubmissionsListView
 
 User = get_user_model()
 
@@ -93,7 +93,7 @@ class SubmissionAPITests(TestCase):
             status=Submission.STATUS_ACCEPTED,
             metrics={"accuracy": 0.95}
         )
-        
+
         # Create a prevalidation report for the submission
         PreValidation.objects.create(
             submission=submission,
@@ -107,20 +107,20 @@ class SubmissionAPITests(TestCase):
             warnings=["Some warning"],
             stats={"test_stat": 123}
         )
-        
+
         detail_url = reverse("submission-detail", kwargs={"pk": submission.id})
         resp = self.client.get(detail_url)
-        
+
         self.assertEqual(resp.status_code, 200)
         data = resp.json()
-        
+
         # Check basic submission data
         self.assertEqual(data["id"], submission.id)
         self.assertEqual(data["problem_id"], self.problem.id)
         self.assertEqual(data["problem_title"], self.problem.title)
         self.assertEqual(data["status"], Submission.STATUS_ACCEPTED)
         self.assertEqual(data["metrics"]["accuracy"], 0.95)
-        
+
         # Check file_url is present and is a relative path (not absolute URL)
         self.assertIn("file_url", data)
         self.assertIsNotNone(data["file_url"])
@@ -129,7 +129,7 @@ class SubmissionAPITests(TestCase):
         # Ensure it's not an absolute URL with hostname
         self.assertNotIn("http://", data["file_url"])
         self.assertNotIn("backend:", data["file_url"])
-        
+
         # Check prevalidation data
         self.assertIn("prevalidation", data)
         self.assertTrue(data["prevalidation"]["valid"])
@@ -148,9 +148,103 @@ class SubmissionAPITests(TestCase):
             file=f,
             status=Submission.STATUS_PENDING
         )
-        
+
         detail_url = reverse("submission-detail", kwargs={"pk": submission.id})
         resp = self.client.get(detail_url)
-        
+
         # Should return 404 since the submission doesn't belong to the authenticated user
         self.assertEqual(resp.status_code, 404)
+
+
+class ProblemSubmissionsListTests(TestCase):
+    def setUp(self):
+        self.tmpdir = tempfile.TemporaryDirectory()
+        self.user = User.objects.create_user(username="testuser", password="testpass")
+        self.other_user = User.objects.create_user(username="otheruser", password="testpass")
+        self.problem = Problem.objects.create(
+            title="Test Problem", statement="test", created_at=date.today()
+        )
+        self.factory = APIRequestFactory()
+
+    def tearDown(self):
+        self.tmpdir.cleanup()
+
+    @override_settings(MEDIA_ROOT=tempfile.gettempdir())
+    def test_list_problem_submissions(self):
+        # Create some submissions for the user
+        for i in range(5):
+            f = SimpleUploadedFile(f"test{i}.csv", b"id,pred\n1,0.1\n", content_type="text/csv")
+            Submission.objects.create(user=self.user, problem=self.problem, file=f, status="accepted")
+
+        url = reverse("submission-list-problem", kwargs={"problem_id": self.problem.id})
+        request = self.factory.get(url)
+        force_authenticate(request, user=self.user)
+
+        response = ProblemSubmissionsListView.as_view()(request, problem_id=self.problem.id)
+
+        self.assertEqual(response.status_code, 200)
+        data = response.data
+        self.assertIn("results", data)
+        self.assertEqual(len(data["results"]), 5)
+        self.assertEqual(data["count"], 5)
+
+    @override_settings(MEDIA_ROOT=tempfile.gettempdir())
+    def test_list_problem_submissions_pagination(self):
+        # Create 15 submissions to test pagination
+        for i in range(15):
+            f = SimpleUploadedFile(f"test{i}.csv", b"id,pred\n1,0.1\n", content_type="text/csv")
+            Submission.objects.create(user=self.user, problem=self.problem, file=f, status="accepted")
+
+        url = reverse("submission-list-problem", kwargs={"problem_id": self.problem.id})
+
+        # Test first page
+        request = self.factory.get(url + "?page=1")
+        force_authenticate(request, user=self.user)
+        response = ProblemSubmissionsListView.as_view()(request, problem_id=self.problem.id)
+
+        self.assertEqual(response.status_code, 200)
+        data = response.data
+        self.assertEqual(len(data["results"]), 10)  # Default page size
+        self.assertEqual(data["count"], 15)
+        self.assertIsNotNone(data["next"])
+        self.assertIsNone(data["previous"])
+
+    @override_settings(MEDIA_ROOT=tempfile.gettempdir())
+    def test_list_problem_submissions_only_user_submissions(self):
+        # Create submissions for two different users
+        f1 = SimpleUploadedFile("test1.csv", b"id,pred\n1,0.1\n", content_type="text/csv")
+        Submission.objects.create(user=self.user, problem=self.problem, file=f1, status="accepted")
+
+        f2 = SimpleUploadedFile("test2.csv", b"id,pred\n1,0.1\n", content_type="text/csv")
+        Submission.objects.create(user=self.other_user, problem=self.problem, file=f2, status="accepted")
+
+        url = reverse("submission-list-problem", kwargs={"problem_id": self.problem.id})
+        request = self.factory.get(url)
+        force_authenticate(request, user=self.user)
+
+        response = ProblemSubmissionsListView.as_view()(request, problem_id=self.problem.id)
+
+        self.assertEqual(response.status_code, 200)
+        data = response.data
+        # User should only see their own submissions
+        self.assertEqual(data["count"], 1)
+
+    def test_list_problem_submissions_nonexistent_problem(self):
+        url = reverse("submission-list-problem", kwargs={"problem_id": 9999})
+        request = self.factory.get(url)
+        force_authenticate(request, user=self.user)
+
+        response = ProblemSubmissionsListView.as_view()(request, problem_id=9999)
+
+        self.assertEqual(response.status_code, 200)
+        data = response.data
+        self.assertEqual(data["count"], 0)
+
+    def test_list_problem_submissions_unauthorized(self):
+        url = reverse("submission-list-problem", kwargs={"problem_id": self.problem.id})
+        request = self.factory.get(url)
+        # Don't authenticate the request
+
+        response = ProblemSubmissionsListView.as_view()(request, problem_id=self.problem.id)
+
+        self.assertEqual(response.status_code, 403)

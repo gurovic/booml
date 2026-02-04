@@ -11,6 +11,7 @@ import LoginPage from '@/pages/LoginPage.vue'
 import RegisterPage from '@/pages/RegisterPage.vue'
 import PolygonPage from '@/pages/PolygonPage.vue'
 import PolygonProblemEditPage from '@/pages/PolygonProblemEditPage.vue'
+import SubmissionListPage from '@/pages/SubmissionListPage.vue'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -34,6 +35,11 @@ const router = createRouter({
       path: '/submission/:id',
       name: 'submission',
       component: SubmissionPage,
+    },
+    {
+      path: '/problem/:id/submissions',
+      name: 'problem-submissions',
+      component: SubmissionListPage,
     },
     {
       path: '/section/:id',

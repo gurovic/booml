@@ -27,7 +27,7 @@
               </a>
             </div>
             <div v-else class="problem__notebook-create">
-              <button 
+              <button
                 @click="handleCreateNotebook"
                 :disabled="isCreatingNotebook"
                 class="problem__notebook-button"
@@ -41,7 +41,7 @@
             </div>
           </li>
           <li class="problem__submit problem__menu-item" v-if="userStore.isAuthenticated">
-            <h2 class="problem__submit-title problem__item-title">Отправка решения</h2>
+            <h2 class="problem__submit-title problem__item-title">Отправить решение</h2>
             <div class="problem__submit-form">
               <input 
                 type="file" 
@@ -68,6 +68,18 @@
               </div>
             </div>
           </li>
+          <li class="problem__files problem__menu-item" v-if="availableFiles.length > 0">
+            <h2 class="problem__files-title problem__item-title">Файлы</h2>
+            <ul class="problem__files-list">
+              <li
+                class="problem__file"
+                v-for="file in availableFiles"
+                :key="file.name"
+              >
+                <a class="problem__file-href button button--secondary" :href="file.url" :download="file.name">{{ file.name }}</a>
+            </li>
+            </ul>
+          </li>
           <li class="problem__submissions problem__menu-item">
             <h2 class="problem__submissions-title problem__item-title">Последние посылки</h2>
             <ul class="problem__submissions-list">
@@ -82,7 +94,7 @@
                 v-for="submission in problem.submissions"
                 :key="submission.id"
               >
-                <router-link 
+                <router-link
                   :to="{ name: 'submission', params: { id: submission.id } }"
                   class="problem__submission-href"
                 >
@@ -93,6 +105,12 @@
                 </router-link>
               </li>
             </ul>
+            <router-link
+              :to="{ name: 'problem-submissions', params: { id: problem.id } }"
+              class="problem__all-submissions-button button button--primary"
+            >
+              Все посылки
+            </router-link>
           </li>
         </ul>
       </div>
@@ -221,24 +239,24 @@ const handleCreateNotebook = async () => {
 
   try {
     const result = await createNotebook(problem.value.id)
-    
+
     // Update problem with the new notebook_id
     problem.value.notebook_id = result.id
-    
-    notebookMessage.value = { 
-      type: 'success', 
-      text: 'Блокнот успешно создан!' 
+
+    notebookMessage.value = {
+      type: 'success',
+      text: 'Блокнот успешно создан!'
     }
-    
+
     // Redirect to notebook page after a short delay
     setTimeout(() => {
       window.location.href = `/notebook/${result.id}`
     }, 1000)
   } catch (err) {
     console.error('Notebook creation error:', err)
-    notebookMessage.value = { 
-      type: 'error', 
-      text: err.message || 'Ошибка при создании блокнота' 
+    notebookMessage.value = {
+      type: 'error',
+      text: err.message || 'Ошибка при создании блокнота'
     }
   } finally {
     isCreatingNotebook.value = false
@@ -514,5 +532,20 @@ const handleCreateNotebook = async () => {
   background-color: var(--color-error-bg);
   color: var(--color-error-text);
   border: 1px solid var(--color-error-border);
+}
+
+.problem__all-submissions-button {
+  width: 100%;
+  margin-top: 15px;
+  padding: 12px 20px;
+  text-align: center;
+  text-decoration: none;
+  font-weight: 500;
+  transition: opacity 0.2s ease;
+  display: block;
+}
+
+.problem__all-submissions-button:hover {
+  opacity: 0.9;
 }
 </style>

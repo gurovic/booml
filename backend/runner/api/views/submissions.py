@@ -2,8 +2,10 @@ from django.conf import settings
 from django.db import transaction
 from rest_framework import generics, permissions, parsers, status
 from rest_framework.response import Response
+from rest_framework.pagination import PageNumberPagination
 
 from ...models.submission import Submission
+from ...models.problem import Problem
 from ..serializers import SubmissionCreateSerializer, SubmissionReadSerializer, SubmissionDetailSerializer
 
 from ...services import validation_service
@@ -132,3 +134,31 @@ class SubmissionDetailView(generics.RetrieveAPIView):
 
     def get_queryset(self):
         return Submission.objects.filter(user=self.request.user).select_related("problem", "prevalidation")
+
+
+class SubmissionsPagination(PageNumberPagination):
+    """
+    Pagination for submissions list - 10 items per page (fixed).
+    """
+    page_size = 10
+
+
+class ProblemSubmissionsListView(generics.ListAPIView):
+    """
+    GET /api/submissions/problem/<problem_id>/ — список посылок пользователя по конкретной задаче.
+    """
+    serializer_class = SubmissionReadSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    pagination_class = SubmissionsPagination
+
+    def get_queryset(self):
+        problem_id = self.kwargs.get('problem_id')
+        try:
+            problem = Problem.objects.get(pk=problem_id)
+        except Problem.DoesNotExist:
+            return Submission.objects.none()
+
+        return Submission.objects.filter(
+            user=self.request.user,
+            problem=problem
+        ).order_by("-submitted_at")
