@@ -187,6 +187,41 @@ class RunCellViewTests(TestCase):
         self.assertEqual(follow_data.get("status"), "success")
         self.assertIn("123", follow_data.get("stdout", ""))
 
+    def test_run_cell_with_readline_and_stdin_eof(self):
+        session_id = f"notebook:{self.notebook.id}"
+        create_session(session_id)
+        cell = Cell.objects.create(
+            notebook=self.notebook,
+            cell_type=Cell.CODE,
+            content="import sys\nprint(sys.stdin.closed)\nline = sys.stdin.readline()\nprint(line == '')\nprint(sys.stdin.closed)",
+        )
+        resp = self.client.post(
+            self.url,
+            {
+                "session_id": session_id,
+                "cell_id": cell.id,
+            },
+        )
+        self.assertEqual(resp.status_code, HTTPStatus.OK)
+        data = resp.json()
+        self.assertEqual(data.get("status"), "input_required")
+        self.assertEqual(data.get("stdout", "").strip(), "False")
+
+        follow = self.client.post(
+            self.url,
+            {
+                "session_id": session_id,
+                "cell_id": cell.id,
+                "run_id": data.get("run_id"),
+                "stdin_eof": True,
+            },
+        )
+        self.assertEqual(follow.status_code, HTTPStatus.OK)
+        follow_data = follow.json()
+        self.assertEqual(follow_data.get("status"), "success")
+        stdout_lines = [line.strip() for line in follow_data.get("stdout", "").splitlines() if line.strip()]
+        self.assertEqual(stdout_lines, ["False", "True", "True"])
+
     def test_run_cell_input_no_echo(self):
         session_id = f"notebook:{self.notebook.id}"
         create_session(session_id)

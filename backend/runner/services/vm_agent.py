@@ -20,6 +20,7 @@ from .vm_models import VirtualMachine
 
 _AGENT_CACHE: Dict[str, VmAgent] = {}
 _ACTIVE_RUNS: Dict[str, "InteractiveRun"] = {}
+_ACTIVE_RUNS_LOCK = threading.Lock()
 logger = logging.getLogger(__name__)
 
 
@@ -140,23 +141,29 @@ class LocalVmAgent(VmAgent):
         run_id: str | None = None,
         stdin_eof: bool = False,
     ) -> Dict[str, object]:
-        namespace = self.session.namespace
-        if run_id and run_id in _ACTIVE_RUNS:
-            active_run = _ACTIVE_RUNS[run_id]
+        if run_id:
+            with _ACTIVE_RUNS_LOCK:
+                active_run = _ACTIVE_RUNS.get(run_id)
+        else:
+            active_run = None
+        if active_run is not None:
             active_run.provide_input(stdin or "", eof=stdin_eof)
             event = active_run.wait_for_event()
             result = active_run.build_result()
             if event == "finished":
-                _ACTIVE_RUNS.pop(run_id, None)
+                with _ACTIVE_RUNS_LOCK:
+                    _ACTIVE_RUNS.pop(run_id, None)
             return result
 
         run = InteractiveRun(uuid.uuid4().hex, self.session, code)
-        _ACTIVE_RUNS[run.run_id] = run
+        with _ACTIVE_RUNS_LOCK:
+            _ACTIVE_RUNS[run.run_id] = run
         run.start()
         event = run.wait_for_event()
         result = run.build_result()
         if event == "finished":
-            _ACTIVE_RUNS.pop(run.run_id, None)
+            with _ACTIVE_RUNS_LOCK:
+                _ACTIVE_RUNS.pop(run.run_id, None)
         return result
 
 
@@ -372,6 +379,8 @@ def dispose_vm_agent(session_id: str) -> None:
 def reset_vm_agents() -> None:
     for session_id in list(_AGENT_CACHE.keys()):
         dispose_vm_agent(session_id)
+    with _ACTIVE_RUNS_LOCK:
+        _ACTIVE_RUNS.clear()
 
 
 def _snapshot_variables(namespace: Dict[str, object]) -> Dict[str, str]:

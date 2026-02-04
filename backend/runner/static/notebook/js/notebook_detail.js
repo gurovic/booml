@@ -320,6 +320,8 @@ const notebookDetail = {
             container.appendChild(pre);
             outputElement.appendChild(container);
         }
+        // Keep only one active inline stdin control to avoid stale inputs in the DOM.
+        pre.querySelectorAll('.stdin-inline').forEach((node) => node.remove());
         const wrapper = document.createElement('span');
         wrapper.className = 'stdin-inline';
         const input = document.createElement('input');
