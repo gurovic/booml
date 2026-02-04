@@ -395,7 +395,7 @@ def _build_fake_docker_vm(workdir: Path) -> VirtualMachine:
         ttl_sec=3600,
         gpu=False,
     )
-    now = _resolve_now()
+    now = timezone.now()
     return VirtualMachine(
         id="runner-fake",
         session_id="docker-sess",

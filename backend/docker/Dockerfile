@@ -8,7 +8,7 @@ WORKDIR /workspace
 
 # Build toolchain is required because Python 3.14 often lacks prebuilt wheels
 # for scientific packages (numpy/scipy/pandas) and they fall back to source builds.
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update -o Acquire::Retries=3 && apt-get install -y --no-install-recommends \
         build-essential \
         gfortran \
         pkg-config \
@@ -19,6 +19,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libpng-dev \
         libfreetype6-dev \
         curl \
+    || (apt-get update -o Acquire::Retries=3 && apt-get install -y --no-install-recommends --fix-missing \
+        build-essential \
+        gfortran \
+        pkg-config \
+        libopenblas-dev \
+        liblapack-dev \
+        zlib1g-dev \
+        libjpeg-dev \
+        libpng-dev \
+        libfreetype6-dev \
+        curl) \
     && curl -LsSf https://astral.sh/uv/install.sh | UV_INSTALL_DIR="/usr/local/bin" sh \
     && rm -rf /var/lib/apt/lists/*
 
