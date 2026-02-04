@@ -56,7 +56,7 @@ const problemItems = computed(() => {
     .filter(problem => problem?.id != null)
     .map(problem => ({
       text: problem.title || `Problem ${problem.id}`,
-      route: { name: 'problem', params: { id: problem.id }, query: { title: problem.title } },
+      route: { name: 'problem', params: { id: problem.id }},
     }))
 })
 
