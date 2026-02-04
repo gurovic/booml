@@ -16,7 +16,12 @@
               class="course-item"
             >
               <template v-if="hasChildrenItems(child)">
-                <button type="button" class="section-header section-header--inline" @click="toggleNested(child.id)">
+                <button
+                  type="button"
+                  class="section-header section-header--inline"
+                  @click="toggleNested(child.id)"
+                  :aria-expanded="isNestedOpen(child.id)"
+                >
                   <span class="triangle triangle--nested" :class="{ 'triangle--open': isNestedOpen(child.id) }"></span>
                   <h2 class="course-title course-title--section">{{ child.title }}</h2>
                 </button>
