@@ -30,7 +30,7 @@ const NotebookUtils = {
 
         if (data.error) {
             const escapedError = this.escapeHtml(data.error);
-            blocks.push(`<div class="output-errors"><strong>Ошибка:</strong><pre>${escapedError}</pre></div>`);
+            blocks.push(`<div class="output-errors"><pre>${escapedError}</pre></div>`);
         }
 
         return blocks.join('') || '<div class="output-empty">Нет вывода</div>';

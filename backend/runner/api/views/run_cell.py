@@ -20,8 +20,17 @@ class RunCellView(APIView):
         ensure_notebook_access(request.user, cell.notebook)
 
         session_id = serializer.validated_data["session_id"]
+        stdin = serializer.validated_data.get("stdin")
+        run_id = serializer.validated_data.get("run_id")
+        stdin_eof = serializer.validated_data.get("stdin_eof", False)
         try:
-            result = run_code(session_id, cell.content or "")
+            result = run_code(
+                session_id,
+                cell.content or "",
+                stdin=stdin,
+                run_id=run_id,
+                stdin_eof=stdin_eof,
+            )
         except SessionNotFoundError:
             return Response(
                 {"detail": "Сессия не создана. Сначала создайте новую сессию."},
@@ -36,6 +45,9 @@ class RunCellView(APIView):
                 "stderr": result.stderr,
                 "error": result.error,
                 "variables": result.variables,
+                "status": getattr(result, "status", "success"),
+                "prompt": getattr(result, "prompt", None),
+                "run_id": getattr(result, "run_id", None),
             },
             status=status.HTTP_200_OK,
         )
