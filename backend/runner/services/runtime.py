@@ -125,9 +125,14 @@ def _prepare_local_python_exec(workdir: Path) -> Path | None:
     return None
 
 
-def _ensure_session_vm(session_id: str, *, now: datetime | None = None) -> VirtualMachine:
+def _ensure_session_vm(
+    session_id: str,
+    *,
+    now: datetime | None = None,
+    overrides: Dict[str, object] | None = None,
+) -> VirtualMachine:
     manager = get_vm_manager()
-    return manager.ensure_session_vm(session_id, now=now)
+    return manager.ensure_session_vm(session_id, now=now, overrides=overrides)
 
 
 def _destroy_session_vm(session_id: str) -> None:
@@ -183,7 +188,13 @@ class ExecutionBackend:
     def __init__(self, *, sessions: Dict[str, RuntimeSession]):
         self.sessions = sessions
 
-    def create_session(self, session_id: str, *, now: datetime | None = None) -> RuntimeSession:  # pragma: no cover - abstract
+    def create_session(
+        self,
+        session_id: str,
+        *,
+        now: datetime | None = None,
+        overrides: Dict[str, object] | None = None,
+    ) -> RuntimeSession:  # pragma: no cover - abstract
         raise NotImplementedError
 
     def run_code(self, session_id: str, code: str) -> RuntimeExecutionResult:  # pragma: no cover - abstract
@@ -200,11 +211,17 @@ class ExecutionBackend:
             session.updated_at = current
         return session
 
-    def reset_session(self, session_id: str, *, now: datetime | None = None) -> RuntimeSession:
+    def reset_session(
+        self,
+        session_id: str,
+        *,
+        now: datetime | None = None,
+        overrides: Dict[str, object] | None = None,
+    ) -> RuntimeSession:
         removed = self.stop_session(session_id)
         if not removed:
             raise SessionNotFoundError(f"Session '{session_id}' not found")
-        return self.create_session(session_id, now=now)
+        return self.create_session(session_id, now=now, overrides=overrides)
 
     def cleanup_expired(
         self,
@@ -242,7 +259,13 @@ class ExecutionBackend:
 class LegacyExecutionBackend(ExecutionBackend):
     """Legacy in-process executor that preserves existing behavior."""
 
-    def create_session(self, session_id: str, *, now: datetime | None = None) -> RuntimeSession:
+    def create_session(
+        self,
+        session_id: str,
+        *,
+        now: datetime | None = None,
+        overrides: Dict[str, object] | None = None,
+    ) -> RuntimeSession:
         current = _resolve_now(now)
         self._auto_cleanup_expired(now=current)
         existing = self.sessions.get(session_id)
@@ -250,7 +273,7 @@ class LegacyExecutionBackend(ExecutionBackend):
             existing.updated_at = current
             return existing
 
-        vm = _ensure_session_vm(session_id, now=current)
+        vm = _ensure_session_vm(session_id, now=current, overrides=overrides)
         workdir = vm.workspace_path
         workdir.mkdir(parents=True, exist_ok=True)
         namespace = {}
@@ -330,16 +353,26 @@ def reset_execution_backend() -> None:
     _sessions.clear()
 
 
-def create_session(session_id: str, *, now: datetime | None = None) -> RuntimeSession:
-    return _get_backend().create_session(session_id, now=now)
+def create_session(
+    session_id: str,
+    *,
+    now: datetime | None = None,
+    overrides: Dict[str, object] | None = None,
+) -> RuntimeSession:
+    return _get_backend().create_session(session_id, now=now, overrides=overrides)
 
 
 def get_session(session_id: str, *, touch: bool = True, now: datetime | None = None) -> RuntimeSession | None:
     return _get_backend().get_session(session_id, touch=touch, now=now)
 
 
-def reset_session(session_id: str, *, now: datetime | None = None) -> RuntimeSession:
-    return _get_backend().reset_session(session_id, now=now)
+def reset_session(
+    session_id: str,
+    *,
+    now: datetime | None = None,
+    overrides: Dict[str, object] | None = None,
+) -> RuntimeSession:
+    return _get_backend().reset_session(session_id, now=now, overrides=overrides)
 
 
 def stop_session(session_id: str) -> bool:

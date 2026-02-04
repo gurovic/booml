@@ -28,6 +28,10 @@ const notebookDetail = {
     },
     sessionStatusElement: null,
     sessionButtons: {},
+    computeDeviceSelect: null,
+    computeDeviceHint: null,
+    updateDeviceUrl: null,
+    currentComputeDevice: 'cpu',
     clipboardCellId: null,
     clipboardIndicator: null,
 
@@ -648,6 +652,14 @@ const notebookDetail = {
             reset: this.notebookElement?.querySelector('[data-action="reset-session"]') || null,
             stop: this.notebookElement?.querySelector('[data-action="stop-session"]') || null,
         };
+        this.computeDeviceSelect = this.notebookElement?.querySelector('[data-compute-device]') || null;
+        this.computeDeviceHint = this.notebookElement?.querySelector('[data-compute-device-hint]') || null;
+        this.updateDeviceUrl = this.sanitizeUrl(this.notebookElement?.dataset.updateDeviceUrl);
+        const initialDevice = (this.notebookElement?.dataset.notebookDevice || '').toLowerCase();
+        this.currentComputeDevice = (initialDevice === 'gpu' || initialDevice === 'cpu') ? initialDevice : 'cpu';
+        if (this.computeDeviceSelect) {
+            this.computeDeviceSelect.value = this.currentComputeDevice;
+        }
         this.clipboardCellId = null;
         this.clipboardIndicator = this.notebookElement?.querySelector('[data-clipboard-indicator]') || null;
         this.filesPanel = document.querySelector('[data-files-panel]');
@@ -695,6 +707,13 @@ const notebookDetail = {
         if (this.notebookElement) {
             this.notebookElement.addEventListener('click', this.handleNotebookClick.bind(this));
         }
+        if (this.computeDeviceSelect) {
+            this.computeDeviceSelect.addEventListener('change', (event) => {
+                const target = event.target;
+                const value = target && typeof target.value === 'string' ? target.value : '';
+                this.requestComputeDeviceChange(value);
+            });
+        }
 
         if (this.filesPanel) {
             this.filesPanel.addEventListener('change', (event) => {
@@ -712,6 +731,56 @@ const notebookDetail = {
                     event.preventDefault();
                 }
             });
+        }
+    },
+
+    async requestComputeDeviceChange(nextDevice) {
+        const normalized = (nextDevice || '').toLowerCase();
+        if (normalized !== 'cpu' && normalized !== 'gpu') {
+            if (this.computeDeviceSelect) {
+                this.computeDeviceSelect.value = this.currentComputeDevice;
+            }
+            alert('Недопустимое устройство вычислений.');
+            return;
+        }
+        if (!this.updateDeviceUrl) {
+            if (this.computeDeviceSelect) {
+                this.computeDeviceSelect.value = this.currentComputeDevice;
+            }
+            alert('Не удалось сохранить устройство вычислений.');
+            return;
+        }
+        if (normalized === this.currentComputeDevice) {
+            return;
+        }
+        try {
+            const response = await fetch(this.updateDeviceUrl, {
+                method: 'PATCH',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': this.config.csrfToken
+                },
+                body: JSON.stringify({ compute_device: normalized })
+            });
+            const data = await response.json();
+            if (!response.ok) {
+                const message = data?.message || data?.detail || 'Не удалось обновить устройство вычислений';
+                throw new Error(message);
+            }
+            this.currentComputeDevice = normalized;
+            if (this.notebookElement) {
+                this.notebookElement.dataset.notebookDevice = normalized;
+            }
+            if (this.sessionState === 'ready' && this.computeDeviceHint) {
+                this.computeDeviceHint.textContent = 'Изменение применится после перезапуска сессии';
+            }
+        } catch (error) {
+            console.error('Не удалось обновить устройство вычислений:', error);
+            if (this.computeDeviceSelect) {
+                this.computeDeviceSelect.value = this.currentComputeDevice;
+            }
+            const message = error?.message || 'Не удалось обновить устройство вычислений';
+            alert(message);
         }
     },
 
