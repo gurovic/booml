@@ -424,6 +424,15 @@ const notebookDetail = {
                         await this.saveCellState(cellId, code, formatted, saveOutputUrl);
                         resolve();
                     } catch (error) {
+                        // Отображаем ошибку пользователю и даём возможность повторить ввод
+                        const message = (error && error.message) ? error.message : 'Произошла ошибка при отправке ввода.';
+                        outputElement.className = 'output error';
+                        outputElement.textContent = `Ошибка ввода: ${message}`;
+                        this.setCellStatus(cellId, 'error');
+                        this.rememberOutputSnapshot(cellId, outputElement.innerHTML);
+                        // Разрешаем пользователю повторить попытку
+                        input.disabled = false;
+                        input.addEventListener('keydown', onKey);
                         reject(error);
                     }
                 };
