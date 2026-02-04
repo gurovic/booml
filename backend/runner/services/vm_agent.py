@@ -278,6 +278,7 @@ class InteractiveRun:
         self._input_condition = threading.Condition()
         self._input_buffer = ""
         self._waiting_for_input = False
+        self._namespace_lock = threading.Lock()
         self._thread = threading.Thread(target=self._execute, daemon=True)
 
     def start(self) -> None:
@@ -309,6 +310,10 @@ class InteractiveRun:
             self._input_condition.notify_all()
 
     def build_result(self) -> Dict[str, object]:
+        # Take a shallow copy of the namespace dict to avoid race conditions during iteration.
+        # The lock protects the dict.copy() operation, which is fast.
+        with self._namespace_lock:
+            namespace_snapshot = self.session.namespace.copy()
         return {
             "status": self.status,
             "prompt": self.prompt,
@@ -316,7 +321,7 @@ class InteractiveRun:
             "stdout": self.stdout_buffer.getvalue(),
             "stderr": self.stderr_buffer.getvalue(),
             "error": self.error,
-            "variables": _snapshot_variables(self.session.namespace),
+            "variables": _snapshot_variables(namespace_snapshot),
         }
 
     def _write_stdout(self, text: str) -> None:
@@ -324,6 +329,11 @@ class InteractiveRun:
             self.stdout_buffer.write(text)
 
     def _execute(self) -> None:
+        # Note: We don't hold _namespace_lock during exec() to avoid deadlocks.
+        # The executed code may call input() which waits, and during that wait
+        # the main thread should be able to call build_result() and take a snapshot.
+        # The lock in build_result() protects the dict.copy() operation, which is
+        # sufficient to prevent "dictionary changed size during iteration" errors.
         namespace = self.session.namespace
         original_stdin = sys.stdin
         original_input = builtins.input
