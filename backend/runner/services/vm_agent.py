@@ -141,21 +141,34 @@ class LocalVmAgent(VmAgent):
         run_id: str | None = None,
         stdin_eof: bool = False,
     ) -> Dict[str, object]:
+        # Normalize and validate the provided run_id so that it is scoped to this session.
+        effective_run_id: str | None = None
         if run_id:
+            session_prefix = f"{self.session}:"
+            if ":" in run_id:
+                # If the caller provided a fully-qualified run_id, ensure it belongs to this session.
+                if run_id.startswith(session_prefix):
+                    effective_run_id = run_id
+            else:
+                # Backwards-compatible: treat bare IDs as belonging to this session only.
+                effective_run_id = f"{session_prefix}{run_id}"
+        if effective_run_id:
             with _ACTIVE_RUNS_LOCK:
-                active_run = _ACTIVE_RUNS.get(run_id)
+                active_run = _ACTIVE_RUNS.get(effective_run_id)
         else:
             active_run = None
         if active_run is not None:
             active_run.provide_input(stdin or "", eof=stdin_eof)
             event = active_run.wait_for_event()
             result = active_run.build_result()
-            if event == "finished":
+            if event == "finished" and effective_run_id:
                 with _ACTIVE_RUNS_LOCK:
-                    _ACTIVE_RUNS.pop(run_id, None)
+                    _ACTIVE_RUNS.pop(effective_run_id, None)
             return result
 
-        run = InteractiveRun(uuid.uuid4().hex, self.session, code)
+        # Create a new run with a session-scoped run_id to prevent cross-session interference.
+        session_scoped_run_id = f"{self.session}:{uuid.uuid4().hex}"
+        run = InteractiveRun(session_scoped_run_id, self.session, code)
         with _ACTIVE_RUNS_LOCK:
             _ACTIVE_RUNS[run.run_id] = run
         run.start()
