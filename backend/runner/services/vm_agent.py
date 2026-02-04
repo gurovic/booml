@@ -40,7 +40,13 @@ def _format_cell_error(code: str, exc: BaseException, file_label: str) -> str:
             try:
                 lines[lineno - 1] = text
             except Exception:
-                pass
+                # If we cannot override the line (e.g. lineno out of range), fall back to
+                # the original traceback formatting without modifying the source lines.
+                logger.debug(
+                    "Failed to apply SyntaxError text override at line %s; total lines=%s",
+                    lineno,
+                    len(lines),
+                )
     header = [
         "---------------------------------------------------------------------------",
         f"{type(exc).__name__}                         Traceback (most recent call last)",
