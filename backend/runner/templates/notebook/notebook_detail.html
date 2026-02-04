@@ -83,6 +83,181 @@
             border-radius: 4px;
             resize: vertical;
         }
+
+        .output-html table,
+        .output-markdown table,
+        .output-text table {
+            border-collapse: collapse;
+            width: auto;
+            max-width: 100%;
+            font-size: 13px;
+            color: #222;
+        }
+
+        .output-html table.dataframe,
+        .output-markdown table.dataframe {
+            border: 1px solid #e0e0e0;
+            background: #fff;
+        }
+
+        .output-html table.dataframe thead th,
+        .output-markdown table.dataframe thead th {
+            position: sticky;
+            top: 0;
+            background: #f6f6f6;
+            font-weight: 600;
+            border-bottom: 1px solid #d8d8d8;
+            padding: 6px 10px;
+            text-align: right;
+            white-space: nowrap;
+        }
+
+        .output-html table.dataframe tbody th,
+        .output-markdown table.dataframe tbody th {
+            background: #fafafa;
+            font-weight: 600;
+            text-align: right;
+            padding: 6px 10px;
+            border-right: 1px solid #eee;
+            white-space: nowrap;
+        }
+
+        .output-html table.dataframe td,
+        .output-markdown table.dataframe td {
+            padding: 6px 10px;
+            border-top: 1px solid #eee;
+            text-align: right;
+            white-space: nowrap;
+        }
+
+        .output-html table.dataframe tbody tr:nth-child(even),
+        .output-markdown table.dataframe tbody tr:nth-child(even) {
+            background: #f7f9fc;
+        }
+
+        .output-html table.dataframe tbody tr:hover,
+        .output-markdown table.dataframe tbody tr:hover {
+            background: #f1f7ff;
+        }
+
+        .output-html .dataframe-container,
+        .output-markdown .dataframe-container {
+            overflow: auto;
+            max-width: 100%;
+            max-height: 360px;
+            border: 1px solid #e6e6e6;
+            border-radius: 6px;
+        }
+
+        .output-html .dataframe-container.dataframe-expanded,
+        .output-markdown .dataframe-container.dataframe-expanded {
+            max-height: none;
+        }
+
+        .output-html .dataframe-container::-webkit-scrollbar,
+        .output-markdown .dataframe-container::-webkit-scrollbar {
+            height: 10px;
+            width: 10px;
+        }
+
+        .output-html .dataframe-container::-webkit-scrollbar-thumb,
+        .output-markdown .dataframe-container::-webkit-scrollbar-thumb {
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 8px;
+        }
+
+        .output-html .dataframe-container::-webkit-scrollbar-track,
+        .output-markdown .dataframe-container::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.05);
+        }
+
+        .dataframe-toolbar {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin: 6px 0;
+            font-size: 12px;
+            color: #444;
+        }
+
+        .dataframe-toolbar button {
+            border: 1px solid #d0d0d0;
+            background: #f7f7f7;
+            color: #333;
+            padding: 4px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        .dataframe-toolbar button:hover {
+            background: #eef3ff;
+            border-color: #b5c7ff;
+        }
+
+        .dataframe-summary {
+            margin-right: auto;
+            color: #666;
+        }
+
+        .dataframe-search {
+            border: 1px solid #d0d0d0;
+            border-radius: 4px;
+            padding: 4px 8px;
+            font-size: 12px;
+            min-width: 160px;
+        }
+
+        .dataframe-search:focus {
+            outline: none;
+            border-color: #9bb8ff;
+            box-shadow: 0 0 0 2px rgba(155, 184, 255, 0.3);
+        }
+
+        .dataframe-info {
+            background: #f7f9ff;
+            border: 1px solid #dbe3ff;
+            border-radius: 6px;
+            padding: 10px 12px;
+            font-size: 12px;
+            color: #334;
+            margin: 6px 0 10px;
+        }
+
+        .dataframe-info table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 6px;
+            font-size: 12px;
+        }
+
+        .dataframe-info th,
+        .dataframe-info td {
+            border-bottom: 1px solid #e6e9f5;
+            padding: 4px 6px;
+            text-align: left;
+        }
+
+        .dataframe-info th {
+            color: #445;
+            font-weight: 600;
+            background: #eef2ff;
+        }
+
+        .df-info-title {
+            font-weight: 600;
+            margin-top: 6px;
+        }
+
+        .df-info-note {
+            margin-top: 6px;
+            color: #667;
+        }
+
+        .output-html table.dataframe td.df-null,
+        .output-markdown table.dataframe td.df-null {
+            background: #fff4cc;
+            color: #7a4b00;
+        }
     </style>
 </head>
 <body>

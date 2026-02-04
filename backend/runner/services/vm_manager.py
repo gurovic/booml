@@ -94,7 +94,7 @@ class VmManager:
 
         if "gpu" in overrides:
             updated = replace(updated, gpu=bool(overrides["gpu"]))
-            
+
         network_fields = {
             key: overrides[key]
             for key in ("net_outbound", "net_allowlist")

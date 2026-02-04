@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import logging
 import shutil
 from pathlib import Path
+from typing import Optional
 
 from django.http import FileResponse, Http404
 from django.shortcuts import get_object_or_404
@@ -9,7 +11,6 @@ from rest_framework import permissions, status
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from typing import Optional
 
 from ...models.notebook import Notebook
 from ...models.problem import Problem
@@ -62,17 +63,14 @@ def copy_problem_files_to_session(problem: Problem, session: RuntimeSession) -> 
         problem_data = ProblemData.objects.filter(problem=problem).first()
         if not problem_data:
             return
-        
         workdir = session.workdir
         workdir.mkdir(parents=True, exist_ok=True)
-        
-        # Copy each file if it exists
+
         files_to_copy = [
-            (problem_data.train_file, 'train.csv'),
-            (problem_data.test_file, 'test.csv'),
-            (problem_data.sample_submission_file, 'sample_submission.csv'),
+            (problem_data.train_file, "train.csv"),
+            (problem_data.test_file, "test.csv"),
+            (problem_data.sample_submission_file, "sample_submission.csv"),
         ]
-        
         for file_field, target_name in files_to_copy:
             if file_field and file_field.name:
                 try:
@@ -80,16 +78,12 @@ def copy_problem_files_to_session(problem: Problem, session: RuntimeSession) -> 
                     if source_path.exists():
                         target_path = workdir / target_name
                         shutil.copy2(source_path, target_path)
-                except Exception as e:
-                    # Log error but don't fail notebook creation
-                    import logging
+                except Exception as exc:
                     logger = logging.getLogger(__name__)
-                    logger.warning(f"Failed to copy {target_name}: {e}")
-    except Exception as e:
-        # Don't fail notebook creation if file copying fails
-        import logging
+                    logger.warning("Failed to copy %s: %s", target_name, exc)
+    except Exception as exc:
         logger = logging.getLogger(__name__)
-        logger.warning(f"Failed to copy problem files: {e}")
+        logger.warning("Failed to copy problem files: %s", exc)
 
 
 class CreateNotebookView(APIView):
@@ -201,15 +195,8 @@ class CreateNotebookSessionView(APIView):
         }
         session = create_session(session_id, overrides=overrides)
 
-        # Copy problem files if notebook is linked to a problem
         if notebook.problem:
-            try:
-                copy_problem_files_to_session(notebook.problem, session)
-            except Exception as e:
-                # Log error but don't fail session creation
-                import logging
-                logger = logging.getLogger(__name__)
-                logger.warning(f"Failed to copy problem files to session: {e}")
+            copy_problem_files_to_session(notebook.problem, session)
 
         payload = _build_session_payload(session_id, session, status_label="created")
         return Response(payload, status=status.HTTP_201_CREATED)
@@ -244,17 +231,8 @@ class ResetSessionView(APIView):
             session = reset_session(session_id, overrides=overrides)
         except SessionNotFoundError:
             raise Http404("Session not found")
-        
-        # Copy problem files if notebook is linked to a problem
         if notebook and notebook.problem:
-            try:
-                copy_problem_files_to_session(notebook.problem, session)
-            except Exception as e:
-                # Log error but don't fail session reset
-                import logging
-                logger = logging.getLogger(__name__)
-                logger.warning(f"Failed to copy problem files to reset session: {e}")
-        
+            copy_problem_files_to_session(notebook.problem, session)
         payload = _build_session_payload(session_id, session, status_label="reset")
         return Response(payload, status=status.HTTP_200_OK)
 

@@ -7,7 +7,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update -o Acquire::Retries=3 && apt-get install -y --no-install-recommends \
         build-essential \
         gfortran \
         pkg-config \
@@ -15,6 +15,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         liblapack-dev \
         curl \
         docker.io \
+    || (apt-get update -o Acquire::Retries=3 && apt-get install -y --no-install-recommends --fix-missing \
+        build-essential \
+        gfortran \
+        pkg-config \
+        libopenblas-dev \
+        liblapack-dev \
+        curl \
+        docker.io) \
     && if [ ! -x /usr/bin/docker ]; then apt-get install -y --no-install-recommends docker-cli || apt-get install -y --no-install-recommends moby-cli; fi \
     && if [ ! -x /usr/bin/docker ] && [ -x /usr/bin/docker.io ]; then ln -s /usr/bin/docker.io /usr/bin/docker; fi \
     && curl -LsSf https://astral.sh/uv/install.sh | UV_INSTALL_DIR="/usr/local/bin" sh \
