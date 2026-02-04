@@ -299,23 +299,32 @@ class InteractiveRun:
             self._event_queue.put("finished")
 
 
+RUNS_LOCK = threading.Lock()
+
+
 def execute_code(code: str, namespace, workspace: Path, *, stdin: str = "", stdin_eof: bool = False, run_id: str | None = None) -> dict:
-    if run_id and run_id in RUNS:
-        active_run = RUNS[run_id]
+    active_run = None
+    if run_id:
+        with RUNS_LOCK:
+            active_run = RUNS.get(run_id)
+    if active_run is not None:
         active_run.provide_input(stdin or "", eof=stdin_eof)
         event = active_run.wait_for_event()
         result = active_run.build_result()
         if event == "finished":
-            RUNS.pop(run_id, None)
+            with RUNS_LOCK:
+                RUNS.pop(run_id, None)
         return result
 
     run = InteractiveRun(uuid.uuid4().hex, namespace, workspace, code)
-    RUNS[run.run_id] = run
+    with RUNS_LOCK:
+        RUNS[run.run_id] = run
     run.start()
     event = run.wait_for_event()
     result = run.build_result()
     if event == "finished":
-        RUNS.pop(run.run_id, None)
+        with RUNS_LOCK:
+            RUNS.pop(run.run_id, None)
     return result
 
 
