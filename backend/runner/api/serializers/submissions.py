@@ -3,6 +3,7 @@ from django.contrib.auth import get_user_model
 
 from ...models.submission import Submission
 from ...models.problem import Problem
+from ...models.prevalidation import PreValidation
 
 User = get_user_model()
 
@@ -42,7 +43,7 @@ class SubmissionCreateSerializer(serializers.ModelSerializer):
 class SubmissionReadSerializer(serializers.ModelSerializer):
     problem_id = serializers.IntegerField(source="problem.id", read_only=True)
     problem_title = serializers.CharField(source="problem.title", read_only=True)
-    file_url = serializers.FileField(source="file", read_only=True)
+    file_url = serializers.SerializerMethodField()
 
     class Meta:
         model = Submission
@@ -50,4 +51,43 @@ class SubmissionReadSerializer(serializers.ModelSerializer):
             "id", "problem_id", "problem_title", "file_url",
             "submitted_at", "status", "code_size", "metrics",
         ]
+    
+    def get_file_url(self, obj):
+        if obj.file:
+            # Return relative URL path (e.g., /media/submissions/file.csv)
+            # Browser will resolve it relative to current origin
+            return obj.file.url
+        return None
+
+
+class PreValidationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PreValidation
+        fields = [
+            "id", "valid", "status", "errors_count", "warnings_count",
+            "rows_total", "unique_ids", "first_id", "last_id",
+            "duration_ms", "errors", "warnings", "stats", "created_at",
+        ]
+
+
+class SubmissionDetailSerializer(serializers.ModelSerializer):
+    problem_id = serializers.IntegerField(source="problem.id", read_only=True)
+    problem_title = serializers.CharField(source="problem.title", read_only=True)
+    file_url = serializers.SerializerMethodField()
+    prevalidation = PreValidationSerializer(read_only=True)
+
+    class Meta:
+        model = Submission
+        fields = [
+            "id", "problem_id", "problem_title", "file_url",
+            "submitted_at", "status", "code_size", "metrics",
+            "prevalidation",
+        ]
+    
+    def get_file_url(self, obj):
+        if obj.file:
+            # Return relative URL path (e.g., /media/submissions/file.csv)
+            # Browser will resolve it relative to current origin
+            return obj.file.url
+        return None
 

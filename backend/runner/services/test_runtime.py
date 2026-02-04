@@ -1,5 +1,6 @@
 from datetime import timedelta
 from pathlib import Path
+from queue import Empty
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
@@ -10,7 +11,6 @@ from runner.services import vm_agent, vm_manager
 from runner.services.runtime import (
     DEFAULT_SESSION_TTL_SECONDS,
     _sessions,
-    _resolve_now,
     cleanup_expired,
     cleanup_all_sessions,
     create_session,
@@ -21,7 +21,7 @@ from runner.services.runtime import (
     run_code,
     SessionNotFoundError,
 )
-from runner.services.vm_models import VirtualMachine, VmNetworkPolicy, VmResources, VmSpec, VirtualMachineState
+
 
 
 class RuntimeServiceTests(SimpleTestCase):

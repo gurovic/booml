@@ -7,8 +7,9 @@ from ..models.problem import Problem
 from ..models.problem_data import ProblemData
 from ..models.problem_desriptor import ProblemDescriptor
 from ..models.submission import Submission
+from ..models.notebook import Notebook
 from ..services import enqueue_submission_for_evaluation, validation_service
-from .submissions import submission_list
+from .submissions import submission_list, _primary_metric
 from django.http import JsonResponse
 
 
@@ -119,12 +120,12 @@ def problem_detail_api(request):
     descriptor = ProblemDescriptor.objects.filter(problem=problem).first()
 
     def get_file_url(file):
-        file_url = None
-        if file:
-            file_url = request.build_absolute_uri(
-                file.url
-            )
-        return file_url
+        """Return relative URL path for frontend proxy to handle."""
+        if not file:
+            return None
+        # Return relative URL (e.g., /media/problem_data/1/train/file.csv)
+        # The frontend proxy will route this to the backend
+        return file.url
     
     file_urls = {
         "train": None,
@@ -140,7 +141,8 @@ def problem_detail_api(request):
         }
 
     submissions = []
-
+    notebook_id = None
+    
     if request.user.is_authenticated:
         raw_submissions = (
             Submission.objects
@@ -148,22 +150,32 @@ def problem_detail_api(request):
             .order_by("-submitted_at")[:5]
         )
 
-        submissions = [
-            {
+        for submission in raw_submissions:
+            metric_value = _primary_metric(submission.metrics)
+            submissions.append({
                 "id": submission.id,
                 "submitted_at": submission.submitted_at.strftime("%H:%M"),
                 "status": submission.status,
-                "metric": submission.metrics
-            }
-            for submission in raw_submissions
-        ]
+                "metric": metric_value,
+                "metrics": submission.metrics,
+            })
+        
+        # Get user's notebook for this problem
+        user_notebook = Notebook.objects.filter(
+            owner=request.user,
+            problem=problem
+        ).first()
+        
+        if user_notebook:
+            notebook_id = user_notebook.id
 
     response = {
         "id": problem.id,
         "title": problem.title,
         "statement": problem.statement,
         "files": file_urls,
-        "submissions": submissions
+        "submissions": submissions,
+        "notebook_id": notebook_id,
     }
 
     return JsonResponse(response)
