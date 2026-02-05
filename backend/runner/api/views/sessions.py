@@ -39,6 +39,7 @@ DEFAULT_PREVIEW_ROWS = 50
 DEFAULT_PREVIEW_COLS = 50
 MAX_PREVIEW_ROWS = 500
 MAX_PREVIEW_COLS = 200
+MAX_PREVIEW_CELL_CHARS = 2000
 SUPPORTED_PREVIEW_EXTENSIONS = {".csv", ".parquet", ".parq"}
 
 
@@ -360,6 +361,11 @@ class SessionFileDownloadView(APIView):
         if session is None:
             raise Http404("Session not found")
 
+        notebook_id = extract_notebook_id(session_id)
+        if notebook_id is not None:
+            notebook = get_object_or_404(Notebook, pk=notebook_id)
+            ensure_notebook_access(request.user, notebook)
+
         candidate = (session.workdir / relative_path).resolve()
         try:
             candidate.relative_to(session.workdir.resolve())
@@ -516,7 +522,7 @@ def _normalize_columns(header: list[str], display_cols: int) -> list[str]:
         text = str(raw).strip() if raw is not None else ""
         if not text:
             text = f"col{idx + 1}"
-        columns.append(text)
+        columns.append(_truncate_preview_value(text))
     return columns
 
 
@@ -524,36 +530,57 @@ def _normalize_row(row: list[object], display_cols: int) -> list[str]:
     normalized: list[str] = []
     for idx in range(display_cols):
         value = row[idx] if idx < len(row) else ""
-        normalized.append("" if value is None else str(value))
+        normalized.append(_truncate_preview_value(value))
     return normalized
+
+
+def _truncate_preview_value(value: object) -> str:
+    text = "" if value is None else str(value)
+    if len(text) > MAX_PREVIEW_CELL_CHARS:
+        return text[:MAX_PREVIEW_CELL_CHARS] + "…"
+    return text
+
+
+def _read_csv_sample(handle) -> str:
+    sample = handle.read(65536)
+    max_sample_size = 1024 * 1024
+    while sample and ("\n" not in sample and "\r" not in sample) and len(sample) < max_sample_size:
+        chunk = handle.read(65536)
+        if not chunk:
+            break
+        sample += chunk
+    return sample
 
 
 def _preview_csv(path: Path, *, max_rows: int, max_cols: int, delimiter: str | None) -> dict:
     with path.open("r", encoding="utf-8", errors="replace", newline="") as handle:
-        sample = handle.read(65536)
+        sample = _read_csv_sample(handle)
         handle.seek(0)
         delim = delimiter or _detect_csv_delimiter(sample)
-        reader = csv.reader(handle, delimiter=delim)
-        header = next(reader, None)
-        if header is None:
-            return {
-                "columns": [],
-                "rows": [],
-                "dtypes": {},
-                "truncated": {"rows": False, "cols": False},
-                "delimiter": delim,
-            }
+        try:
+            reader = csv.reader(handle, delimiter=delim)
+            header = next(reader, None)
+            if header is None:
+                return {
+                    "columns": [],
+                    "rows": [],
+                    "dtypes": {},
+                    "truncated": {"rows": False, "cols": False},
+                    "delimiter": delim,
+                }
 
-        rows: list[list[str]] = []
-        max_seen_cols = len(header)
-        truncated_rows = False
-        for row in reader:
-            max_seen_cols = max(max_seen_cols, len(row))
-            if len(rows) < max_rows:
-                rows.append(row)
-            else:
-                truncated_rows = True
-                break
+            rows: list[list[str]] = []
+            max_seen_cols = len(header)
+            truncated_rows = False
+            for row in reader:
+                max_seen_cols = max(max_seen_cols, len(row))
+                if len(rows) < max_rows:
+                    rows.append(row)
+                else:
+                    truncated_rows = True
+                    break
+        except Exception as exc:
+            raise PreviewError("Не удалось прочитать CSV-файл: проверьте формат и кодировку.") from exc
 
     truncated_cols = max_seen_cols > max_cols
     display_cols = min(max_seen_cols, max_cols)
@@ -574,39 +601,44 @@ def _preview_parquet(path: Path, *, max_rows: int, max_cols: int) -> dict:
     except Exception as exc:  # pragma: no cover - optional dependency
         raise PreviewError("Для предпросмотра Parquet установите pyarrow.") from exc
 
-    parquet_file = pq.ParquetFile(path)
-    schema = parquet_file.schema
-    all_columns = list(schema.names)
-    if not all_columns:
+    try:
+        parquet_file = pq.ParquetFile(path)
+        schema = parquet_file.schema
+        all_columns = list(schema.names)
+        if not all_columns:
+            return {
+                "columns": [],
+                "rows": [],
+                "dtypes": {},
+                "truncated": {"rows": False, "cols": False},
+            }
+
+        display_columns = all_columns[:max_cols]
+        batch_iter = parquet_file.iter_batches(batch_size=max_rows, columns=display_columns)
+        batch = next(batch_iter, None)
+        rows: list[list[str]] = []
+        if batch is not None and batch.num_rows:
+            data = batch.to_pydict()
+            for index in range(batch.num_rows):
+                row = []
+                for col in display_columns:
+                    value = data.get(col, [None] * batch.num_rows)[index]
+                    row.append(_truncate_preview_value(value))
+                rows.append(row)
+
+        total_rows = getattr(parquet_file.metadata, "num_rows", None)
+        if total_rows is None:
+            total_rows = len(rows)
+        truncated_rows = total_rows > len(rows)
+        truncated_cols = len(all_columns) > max_cols
+        dtypes = {name: str(schema.field(name).type) for name in display_columns}
         return {
-            "columns": [],
-            "rows": [],
-            "dtypes": {},
-            "truncated": {"rows": False, "cols": False},
+            "columns": display_columns,
+            "rows": rows,
+            "dtypes": dtypes,
+            "truncated": {"rows": truncated_rows, "cols": truncated_cols},
         }
-
-    display_columns = all_columns[:max_cols]
-    batch_iter = parquet_file.iter_batches(batch_size=max_rows, columns=display_columns)
-    batch = next(batch_iter, None)
-    rows: list[list[str]] = []
-    if batch is not None and batch.num_rows:
-        data = batch.to_pydict()
-        for index in range(batch.num_rows):
-            row = []
-            for col in display_columns:
-                value = data.get(col, [None] * batch.num_rows)[index]
-                row.append("" if value is None else str(value))
-            rows.append(row)
-
-    total_rows = getattr(parquet_file.metadata, "num_rows", None)
-    if total_rows is None:
-        total_rows = len(rows)
-    truncated_rows = total_rows > len(rows)
-    truncated_cols = len(all_columns) > max_cols
-    dtypes = {name: str(schema.field(name).type) for name in display_columns}
-    return {
-        "columns": display_columns,
-        "rows": rows,
-        "dtypes": dtypes,
-        "truncated": {"rows": truncated_rows, "cols": truncated_cols},
-    }
+    except Exception as exc:
+        raise PreviewError(
+            "Не удалось прочитать Parquet-файл: возможно, он поврежден или имеет неподдерживаемый формат."
+        ) from exc

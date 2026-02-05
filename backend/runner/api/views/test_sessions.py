@@ -212,6 +212,39 @@ class NotebookSessionAPITests(TestCase):
         self.assertEqual(data["columns"], ["a", "b"])
         self.assertEqual(data["rows"][0], ["1", "2"])
 
+    def test_session_file_preview_prevents_escape(self):
+        session_id = f"notebook:{self.notebook.id}"
+        create_session(session_id)
+
+        resp = self.client.get(f"{self.preview_url}?session_id={session_id}&path=../secret.csv")
+
+        self.assertEqual(resp.status_code, HTTPStatus.NOT_FOUND)
+
+    def test_session_file_preview_unsupported_type(self):
+        session_id = f"notebook:{self.notebook.id}"
+        session = create_session(session_id)
+        txt_path = session.workdir / "notes.txt"
+        txt_path.write_text("hello", encoding="utf-8")
+
+        resp = self.client.get(f"{self.preview_url}?session_id={session_id}&path=notes.txt")
+
+        self.assertEqual(resp.status_code, HTTPStatus.BAD_REQUEST)
+        self.assertIn("Unsupported file type", resp.json().get("detail", ""))
+
+    def test_session_file_preview_forbidden_for_other_user(self):
+        session_id = f"notebook:{self.notebook.id}"
+        session = create_session(session_id)
+        csv_path = session.workdir / "sample.csv"
+        csv_path.write_text("a,b\n1,2\n", encoding="utf-8")
+
+        other = User.objects.create_user(username="other_viewer", password="pass123")
+        self.client.logout()
+        self.client.login(username="other_viewer", password="pass123")
+
+        resp = self.client.get(f"{self.preview_url}?session_id={session_id}&path=sample.csv")
+
+        self.assertEqual(resp.status_code, HTTPStatus.FORBIDDEN)
+
     def test_session_file_preview_missing_session_returns_404(self):
         session_id = f"notebook:{self.notebook.id}"
 
