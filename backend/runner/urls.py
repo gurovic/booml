@@ -11,7 +11,7 @@ from .views.notebook_list import notebook_list
 from .views.create_notebook import create_notebook
 from .views.delete_notebook import delete_notebook
 from .views.rename_notebook import rename_notebook
-from .views.notebook_detail import notebook_detail
+from .views.notebook_detail import notebook_detail, notebook_detail_api
 from .views.update_notebook_device import update_notebook_device
 from .views.create_cell import create_cell, create_latex_cell
 from .views.delete_cell import delete_cell
@@ -81,6 +81,7 @@ urlpatterns = [
     path('notebook/<int:notebook_id>/rename/', rename_notebook, name='rename_notebook'),
     path('notebook/<int:notebook_id>/device/', update_notebook_device, name='update_notebook_device'),
     path('notebook/<int:notebook_id>/', notebook_detail, name='notebook_detail'),
+    path('backend/notebook/<int:notebook_id>/', notebook_detail_api, name='backend_notebook_detail'),
     path('notebook/<int:notebook_id>/cell/new/', create_cell, name='create_cell'),
     path('notebook/<int:notebook_id>/cell/new/latex/', create_latex_cell, name='create_latex_cell'),
     path('notebook/<int:notebook_id>/cell/<int:cell_id>/delete/', delete_cell, name='delete_cell'),
