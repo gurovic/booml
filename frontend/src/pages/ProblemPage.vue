@@ -248,10 +248,8 @@ const handleCreateNotebook = async () => {
       text: 'Блокнот успешно создан!'
     }
 
-    // Redirect to notebook page after a short delay
-    setTimeout(() => {
-      window.location.href = `/notebook/${result.id}`
-    }, 1000)
+    // Redirect immediately
+    window.location.href = `/notebook/${result.id}`
   } catch (err) {
     console.error('Notebook creation error:', err)
     notebookMessage.value = {
@@ -505,7 +503,7 @@ const handleCreateNotebook = async () => {
 
 .problem__notebook-button:disabled {
   opacity: 0.6;
-  cursor: not-allowed;
+  cursor: progress;
 }
 
 .problem__notebook-exists,
