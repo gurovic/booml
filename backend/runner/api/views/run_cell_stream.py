@@ -8,6 +8,7 @@ from django.shortcuts import get_object_or_404
 from ...models.notebook import Notebook
 from ...services.runtime import SessionNotFoundError
 from ...services.streaming_runs import (
+    RunInProgressError,
     get_streaming_run,
     read_stream_output,
     start_streaming_run,
@@ -36,6 +37,11 @@ class RunCellStreamStartView(APIView):
                 cell_id=cell.id,
                 notebook_id=cell.notebook_id,
                 code=cell.content or "",
+            )
+        except RunInProgressError:
+            return Response(
+                {"detail": "Сессия уже выполняет ячейку. Остановите или перезапустите сессию."},
+                status=status.HTTP_409_CONFLICT,
             )
         except SessionNotFoundError:
             return Response(

@@ -162,14 +162,14 @@ def _write_stream_files(stdout_path: Path, stderr_path: Path, stdout: str, stder
         try:
             stdout_path.parent.mkdir(parents=True, exist_ok=True)
             stdout_path.write_text(stdout or "", encoding="utf-8")
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("Failed to write stdout stream to %s: %s", stdout_path, exc)
     if stderr_path:
         try:
             stderr_path.parent.mkdir(parents=True, exist_ok=True)
             stderr_path.write_text(stderr or "", encoding="utf-8")
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("Failed to write stderr stream to %s: %s", stderr_path, exc)
 
 
 def _ensure_session_vm(

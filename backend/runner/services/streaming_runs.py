@@ -3,11 +3,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Tuple
+import logging
 import threading
 import time
 import uuid
 
 from .runtime import RuntimeExecutionResult, SessionNotFoundError, get_session, run_code_stream
+
+logger = logging.getLogger(__name__)
 
 
 MAX_STREAM_CHUNK_BYTES = 64 * 1024
@@ -154,5 +157,5 @@ def _cleanup_run_files(run: StreamingRun) -> None:
     for path in (run.stdout_path, run.stderr_path):
         try:
             path.unlink(missing_ok=True)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Failed to remove stream file %s: %s", path, exc)

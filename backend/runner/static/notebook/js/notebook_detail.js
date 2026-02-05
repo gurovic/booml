@@ -613,7 +613,16 @@ const notebookDetail = {
             node.appendChild(document.createTextNode(text));
         };
 
+        const maxPollMs = 5 * 60 * 1000;
         while (true) {
+            const nowMs = (typeof performance !== 'undefined' && performance.now)
+                ? performance.now()
+                : Date.now();
+            if (nowMs - startedAt > maxPollMs) {
+                const error = new Error('Превышено время ожидания выполнения');
+                error.status = 408;
+                throw error;
+            }
             if (job.cancelled) {
                 throw new Error('cancelled');
             }

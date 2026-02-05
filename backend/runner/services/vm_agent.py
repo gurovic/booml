@@ -86,8 +86,8 @@ class _StreamingBuffer(io.TextIOBase):
     def flush(self) -> None:
         try:
             self._file.flush()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Failed to flush streaming buffer %s: %s", self._path, exc)
 
     def getvalue(self) -> str:
         return self._buffer.getvalue()
@@ -98,6 +98,8 @@ class _StreamingBuffer(io.TextIOBase):
     def close(self) -> None:  # type: ignore[override]
         try:
             self._file.close()
+        except Exception as exc:
+            logger.debug("Failed to close streaming buffer %s: %s", self._path, exc)
         finally:
             super().close()
 
