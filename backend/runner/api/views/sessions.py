@@ -24,6 +24,7 @@ from ...services.runtime import (
     reset_session,
     stop_session,
 )
+from ...services.streaming_runs import cancel_streaming_runs
 from ..serializers import (
     NotebookCreateSerializer,
     NotebookSessionCreateSerializer,
@@ -223,6 +224,7 @@ class ResetSessionView(APIView):
         serializer.is_valid(raise_exception=True)
 
         session_id = serializer.validated_data["session_id"]
+        cancel_streaming_runs(session_id, reason="Сессия перезапущена")
         notebook_id = extract_notebook_id(session_id)
         notebook = None
         if notebook_id is not None:
@@ -251,6 +253,7 @@ class StopSessionView(APIView):
         serializer = SessionResetSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         session_id = serializer.validated_data["session_id"]
+        cancel_streaming_runs(session_id, reason="Сессия остановлена")
         notebook_id = extract_notebook_id(session_id)
         if notebook_id is not None:
             notebook = get_object_or_404(Notebook, pk=notebook_id)
@@ -280,6 +283,8 @@ class SessionFilesView(APIView):
             if not path.is_file():
                 continue
             rel = path.relative_to(session.workdir)
+            if ".streams" in rel.parts:
+                continue
             stat = path.stat()
             files.append({
                 "path": rel.as_posix(),
