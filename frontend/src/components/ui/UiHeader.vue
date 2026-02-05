@@ -12,7 +12,7 @@
             class="header__nav-link"
             @click="handlePolygonClick"
           >
-            Polygon
+            Полигон
           </button>
         </nav>
 
