@@ -33,8 +33,16 @@ _RUNS: Dict[str, StreamingRun] = {}
 _LOCK = threading.Lock()
 
 
+class RunInProgressError(RuntimeError):
+    pass
+
+
 def start_streaming_run(*, session_id: str, cell_id: int, notebook_id: int, code: str) -> StreamingRun:
     _cleanup_expired_runs()
+    with _LOCK:
+        for run in _RUNS.values():
+            if run.session_id == session_id and run.status == "running":
+                raise RunInProgressError("Run already in progress")
     session = get_session(session_id, touch=False)
     if session is None:
         raise SessionNotFoundError(f"Session '{session_id}' not found")
@@ -71,6 +79,19 @@ def get_streaming_run(run_id: str) -> StreamingRun | None:
         return _RUNS.get(run_id)
 
 
+def cancel_streaming_runs(session_id: str, *, reason: str) -> None:
+    _cleanup_expired_runs()
+    with _LOCK:
+        for run in list(_RUNS.values()):
+            if run.session_id != session_id:
+                continue
+            if run.status == "running":
+                run.status = "error"
+                run.error = reason
+                run.finished_at = time.time()
+            _cleanup_run_files(run)
+
+
 def read_stream_output(run: StreamingRun, *, stdout_offset: int, stderr_offset: int) -> Tuple[str, str, int, int]:
     stdout_chunk, stdout_next = _read_chunk(run.stdout_path, stdout_offset)
     stderr_chunk, stderr_next = _read_chunk(run.stderr_path, stderr_offset)
@@ -95,6 +116,7 @@ def _execute_run(run: StreamingRun, code: str) -> None:
         run.error = str(exc)
     finally:
         run.finished_at = time.time()
+        _cleanup_run_files(run)
 
 
 def _read_chunk(path: Path, offset: int) -> Tuple[str, int]:
@@ -125,8 +147,12 @@ def _cleanup_expired_runs() -> None:
         for run_id in expired:
             run = _RUNS.pop(run_id, None)
             if run:
-                for path in (run.stdout_path, run.stderr_path):
-                    try:
-                        path.unlink(missing_ok=True)
-                    except Exception:
-                        pass
+                _cleanup_run_files(run)
+
+
+def _cleanup_run_files(run: StreamingRun) -> None:
+    for path in (run.stdout_path, run.stderr_path):
+        try:
+            path.unlink(missing_ok=True)
+        except Exception:
+            pass
