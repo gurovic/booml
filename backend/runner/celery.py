@@ -6,6 +6,8 @@ from celery import Celery
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'core.settings')
 
 app = Celery('runner')
+app.set_default()
+app.set_current()
 
 def configure_celery_app() -> None:
     # Using a string here means the worker doesn't have to serialize
