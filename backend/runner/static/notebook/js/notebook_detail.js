@@ -9,6 +9,8 @@ const notebookDetail = {
     cellQueue: [],
     currentRun: null,
     cellOutputSnapshots: {},
+    runCellStreamStartUrl: null,
+    runCellStreamStatusUrl: null,
     storageEnabled: undefined,
     inactivityTimers: {
         prompt: null,
@@ -425,8 +427,10 @@ const notebookDetail = {
         const outputElement = document.getElementById(`output-${cellId}`);
         const saveOutputUrl = this.buildCellUrl(this.saveOutputUrlTemplate, cellId);
         const runCellUrl = this.runCellUrl;
+        const runCellStreamStartUrl = this.runCellStreamStartUrl;
+        const runCellStreamStatusUrl = this.runCellStreamStatusUrl;
 
-        if (!textarea || !outputElement || !runCellUrl) {
+        if (!textarea || !outputElement || (!runCellUrl && !(runCellStreamStartUrl && runCellStreamStatusUrl))) {
             this.setCellStatus(cellId, 'error');
             return;
         }
@@ -461,42 +465,57 @@ const notebookDetail = {
         const startedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
 
         try {
-            const response = await fetch(runCellUrl, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': this.config.csrfToken
-                },
-                body: JSON.stringify({
-                    session_id: sessionId,
-                    cell_id: cellNumericId
-                }),
-                signal: job.controller?.signal
-            });
+            if (runCellStreamStartUrl && runCellStreamStatusUrl) {
+                await this.executeQueueJobStreaming({
+                    job,
+                    cellId,
+                    sessionId,
+                    cellNumericId,
+                    code,
+                    outputElement,
+                    saveOutputUrl,
+                    startedAt,
+                    runCellStreamStartUrl,
+                    runCellStreamStatusUrl,
+                });
+            } else {
+                const response = await fetch(runCellUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': this.config.csrfToken
+                    },
+                    body: JSON.stringify({
+                        session_id: sessionId,
+                        cell_id: cellNumericId
+                    }),
+                    signal: job.controller?.signal
+                });
 
-            const data = await response.json();
+                const data = await response.json();
 
-            if (!response.ok) {
-                const message = data?.detail || data?.error || 'Не удалось выполнить ячейку';
-                const error = new Error(message);
-                error.status = response.status;
-                throw error;
+                if (!response.ok) {
+                    const message = data?.detail || data?.error || 'Не удалось выполнить ячейку';
+                    const error = new Error(message);
+                    error.status = response.status;
+                    throw error;
+                }
+
+                const formattedOutput = NotebookUtils.formatCellRunResult(data);
+                outputElement.innerHTML = formattedOutput;
+                this.enhanceOutputElement(outputElement);
+                outputElement.className = data.error ? 'output error' : 'output success';
+                this.renderArtifacts(cellId, data.artifacts || []);
+                const finalStatus = data.error ? 'error' : 'success';
+                const durationMs = Math.max(
+                    0,
+                    (typeof performance !== 'undefined' ? performance.now() : Date.now()) - startedAt,
+                );
+                const meta = finalStatus === 'success' ? { durationMs } : null;
+                this.setCellStatus(cellId, finalStatus, meta);
+                this.rememberOutputSnapshot(cellId, formattedOutput);
+                await this.saveCellState(cellId, code, formattedOutput, saveOutputUrl);
             }
-
-            const formattedOutput = NotebookUtils.formatCellRunResult(data);
-            outputElement.innerHTML = formattedOutput;
-            this.enhanceOutputElement(outputElement);
-            outputElement.className = data.error ? 'output error' : 'output success';
-            this.renderArtifacts(cellId, data.artifacts || []);
-            const finalStatus = data.error ? 'error' : 'success';
-            const durationMs = Math.max(
-                0,
-                (typeof performance !== 'undefined' ? performance.now() : Date.now()) - startedAt,
-            );
-            const meta = finalStatus === 'success' ? { durationMs } : null;
-            this.setCellStatus(cellId, finalStatus, meta);
-            this.rememberOutputSnapshot(cellId, formattedOutput);
-            await this.saveCellState(cellId, code, formattedOutput, saveOutputUrl);
         } catch (error) {
             if (error?.status === 400 && /Сессия не создана/i.test(error.message || '')) {
                 this.handleSessionLost('Сессия не создана. Создайте новую.');
@@ -531,6 +550,141 @@ const notebookDetail = {
             this.setCellStatus(cellId, 'error');
             this.rememberOutputSnapshot(cellId, errorHtml);
             await this.saveCellState(cellId, code, errorHtml, saveOutputUrl);
+        }
+    },
+
+    async executeQueueJobStreaming(payload) {
+        const {
+            job,
+            cellId,
+            sessionId,
+            cellNumericId,
+            code,
+            outputElement,
+            saveOutputUrl,
+            startedAt,
+            runCellStreamStartUrl,
+            runCellStreamStatusUrl,
+        } = payload;
+
+        const startResponse = await fetch(runCellStreamStartUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': this.config.csrfToken
+            },
+            body: JSON.stringify({
+                session_id: sessionId,
+                cell_id: cellNumericId
+            }),
+            signal: job.controller?.signal
+        });
+
+        const startData = await startResponse.json();
+        if (!startResponse.ok) {
+            const message = startData?.detail || startData?.error || 'Не удалось выполнить ячейку';
+            const error = new Error(message);
+            error.status = startResponse.status;
+            throw error;
+        }
+
+        const runId = startData?.run_id;
+        if (!runId) {
+            throw new Error('Не удалось запустить выполнение ячейки');
+        }
+
+        let stdoutOffset = 0;
+        let stderrOffset = 0;
+        let stdoutNode = null;
+        let stderrNode = null;
+
+        const ensureStreamNodes = () => {
+            if (stdoutNode && stderrNode) {
+                return;
+            }
+            outputElement.innerHTML = `
+                <div class="output-text"><pre data-stream-stdout></pre></div>
+                <div class="output-stderr"><strong>STDERR:</strong><pre data-stream-stderr></pre></div>
+            `;
+            stdoutNode = outputElement.querySelector('[data-stream-stdout]');
+            stderrNode = outputElement.querySelector('[data-stream-stderr]');
+        };
+
+        const appendText = (node, text) => {
+            if (!node || !text) {
+                return;
+            }
+            node.appendChild(document.createTextNode(text));
+        };
+
+        while (true) {
+            if (job.cancelled) {
+                throw new Error('cancelled');
+            }
+            const statusUrl = `${runCellStreamStatusUrl}?run_id=${encodeURIComponent(runId)}&stdout_offset=${stdoutOffset}&stderr_offset=${stderrOffset}`;
+            const statusResponse = await fetch(statusUrl, {
+                headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                signal: job.controller?.signal
+            });
+            const statusData = await statusResponse.json();
+            if (!statusResponse.ok) {
+                const message = statusData?.detail || statusData?.error || 'Не удалось получить статус выполнения';
+                const error = new Error(message);
+                error.status = statusResponse.status;
+                throw error;
+            }
+
+            if (statusData.stdout) {
+                ensureStreamNodes();
+                appendText(stdoutNode, statusData.stdout);
+            }
+            if (statusData.stderr) {
+                ensureStreamNodes();
+                appendText(stderrNode, statusData.stderr);
+            }
+            const stdoutNext = Number(statusData.stdout_offset);
+            if (Number.isFinite(stdoutNext)) {
+                stdoutOffset = stdoutNext;
+            }
+            const stderrNext = Number(statusData.stderr_offset);
+            if (Number.isFinite(stderrNext)) {
+                stderrOffset = stderrNext;
+            }
+
+            if (statusData.status === 'error') {
+                const message = statusData?.detail || 'Не удалось выполнить ячейку';
+                const error = new Error(message);
+                error.status = 500;
+                throw error;
+            }
+
+            if (statusData.status === 'finished') {
+                const result = statusData.result;
+                const data = result || {
+                    stdout: '',
+                    stderr: '',
+                    error: null,
+                    outputs: [],
+                    artifacts: []
+                };
+                const formattedOutput = NotebookUtils.formatCellRunResult(data);
+                outputElement.innerHTML = formattedOutput;
+                this.enhanceOutputElement(outputElement);
+                outputElement.className = data.error ? 'output error' : 'output success';
+                this.renderArtifacts(cellId, data.artifacts || []);
+                const finalStatus = data.error ? 'error' : 'success';
+                const durationMs = Math.max(
+                    0,
+                    (typeof performance !== 'undefined' ? performance.now() : Date.now()) - startedAt,
+                );
+                const meta = finalStatus === 'success' ? { durationMs } : null;
+                this.setCellStatus(cellId, finalStatus, meta);
+                this.rememberOutputSnapshot(cellId, formattedOutput);
+                await this.saveCellState(cellId, code, formattedOutput, saveOutputUrl);
+                return;
+            }
+
+            await new Promise((resolve) => setTimeout(resolve, 300));
         }
     },
 
@@ -902,6 +1056,8 @@ const notebookDetail = {
         this.copyCellUrlTemplate = this.notebookElement?.dataset.copyCellUrlTemplate || '';
         this.moveCellUrlTemplate = this.notebookElement?.dataset.moveCellUrlTemplate || '';
         this.runCellUrl = this.sanitizeUrl(config.runCellUrl) || this.sanitizeUrl(this.notebookElement?.dataset.runCellUrl);
+        this.runCellStreamStartUrl = this.sanitizeUrl(config.runCellStreamStartUrl) || this.sanitizeUrl(this.notebookElement?.dataset.runCellStreamStartUrl);
+        this.runCellStreamStatusUrl = this.sanitizeUrl(config.runCellStreamStatusUrl) || this.sanitizeUrl(this.notebookElement?.dataset.runCellStreamStatusUrl);
         this.sessionCreateUrl = this.sanitizeUrl(config.sessionCreateUrl) || this.sanitizeUrl(this.notebookElement?.dataset.sessionCreateUrl);
         this.sessionResetUrl = this.sanitizeUrl(config.sessionResetUrl) || this.sanitizeUrl(this.notebookElement?.dataset.sessionResetUrl);
         this.sessionFilesUrl = this.sanitizeUrl(config.sessionFilesUrl) || this.sanitizeUrl(this.notebookElement?.dataset.sessionFilesUrl);
