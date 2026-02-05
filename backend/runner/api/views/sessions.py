@@ -395,6 +395,11 @@ class SessionFilePreviewView(APIView):
         if session is None:
             raise Http404("Session not found")
 
+        notebook_id = extract_notebook_id(session_id)
+        if notebook_id is not None:
+            notebook = get_object_or_404(Notebook, pk=notebook_id)
+            ensure_notebook_access(request.user, notebook)
+
         candidate = (session.workdir / relative_path).resolve()
         try:
             candidate.relative_to(session.workdir.resolve())
