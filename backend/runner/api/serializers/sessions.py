@@ -58,3 +58,11 @@ class SessionFileUploadSerializer(serializers.Serializer):
     session_id = serializers.CharField(max_length=255, allow_blank=False)
     file = serializers.FileField()
     path = serializers.CharField(max_length=1000, allow_blank=True, required=False, allow_null=True)
+
+
+class SessionFilePreviewSerializer(serializers.Serializer):
+    session_id = serializers.CharField(max_length=255, allow_blank=False)
+    path = serializers.CharField(max_length=1000, allow_blank=False)
+    max_rows = serializers.IntegerField(min_value=1, required=False, allow_null=True)
+    max_cols = serializers.IntegerField(min_value=1, required=False, allow_null=True)
+    delimiter = serializers.CharField(max_length=10, required=False, allow_blank=True, allow_null=True)
