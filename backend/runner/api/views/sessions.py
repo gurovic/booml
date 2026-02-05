@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv
 import logging
 import shutil
 from pathlib import Path
@@ -30,9 +31,15 @@ from ..serializers import (
     SessionFilesQuerySerializer,
     SessionFileDownloadSerializer,
     SessionFileUploadSerializer,
+    SessionFilePreviewSerializer,
 )
 
 NOTEBOOK_SESSION_PREFIX = "notebook:"
+DEFAULT_PREVIEW_ROWS = 50
+DEFAULT_PREVIEW_COLS = 50
+MAX_PREVIEW_ROWS = 500
+MAX_PREVIEW_COLS = 200
+SUPPORTED_PREVIEW_EXTENSIONS = {".csv", ".parquet", ".parq"}
 
 
 def build_notebook_session_id(notebook_id: int) -> str:
@@ -365,6 +372,54 @@ class SessionFileDownloadView(APIView):
         return FileResponse(candidate.open("rb"), as_attachment=True, filename=candidate.name)
 
 
+class SessionFilePreviewView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request):
+        serializer = SessionFilePreviewSerializer(data=request.query_params)
+        serializer.is_valid(raise_exception=True)
+        session_id = serializer.validated_data["session_id"]
+        relative_path = serializer.validated_data["path"]
+        max_rows, max_cols = _normalize_preview_limits(serializer)
+        delimiter = _normalize_delimiter(serializer.validated_data.get("delimiter"))
+
+        session = get_session(session_id, touch=False)
+        if session is None:
+            raise Http404("Session not found")
+
+        candidate = (session.workdir / relative_path).resolve()
+        try:
+            candidate.relative_to(session.workdir.resolve())
+        except ValueError:
+            raise Http404("File outside sandbox")
+
+        if not candidate.exists() or not candidate.is_file():
+            raise Http404("File not found")
+
+        ext = candidate.suffix.lower()
+        if ext not in SUPPORTED_PREVIEW_EXTENSIONS:
+            return Response(
+                {"detail": "Unsupported file type for preview"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            if ext == ".csv":
+                preview = _preview_csv(candidate, max_rows=max_rows, max_cols=max_cols, delimiter=delimiter)
+            else:
+                preview = _preview_parquet(candidate, max_rows=max_rows, max_cols=max_cols)
+        except PreviewError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        payload = {
+            "session_id": session_id,
+            "path": relative_path,
+            "format": "csv" if ext == ".csv" else "parquet",
+            **preview,
+        }
+        return Response(payload, status=status.HTTP_200_OK)
+
+
 def _build_session_payload(
     session_id: str,
     session: RuntimeSession | None,
@@ -399,4 +454,159 @@ def _serialize_vm_payload(session: RuntimeSession | None) -> dict | None:
         "workspace_path": vm.workspace_path.as_posix(),
         "created_at": vm.created_at.isoformat(),
         "updated_at": vm.updated_at.isoformat(),
+    }
+
+
+class PreviewError(ValueError):
+    pass
+
+
+def _normalize_preview_limits(serializer: SessionFilePreviewSerializer) -> tuple[int, int]:
+    max_rows = serializer.validated_data.get("max_rows") or DEFAULT_PREVIEW_ROWS
+    max_cols = serializer.validated_data.get("max_cols") or DEFAULT_PREVIEW_COLS
+    max_rows = min(int(max_rows), MAX_PREVIEW_ROWS)
+    max_cols = min(int(max_cols), MAX_PREVIEW_COLS)
+    return max_rows, max_cols
+
+
+def _normalize_delimiter(raw: object) -> str | None:
+    if raw is None:
+        return None
+    text = str(raw)
+    if not text:
+        return None
+    lowered = text.strip().lower()
+    if lowered in {"\\t", "tab"}:
+        return "\t"
+    if len(text) == 1:
+        return text
+    return None
+
+
+def _detect_csv_delimiter(sample: str) -> str:
+    if not sample:
+        return ","
+    try:
+        dialect = csv.Sniffer().sniff(sample, delimiters=[",", ";", "\t", "|"])
+        return dialect.delimiter
+    except Exception:
+        return _guess_csv_delimiter(sample)
+
+
+def _guess_csv_delimiter(sample: str) -> str:
+    lines = [line for line in sample.splitlines() if line.strip()]
+    if not lines:
+        return ","
+    line = lines[0]
+    candidates = [",", ";", "\t", "|"]
+    best = ","
+    best_count = -1
+    for delim in candidates:
+        count = line.count(delim)
+        if count > best_count:
+            best = delim
+            best_count = count
+    return best
+
+
+def _normalize_columns(header: list[str], display_cols: int) -> list[str]:
+    columns: list[str] = []
+    for idx in range(display_cols):
+        raw = header[idx] if idx < len(header) else ""
+        text = str(raw).strip() if raw is not None else ""
+        if not text:
+            text = f"col{idx + 1}"
+        columns.append(text)
+    return columns
+
+
+def _normalize_row(row: list[object], display_cols: int) -> list[str]:
+    normalized: list[str] = []
+    for idx in range(display_cols):
+        value = row[idx] if idx < len(row) else ""
+        normalized.append("" if value is None else str(value))
+    return normalized
+
+
+def _preview_csv(path: Path, *, max_rows: int, max_cols: int, delimiter: str | None) -> dict:
+    with path.open("r", encoding="utf-8", errors="replace", newline="") as handle:
+        sample = handle.read(65536)
+        handle.seek(0)
+        delim = delimiter or _detect_csv_delimiter(sample)
+        reader = csv.reader(handle, delimiter=delim)
+        header = next(reader, None)
+        if header is None:
+            return {
+                "columns": [],
+                "rows": [],
+                "dtypes": {},
+                "truncated": {"rows": False, "cols": False},
+                "delimiter": delim,
+            }
+
+        rows: list[list[str]] = []
+        max_seen_cols = len(header)
+        truncated_rows = False
+        for row in reader:
+            max_seen_cols = max(max_seen_cols, len(row))
+            if len(rows) < max_rows:
+                rows.append(row)
+            else:
+                truncated_rows = True
+                break
+
+    truncated_cols = max_seen_cols > max_cols
+    display_cols = min(max_seen_cols, max_cols)
+    columns = _normalize_columns([str(item) for item in header], display_cols)
+    normalized_rows = [_normalize_row(row, display_cols) for row in rows]
+    return {
+        "columns": columns,
+        "rows": normalized_rows,
+        "dtypes": {},
+        "truncated": {"rows": truncated_rows, "cols": truncated_cols},
+        "delimiter": delim,
+    }
+
+
+def _preview_parquet(path: Path, *, max_rows: int, max_cols: int) -> dict:
+    try:
+        import pyarrow.parquet as pq
+    except Exception as exc:  # pragma: no cover - optional dependency
+        raise PreviewError("Для предпросмотра Parquet установите pyarrow.") from exc
+
+    parquet_file = pq.ParquetFile(path)
+    schema = parquet_file.schema
+    all_columns = list(schema.names)
+    if not all_columns:
+        return {
+            "columns": [],
+            "rows": [],
+            "dtypes": {},
+            "truncated": {"rows": False, "cols": False},
+        }
+
+    display_columns = all_columns[:max_cols]
+    batch_iter = parquet_file.iter_batches(batch_size=max_rows, columns=display_columns)
+    batch = next(batch_iter, None)
+    rows: list[list[str]] = []
+    if batch is not None and batch.num_rows:
+        data = batch.to_pydict()
+        for index in range(batch.num_rows):
+            row = []
+            for col in display_columns:
+                value = data.get(col, [None] * batch.num_rows)[index]
+                row.append("" if value is None else str(value))
+            rows.append(row)
+
+    total_rows = getattr(parquet_file.metadata, "num_rows", None)
+    if total_rows is None:
+        total_rows = len(rows)
+    truncated_rows = total_rows > len(rows)
+    truncated_cols = len(all_columns) > max_cols
+    dtypes = {name: str(schema.field(name).type) for name in display_columns}
+    return {
+        "columns": display_columns,
+        "rows": rows,
+        "dtypes": dtypes,
+        "truncated": {"rows": truncated_rows, "cols": truncated_cols},
     }

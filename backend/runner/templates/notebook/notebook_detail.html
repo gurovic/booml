@@ -271,6 +271,7 @@
          data-session-files-url="{% url 'session-files' %}"
          data-session-file-upload-url="{% url 'session-file-upload' %}"
          data-session-file-download-url="{% url 'session-file-download' %}"
+         data-session-file-preview-url="{% url 'session-file-preview' %}"
          data-session-stop-url="{% url 'session-stop' %}"
          data-notebook-device="{{ notebook.compute_device }}"
          data-update-device-url="{% url 'runner:update_notebook_device' notebook.id %}"
@@ -332,8 +333,11 @@
                     <input type="file" data-upload-input multiple style="display: none;">
                 </div>
             </div>
-            <div class="files-panel-body" data-files-list>
-                <div class="files-empty">Файлы ещё не созданы</div>
+            <div class="files-panel-body">
+                <div data-files-list>
+                    <div class="files-empty">Файлы ещё не созданы</div>
+                </div>
+                <div data-files-preview></div>
             </div>
         </aside>
 
@@ -376,6 +380,7 @@
                 sessionCreateUrl: '{% url "notebook-session-create" %}',
                 sessionResetUrl: '{% url "session-reset" %}',
                 sessionFilesUrl: '{% url "session-files" %}',
+                sessionFilePreviewUrl: '{% url "session-file-preview" %}',
                 sessionFileDownloadUrl: '{% url "session-file-download" %}',
                 sessionStopUrl: '{% url "session-stop" %}'
             });
