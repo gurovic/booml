@@ -24,3 +24,9 @@ class CellRunSerializer(serializers.Serializer):
     @property
     def cell(self) -> Optional[Cell]:
         return getattr(self, "_cell", None)
+
+
+class CellRunStreamStatusSerializer(serializers.Serializer):
+    run_id = serializers.CharField(max_length=64, allow_blank=False)
+    stdout_offset = serializers.IntegerField(min_value=0, required=False, allow_null=True)
+    stderr_offset = serializers.IntegerField(min_value=0, required=False, allow_null=True)
