@@ -312,6 +312,8 @@ class SessionFileUploadView(APIView):
         notebook_id = extract_notebook_id(session_id)
         if notebook_id is not None:
             notebook = get_object_or_404(Notebook, pk=notebook_id)
+            if notebook.owner_id is not None and not getattr(request.user, "is_authenticated", False):
+                raise PermissionDenied("Недостаточно прав для работы с этим блокнотом")
             ensure_notebook_access(request.user, notebook)
 
         filename = Path(getattr(upload, "name", "") or "uploaded.file").name
