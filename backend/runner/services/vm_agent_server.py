@@ -240,8 +240,7 @@ class InteractiveRun:
             if text:
                 normalized = text if text.endswith("\n") else f"{text}\n"
                 self._input_buffer += normalized
-            if self.prompt and not str(self.prompt).endswith("\n"):
-                self._write_stdout("\n")
+                self._write_stdout(normalized)
             self._waiting_for_input = False
             self.status = "running"
             self._input_condition.notify_all()
@@ -302,11 +301,24 @@ class InteractiveRun:
 RUNS_LOCK = threading.Lock()
 
 
+def build_runtime_error(namespace, message: str) -> dict:
+    return {
+        "status": "error",
+        "prompt": None,
+        "stdout": "",
+        "stderr": "",
+        "error": f"RuntimeError: {message}",
+        "variables": snapshot_namespace(namespace),
+    }
+
+
 def execute_code(code: str, namespace, workspace: Path, *, stdin: str = "", stdin_eof: bool = False, run_id: str | None = None) -> dict:
     active_run = None
     if run_id:
         with RUNS_LOCK:
             active_run = RUNS.get(run_id)
+        if active_run is None:
+            return build_runtime_error(namespace, "run_id is no longer active")
     if active_run is not None:
         active_run.provide_input(stdin or "", eof=stdin_eof)
         event = active_run.wait_for_event()

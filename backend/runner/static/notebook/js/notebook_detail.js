@@ -427,7 +427,7 @@ const notebookDetail = {
                         // Отображаем ошибку пользователю
                         const message = (error && error.message) ? error.message : 'Произошла ошибка при отправке ввода.';
                         outputElement.className = 'output error';
-                        outputElement.textContent = `Ошибка ввода: ${message}`;
+                        outputElement.textContent = message;
                         this.setCellStatus(cellId, 'error');
                         this.rememberOutputSnapshot(cellId, outputElement.innerHTML);
                         reject(error);

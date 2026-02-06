@@ -154,6 +154,53 @@ class RunCellViewTests(TestCase):
         self.assertEqual(follow_data.get("stdout", "").count("Name: "), 1)
         self.assertIn("Hello Alice", follow_data.get("stdout", ""))
 
+    def test_run_cell_invalid_run_id_returns_error(self):
+        session_id = f"notebook:{self.notebook.id}"
+        create_session(session_id)
+        cell = Cell.objects.create(
+            notebook=self.notebook,
+            cell_type=Cell.CODE,
+            content="name = input('Name: ')\nprint(f'Hello {name}')",
+        )
+        resp = self.client.post(
+            self.url,
+            {
+                "session_id": session_id,
+                "cell_id": cell.id,
+            },
+        )
+        self.assertEqual(resp.status_code, HTTPStatus.OK)
+        data = resp.json()
+        self.assertEqual(data.get("status"), "input_required")
+
+        bad = self.client.post(
+            self.url,
+            {
+                "session_id": session_id,
+                "cell_id": cell.id,
+                "run_id": "invalid-run-id",
+                "stdin": "Alice\n",
+            },
+        )
+        self.assertEqual(bad.status_code, HTTPStatus.OK)
+        bad_data = bad.json()
+        self.assertEqual(bad_data.get("status"), "error")
+        self.assertIn("run_id", bad_data.get("error", ""))
+
+        follow = self.client.post(
+            self.url,
+            {
+                "session_id": session_id,
+                "cell_id": cell.id,
+                "run_id": data.get("run_id"),
+                "stdin": "Alice\n",
+            },
+        )
+        self.assertEqual(follow.status_code, HTTPStatus.OK)
+        follow_data = follow.json()
+        self.assertEqual(follow_data.get("status"), "success")
+        self.assertIn("Hello Alice", follow_data.get("stdout", ""))
+
     def test_run_cell_with_readline(self):
         session_id = f"notebook:{self.notebook.id}"
         create_session(session_id)
@@ -254,7 +301,8 @@ class RunCellViewTests(TestCase):
         follow_data = follow.json()
         self.assertEqual(follow_data.get("status"), "success")
         stdout = follow_data.get("stdout", "")
-        self.assertEqual(stdout.strip(), "123")
+        stdout_lines = [line for line in stdout.splitlines() if line.strip()]
+        self.assertEqual(stdout_lines, ["123", "123"])
 
     def test_run_cell_disallows_stdin_read(self):
         session_id = f"notebook:{self.notebook.id}"

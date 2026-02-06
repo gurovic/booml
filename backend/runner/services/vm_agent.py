@@ -152,11 +152,15 @@ class LocalVmAgent(VmAgent):
             else:
                 # Backwards-compatible: treat bare IDs as belonging to this session only.
                 effective_run_id = f"{session_prefix}{run_id}"
+            if effective_run_id is None:
+                return self._build_runtime_error("run_id does not belong to this session")
         if effective_run_id:
             with _ACTIVE_RUNS_LOCK:
                 active_run = _ACTIVE_RUNS.get(effective_run_id)
         else:
             active_run = None
+        if run_id and active_run is None:
+            return self._build_runtime_error("run_id is no longer active")
         if active_run is not None:
             active_run.provide_input(stdin or "", eof=stdin_eof)
             event = active_run.wait_for_event()
@@ -178,6 +182,17 @@ class LocalVmAgent(VmAgent):
             with _ACTIVE_RUNS_LOCK:
                 _ACTIVE_RUNS.pop(run.run_id, None)
         return result
+
+    def _build_runtime_error(self, message: str) -> Dict[str, object]:
+        namespace_snapshot = self.session.namespace.copy()
+        return {
+            "status": "error",
+            "prompt": None,
+            "stdout": "",
+            "stderr": "",
+            "error": f"RuntimeError: {message}",
+            "variables": _snapshot_variables(namespace_snapshot),
+        }
 
 
 class FilesystemVmAgent(VmAgent):
@@ -303,8 +318,7 @@ class InteractiveRun:
             if text:
                 normalized = text if text.endswith("\n") else f"{text}\n"
                 self._input_buffer += normalized
-            if self.prompt and not str(self.prompt).endswith("\n"):
-                self._write_stdout("\n")
+                self._write_stdout(normalized)
             self._waiting_for_input = False
             self.status = "running"
             self._input_condition.notify_all()
@@ -424,13 +438,27 @@ def _snapshot_variables(namespace: Dict[str, object]) -> Dict[str, str]:
 
 @contextmanager
 def _workspace_cwd(path: Path):
-    original = Path.cwd()
+    original: str | None
+    try:
+        original = os.getcwd()
+    except FileNotFoundError:
+        original = None
     path.mkdir(parents=True, exist_ok=True)
     os.chdir(path)
     try:
         yield
     finally:
-        os.chdir(original)
+        restored = False
+        if original is not None:
+            try:
+                os.chdir(original)
+                restored = True
+            except FileNotFoundError:
+                pass
+        if not restored:
+            fallback = Path(__file__).resolve().parents[2]
+            if fallback.exists():
+                os.chdir(fallback)
 
 
 __all__ = ["get_vm_agent", "dispose_vm_agent", "reset_vm_agents"]
