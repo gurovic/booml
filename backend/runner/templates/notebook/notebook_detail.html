@@ -3,11 +3,11 @@
 <head>
     <link
       rel="stylesheet"
-      href="https://cdn.jsdelivr.net/npm/easymde/dist/easymde.min.css"
+      href="https://cdn.jsdelivr.net/npm/easymde/dist/easymde.min.css  "
     />
     <link
       rel="stylesheet"
-      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css  "
       integrity="sha512-iecdLmaskl7CVkqkXNQ/ZH/XLlvWZOJyj7Yy7tcenmpD1ypASozpmT/E0iPtmFIB46ZmdtAc9eNBvH0H/ZpiBw=="
       crossorigin="anonymous"
       referrerpolicy="no-referrer"
@@ -34,8 +34,8 @@
             }
         };
     </script>
-    <script defer src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/markdown-it@13.0.1/dist/markdown-it.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js  "></script>
+    <script src="https://cdn.jsdelivr.net/npm/markdown-it@13.0.1/dist/markdown-it.min.js  "></script>
     <script src="{% static 'notebook/js/utils.js' %}"></script>
     <script src="{% static 'notebook/js/notebook_detail.js' %}"></script>
     <style>
@@ -280,7 +280,10 @@
          data-delete-url-template="{% url 'runner:delete_cell' notebook.id 0 %}"
          data-copy-cell-url-template="{% url 'runner:copy_cell' notebook.id 0 %}"
          data-move-cell-url-template="{% url 'runner:move_cell' notebook.id 0 %}"
-         data-save-output-url-template="{% url 'runner:save_cell_output' notebook.id 0 %}">
+         data-save-output-url-template="{% url 'runner:save_cell_output' notebook.id 0 %}"
+         data-export-notebook-url="{% url 'runner:export_notebook' notebook.id %}"
+         data-import-notebook-url="{% url 'runner:import_notebook' %}"
+         data-notebook-url-template="{% url 'runner:notebook_detail' 0 %}">
 
         <div class="notebook-header">
             <div class="notebook-header-title">
@@ -351,9 +354,8 @@
                 {% csrf_token %}
                 <button type="submit" data-action="delete-notebook">🗑 Удалить блокнот</button>
             </form>
-            <button data-action="export-notebook">📥 Экспорт ноутбука</button>
-            <button data-action="import-notebook">📤 Импорт ноутбука</button>
-            <input type="file" id="import-file-input" accept=".json" style="display: none;" data-import-url="{% url 'runner:import_notebook' %}">
+            <button data-action="export-notebook">📥 Экспорт (.ipynb)</button>
+            <button data-action="import-notebook">📤 Импорт (.ipynb/.json)</button>
             <button data-action="create-cell">➕ Новая ячейка кода</button>
             <button data-action="create-latex-cell">➕ Новая LaTeX-ячейка</button>
             <button onclick="runAll()">Запустить все ячейки с кодом</button>
@@ -374,20 +376,31 @@
     {% csrf_token %}
 
     <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            notebookDetail.init({
-                notebookId: {{ notebook.id }},
-                csrfToken: '{{ csrf_token }}',
-                runCellUrl: '{% url "run-cell" %}',
-                runCellStreamStartUrl: '{% url "run-cell-stream-start" %}',
-                runCellStreamStatusUrl: '{% url "run-cell-stream-status" %}',
-                sessionCreateUrl: '{% url "notebook-session-create" %}',
-                sessionResetUrl: '{% url "session-reset" %}',
-                sessionFilesUrl: '{% url "session-files" %}',
-                sessionFilePreviewUrl: '{% url "session-file-preview" %}',
-                sessionFileDownloadUrl: '{% url "session-file-download" %}',
-                sessionStopUrl: '{% url "session-stop" %}'
-            });
+    document.addEventListener('DOMContentLoaded', function() {
+        // Предварительно экранируем все значения через переменные шаблона
+        {% url "run-cell" as run_cell_url %}
+        {% url "run-cell-stream-start" as run_cell_stream_start_url %}
+        {% url "run-cell-stream-status" as run_cell_stream_status_url %}
+        {% url "notebook-session-create" as session_create_url %}
+        {% url "session-reset" as session_reset_url %}
+        {% url "session-files" as session_files_url %}
+        {% url "session-file-preview" as session_file_preview_url %}
+        {% url "session-file-download" as session_file_download_url %}
+        {% url "session-stop" as session_stop_url %}
+        
+        notebookDetail.init({
+            notebookId: {{ notebook.id }},  // ✅ Число — кавычки не нужны
+            csrfToken: '{{ csrf_token|escapejs }}',  // ✅ Обязательно экранируем!
+            runCellUrl: '{{ run_cell_url|escapejs }}',
+            runCellStreamStartUrl: '{{ run_cell_stream_start_url|escapejs }}',
+            runCellStreamStatusUrl: '{{ run_cell_stream_status_url|escapejs }}',
+            sessionCreateUrl: '{{ session_create_url|escapejs }}',
+            sessionResetUrl: '{{ session_reset_url|escapejs }}',
+            sessionFilesUrl: '{{ session_files_url|escapejs }}',
+            sessionFilePreviewUrl: '{{ session_file_preview_url|escapejs }}',
+            sessionFileDownloadUrl: '{{ session_file_download_url|escapejs }}',
+            sessionStopUrl: '{{ session_stop_url|escapejs }}'
+        });
         });
     </script>
 </body>
