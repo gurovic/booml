@@ -167,6 +167,12 @@ const createProblem = async () => {
     return
   }
 
+  // Validate that rating is within range
+  if (newProblem.value.rating && (newProblem.value.rating < 800 || newProblem.value.rating > 3000)) {
+    ratingError.value = 'Рейтинг должен быть от 800 до 3000'
+    return
+  }
+
   // Validate that rating is divisible by 100
   if (newProblem.value.rating && newProblem.value.rating % 100 !== 0) {
     ratingError.value = 'Рейтинг должен быть кратен 100'
