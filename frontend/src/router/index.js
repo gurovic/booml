@@ -12,6 +12,7 @@ import RegisterPage from '@/pages/RegisterPage.vue'
 import PolygonPage from '@/pages/PolygonPage.vue'
 import PolygonProblemEditPage from '@/pages/PolygonProblemEditPage.vue'
 import SubmissionListPage from '@/pages/SubmissionListPage.vue'
+import NotebookPage from '@/pages/NotebookPage.vue'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -76,6 +77,10 @@ const router = createRouter({
       path: '/polygon/problem/:id',
       name: 'polygon-problem-edit',
       component: PolygonProblemEditPage,
+    },{
+      path: '/notebook/:id',
+      name: 'notebook',
+      component: NotebookPage,
     }
   ],
 })
