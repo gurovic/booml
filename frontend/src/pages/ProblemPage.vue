@@ -68,18 +68,6 @@
               </div>
             </div>
           </li>
-          <li class="problem__files problem__menu-item" v-if="availableFiles.length > 0">
-            <h2 class="problem__files-title problem__item-title">Файлы</h2>
-            <ul class="problem__files-list">
-              <li
-                class="problem__file"
-                v-for="file in availableFiles"
-                :key="file.name"
-              >
-                <a class="problem__file-href button button--secondary" :href="file.url" :download="file.name">{{ file.name }}</a>
-            </li>
-            </ul>
-          </li>
           <li class="problem__submissions problem__menu-item">
             <h2 class="problem__submissions-title problem__item-title">Последние посылки</h2>
             <ul class="problem__submissions-list">
