@@ -159,6 +159,9 @@ const loadProblems = async () => {
 }
 
 const createProblem = async () => {
+  createError.value = null
+  ratingError.value = null
+
   if (!newProblem.value.title.trim()) {
     createError.value = 'Введите название задачи'
     return
@@ -171,8 +174,6 @@ const createProblem = async () => {
   }
 
   creating.value = true
-  createError.value = null
-  ratingError.value = null
   
   try {
     const data = {
