@@ -278,9 +278,10 @@ class AuthorizationViewsTestCase(TestCase):
         response = self.api_client.get(self.api_current_user_url)
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data['username'], 'testuser')
-        self.assertEqual(response.data['email'], 'test@example.com')
         self.assertTrue(response.data['is_authenticated'])
+        self.assertEqual(response.data['user']['username'], 'testuser')
+        self.assertEqual(response.data['user']['email'], 'test@example.com')
+        self.assertIn('tokens', response.data)
 
     def test_backend_current_user_api_unauthenticated(self):
         response = self.api_client.get(self.api_current_user_url)
@@ -296,14 +297,14 @@ class AuthorizationViewsTestCase(TestCase):
         self.assertTrue(response.data['is_authenticated'])
         self.assertEqual(response.data['user']['username'], 'testuser')
         self.assertEqual(response.data['user']['email'], 'test@example.com')
+        self.assertIn('tokens', response.data)
 
     def test_backend_check_auth_api_unauthenticated(self):
         response = self.api_client.get(self.api_check_auth_url)
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertFalse(response.data['is_authenticated'])
-        self.assertIsNone(response.data['user']['username'])
-        self.assertIsNone(response.data['user']['email'])
+        self.assertIsNone(response.data['user'])  # Fixed: user should be None, not fields inside user
 
     def test_get_csrf_token_api(self):
         response = self.api_client.get(self.api_csrf_url)
@@ -465,4 +466,3 @@ class RegisterViewTests(TestCase):
         # Form is invalid, re-render with errors (status 200)
         self.assertEqual(resp.status_code, 200)
         self.assertContains(resp, "error")
-

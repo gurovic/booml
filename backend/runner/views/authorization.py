@@ -8,6 +8,8 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.authentication import JWTAuthentication
+from rest_framework_simplejwt.exceptions import InvalidToken, AuthenticationFailed
 
 
 def register_view(request):
@@ -46,6 +48,12 @@ def logout_view(request):
     return redirect('runner:main_page')
 
 
+def get_user_role(user):
+    if user.is_staff:
+        return 'teacher'
+    return 'student'
+
+
 @api_view(['POST'])
 def backend_register(request):
     form = RegisterForm(request.data)
@@ -64,6 +72,7 @@ def backend_register(request):
                 'id': user.id,
                 'username': user.username,
                 'email': user.email,
+                'role': get_user_role(user),
             },
             'tokens': {
                 'refresh': str(refresh),
@@ -99,6 +108,7 @@ def backend_login(request):
                 'id': user.id,
                 'username': user.username,
                 'email': user.email,
+                'role': get_user_role(user),
             },
             'tokens': {
                 'refresh': str(refresh),
@@ -130,23 +140,47 @@ def backend_logout(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def backend_current_user(request):
+    refresh = RefreshToken.for_user(request.user)
+
     return Response({
-        'id': request.user.id,
-        'username': request.user.username,
-        'email': request.user.email,
-        'is_authenticated': request.user.is_authenticated,
+        'is_authenticated': True,
+        'user': {
+                'id': request.user.id,
+                'username': request.user.username,
+                'email': request.user.email,
+                'role': get_user_role(request.user),
+            },
+        'tokens': {
+            'refresh': str(refresh),
+            'access': str(refresh.access_token),
+        }
     })
 
 
 @api_view(['GET'])
 def backend_check_auth(request):
-    return Response({
-        'is_authenticated': request.user.is_authenticated,
-        'user': {
-            'username': request.user.username if request.user.is_authenticated else None,
-            'email': request.user.email if request.user.is_authenticated else None,
-        }
-    })
+
+    if request.user.is_authenticated:
+        refresh = RefreshToken.for_user(request.user)
+
+        return Response({
+            'is_authenticated': True,
+            'user': {
+                'id': request.user.id,
+                'username': request.user.username,
+                'email': request.user.email,
+                'role': get_user_role(request.user),
+            },
+            'tokens': {
+                'refresh': str(refresh),
+                'access': str(refresh.access_token),
+            }
+        })
+    else:
+        return Response({
+            'is_authenticated': False,
+            'user': None
+        })
 
 
 @api_view(['GET'])
