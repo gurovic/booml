@@ -113,6 +113,20 @@ class NotebookSessionAPITests(TestCase):
         self.assertTrue(any(item["path"] == "result.txt" for item in data.get("files", [])))
         self.assertIn("vm", data)
 
+    def test_session_files_listing_hides_streams(self):
+        session_id = f"notebook:{self.notebook.id}"
+        session = create_session(session_id)
+        stream_dir = session.workdir / ".streams"
+        stream_dir.mkdir(parents=True, exist_ok=True)
+        (stream_dir / "tmp.stdout").write_text("x", encoding="utf-8")
+
+        resp = self.client.get(f"{self.files_url}?session_id={session_id}")
+
+        self.assertEqual(resp.status_code, HTTPStatus.OK)
+        data = resp.json()
+        paths = {item["path"] for item in data.get("files", [])}
+        self.assertNotIn(".streams/tmp.stdout", paths)
+
     def test_session_file_download(self):
         session_id = f"notebook:{self.notebook.id}"
         create_session(session_id)

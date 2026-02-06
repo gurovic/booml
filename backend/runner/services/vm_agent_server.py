@@ -20,6 +20,50 @@ STATUS_FILE = Path(os.environ.get("BOOML_AGENT_STATUS", "/workspace/.vm_agent/st
 POLL_INTERVAL = float(os.environ.get("BOOML_AGENT_POLL_INTERVAL", "0.05"))
 
 
+class StreamingBuffer(io.TextIOBase):
+    def __init__(self, path: Path):
+        self._path = path
+        self._path.parent.mkdir(parents=True, exist_ok=True)
+        self._buffer = io.StringIO()
+        self._file = self._path.open("a", encoding="utf-8")
+
+    def write(self, s):  # type: ignore[override]
+        text = "" if s is None else str(s)
+        self._buffer.write(text)
+        self._file.write(text)
+        self._file.flush()
+        return len(text)
+
+    def flush(self):
+        try:
+            self._file.flush()
+        except Exception:
+            pass
+
+    def getvalue(self):
+        return self._buffer.getvalue()
+
+    def isatty(self):
+        return False
+
+    def close(self):  # type: ignore[override]
+        try:
+            self._file.close()
+        finally:
+            super().close()
+
+
+def open_stream_buffer(workspace: Path, raw_path: str | None):
+    if not raw_path:
+        return None
+    try:
+        target = (workspace / raw_path).resolve()
+        target.relative_to(workspace.resolve())
+    except Exception:
+        return None
+    return StreamingBuffer(target)
+
+
 def log(message: str) -> None:
     LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
     with LOG_FILE.open("a", encoding="utf-8") as fh:
@@ -258,7 +302,8 @@ def process_command(command_path: Path, namespace, workspace: Path) -> None:
         return
 
     code = payload.get("code", "")
-    result = execute_code(code, namespace, workspace)
+    stream = payload.get("stream") or {}
+    result = execute_code(code, namespace, workspace, stream=stream)
     result_path = RESULTS_DIR / command_path.name
     tmp_path = result_path.with_suffix(".tmp")
     tmp_path.write_text(json.dumps(result), encoding="utf-8")
@@ -266,9 +311,18 @@ def process_command(command_path: Path, namespace, workspace: Path) -> None:
     command_path.unlink(missing_ok=True)
 
 
-def execute_code(code: str, namespace, workspace: Path) -> dict:
+def execute_code(code: str, namespace, workspace: Path, *, stream: dict | None = None) -> dict:
     stdout_buffer = io.StringIO()
     stderr_buffer = io.StringIO()
+    stdout_stream = None
+    stderr_stream = None
+    if stream:
+        stdout_stream = open_stream_buffer(workspace, stream.get("stdout"))
+        stderr_stream = open_stream_buffer(workspace, stream.get("stderr"))
+        if stdout_stream:
+            stdout_buffer = stdout_stream
+        if stderr_stream:
+            stderr_buffer = stderr_stream
     error = None
     outputs = []
     artifacts = []
@@ -293,20 +347,26 @@ def execute_code(code: str, namespace, workspace: Path) -> dict:
                 push_output(item)
                 register_artifact(item)
 
-    with redirect_stdout(stdout_buffer), redirect_stderr(stderr_buffer):
-        try:
-            configure_plotly_defaults(namespace, display)
-            configure_matplotlib_defaults(namespace)
-            configure_pandas_display(namespace)
-            code = handle_shell_commands(code, workspace, stdout_buffer, stderr_buffer)
-            if code.strip():
-                execute_with_optional_displayhook(code, namespace, display)
-        except Exception:
-            error = traceback.format_exc()
-        else:
-            for item in capture_matplotlib_figures(workspace):
-                push_output(item)
-                register_artifact(item)
+    try:
+        with redirect_stdout(stdout_buffer), redirect_stderr(stderr_buffer):
+            try:
+                configure_plotly_defaults(namespace, display)
+                configure_matplotlib_defaults(namespace)
+                configure_pandas_display(namespace)
+                code = handle_shell_commands(code, workspace, stdout_buffer, stderr_buffer)
+                if code.strip():
+                    execute_with_optional_displayhook(code, namespace, display)
+            except Exception:
+                error = traceback.format_exc()
+            else:
+                for item in capture_matplotlib_figures(workspace):
+                    push_output(item)
+                    register_artifact(item)
+    finally:
+        if stdout_stream:
+            stdout_stream.close()
+        if stderr_stream:
+            stderr_stream.close()
 
     return {
         "stdout": stdout_buffer.getvalue(),

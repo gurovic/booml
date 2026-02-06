@@ -1,5 +1,6 @@
 import json
 from http import HTTPStatus
+import time
 
 from tempfile import TemporaryDirectory
 
@@ -32,6 +33,8 @@ class RunCellViewTests(TestCase):
         self.notebook = Notebook.objects.create(owner=self.user, title="My Notebook")
         self.cell = Cell.objects.create(notebook=self.notebook, cell_type=Cell.CODE, content="x = 2\nprint(x)")
         self.url = reverse("run-cell")
+        self.stream_start_url = reverse("run-cell-stream-start")
+        self.stream_status_url = reverse("run-cell-stream-status")
         _sessions.clear()
 
     def tearDown(self):
@@ -140,3 +143,49 @@ class RunCellViewTests(TestCase):
         outputs = data.get("outputs") or []
         types = {item.get("type") for item in outputs}
         self.assertIn("text/html", types)
+
+    def test_run_cell_stream_success(self):
+        session_id = f"notebook:{self.notebook.id}"
+        create_session(session_id)
+
+        start_resp = self.client.post(
+            self.stream_start_url,
+            {
+                "session_id": session_id,
+                "cell_id": self.cell.id,
+            },
+        )
+        self.assertEqual(start_resp.status_code, HTTPStatus.OK)
+        run_id = start_resp.json().get("run_id")
+        self.assertTrue(run_id)
+
+        stdout_offset = 0
+        stderr_offset = 0
+        finished = False
+        for _ in range(40):
+            status_resp = self.client.get(
+                f"{self.stream_status_url}?run_id={run_id}&stdout_offset={stdout_offset}&stderr_offset={stderr_offset}"
+            )
+            self.assertEqual(status_resp.status_code, HTTPStatus.OK)
+            payload = status_resp.json()
+            stdout_offset = payload.get("stdout_offset", stdout_offset)
+            stderr_offset = payload.get("stderr_offset", stderr_offset)
+            if payload.get("status") == "finished":
+                result = payload.get("result") or {}
+                self.assertIn("2", (result.get("stdout") or ""))
+                finished = True
+                break
+            time.sleep(0.05)
+
+        self.assertTrue(finished)
+
+    def test_run_cell_stream_missing_session_returns_error(self):
+        start_resp = self.client.post(
+            self.stream_start_url,
+            {
+                "session_id": f"notebook:{self.notebook.id}",
+                "cell_id": self.cell.id,
+            },
+        )
+        self.assertEqual(start_resp.status_code, HTTPStatus.BAD_REQUEST)
+        self.assertIn("Сессия не создана", start_resp.json().get("detail", ""))

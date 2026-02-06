@@ -266,6 +266,8 @@
          data-create-cell-url="{% url 'runner:create_cell' notebook.id %}"
          data-create-latex-cell-url="{% url 'runner:create_latex_cell' notebook.id %}"
          data-run-cell-url="{% url 'run-cell' %}"
+         data-run-cell-stream-start-url="{% url 'run-cell-stream-start' %}"
+         data-run-cell-stream-status-url="{% url 'run-cell-stream-status' %}"
          data-session-create-url="{% url 'notebook-session-create' %}"
          data-session-reset-url="{% url 'session-reset' %}"
          data-session-files-url="{% url 'session-files' %}"
@@ -377,6 +379,8 @@
                 notebookId: {{ notebook.id }},
                 csrfToken: '{{ csrf_token }}',
                 runCellUrl: '{% url "run-cell" %}',
+                runCellStreamStartUrl: '{% url "run-cell-stream-start" %}',
+                runCellStreamStatusUrl: '{% url "run-cell-stream-status" %}',
                 sessionCreateUrl: '{% url "notebook-session-create" %}',
                 sessionResetUrl: '{% url "session-reset" %}',
                 sessionFilesUrl: '{% url "session-files" %}',

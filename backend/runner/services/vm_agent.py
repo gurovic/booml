@@ -60,9 +60,48 @@ class VmAgent(ABC):
     def exec_code(self, code: str) -> Dict[str, object]:
         ...
 
+    def exec_code_stream(self, code: str, *, stdout_path: Path, stderr_path: Path) -> Dict[str, object]:
+        """Execute code while streaming stdout/stderr into files."""
+        return self.exec_code(code)
+
     def shutdown(self) -> None:
         """Optional hook when session resets."""
         return
+
+
+class _StreamingBuffer(io.TextIOBase):
+    def __init__(self, path: Path):
+        self._path = Path(path)
+        self._path.parent.mkdir(parents=True, exist_ok=True)
+        self._buffer = io.StringIO()
+        self._file = self._path.open("a", encoding="utf-8")
+
+    def write(self, s: str) -> int:  # type: ignore[override]
+        text = "" if s is None else str(s)
+        self._buffer.write(text)
+        self._file.write(text)
+        self._file.flush()
+        return len(text)
+
+    def flush(self) -> None:
+        try:
+            self._file.flush()
+        except Exception as exc:
+            logger.debug("Failed to flush streaming buffer %s: %s", self._path, exc)
+
+    def getvalue(self) -> str:
+        return self._buffer.getvalue()
+
+    def isatty(self) -> bool:  # pragma: no cover - defensive
+        return False
+
+    def close(self) -> None:  # type: ignore[override]
+        try:
+            self._file.close()
+        except Exception as exc:
+            logger.debug("Failed to close streaming buffer %s: %s", self._path, exc)
+        finally:
+            super().close()
 
 
 class LocalVmAgent(VmAgent):
@@ -72,9 +111,26 @@ class LocalVmAgent(VmAgent):
         self.session = session
 
     def exec_code(self, code: str) -> Dict[str, object]:
+        return self._exec_code_with_buffers(code)
+
+    def exec_code_stream(self, code: str, *, stdout_path: Path, stderr_path: Path) -> Dict[str, object]:
+        stdout_buffer = _StreamingBuffer(stdout_path)
+        stderr_buffer = _StreamingBuffer(stderr_path)
+        try:
+            return self._exec_code_with_buffers(code, stdout_buffer, stderr_buffer)
+        finally:
+            stdout_buffer.close()
+            stderr_buffer.close()
+
+    def _exec_code_with_buffers(
+        self,
+        code: str,
+        stdout_buffer: io.StringIO | _StreamingBuffer | None = None,
+        stderr_buffer: io.StringIO | _StreamingBuffer | None = None,
+    ) -> Dict[str, object]:
         namespace = self.session.namespace
-        stdout_buffer = io.StringIO()
-        stderr_buffer = io.StringIO()
+        stdout_buffer = stdout_buffer or io.StringIO()
+        stderr_buffer = stderr_buffer or io.StringIO()
         error = None
         outputs: list[dict[str, object]] = []
         artifacts: list[dict[str, str]] = []
@@ -156,6 +212,35 @@ class FilesystemVmAgent(VmAgent):
             time.sleep(0.05)
         raise RuntimeError("VM agent timed out waiting for execution result")
 
+    def exec_code_stream(self, code: str, *, stdout_path: Path, stderr_path: Path) -> Dict[str, object]:
+        command_id = uuid.uuid4().hex
+        payload = {
+            "code": code,
+            "stream": {
+                "stdout": _relative_stream_path(self.vm.workspace_path, stdout_path),
+                "stderr": _relative_stream_path(self.vm.workspace_path, stderr_path),
+            },
+        }
+        tmp_path = self.commands_dir / f"{command_id}.json.tmp"
+        final_path = self.commands_dir / f"{command_id}.json"
+        self.commands_dir.mkdir(parents=True, exist_ok=True)
+        self.results_dir.mkdir(parents=True, exist_ok=True)
+        tmp_path.write_text(json.dumps(payload), encoding="utf-8")
+        tmp_path.rename(final_path)
+
+        result_path = self.results_dir / f"{command_id}.json"
+        deadline = time.monotonic() + self.timeout
+        while time.monotonic() < deadline:
+            if result_path.exists():
+                try:
+                    data = json.loads(result_path.read_text(encoding="utf-8"))
+                    result_path.unlink(missing_ok=True)
+                    return data
+                except json.JSONDecodeError:
+                    pass
+            time.sleep(0.05)
+        raise RuntimeError("VM agent timed out waiting for execution result")
+
 
 def get_vm_agent(session_id: str, session) -> VmAgent:
     agent = _AGENT_CACHE.get(session_id)
@@ -168,6 +253,14 @@ def get_vm_agent(session_id: str, session) -> VmAgent:
         agent = LocalVmAgent(session)
     _AGENT_CACHE[session_id] = agent
     return agent
+
+
+def _relative_stream_path(workspace: Path, path: Path) -> str:
+    try:
+        relative = path.resolve().relative_to(workspace.resolve())
+        return relative.as_posix()
+    except Exception:
+        return path.name
 
 
 def dispose_vm_agent(session_id: str) -> None:

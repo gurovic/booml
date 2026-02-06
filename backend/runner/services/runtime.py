@@ -147,6 +147,31 @@ def _prepare_local_python_exec(workdir: Path) -> Path | None:
     return None
 
 
+def _open_stream_file(path: Path) -> io.TextIOBase | None:
+    if not path:
+        return None
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        return path.open("a", encoding="utf-8")
+    except Exception:
+        return None
+
+
+def _write_stream_files(stdout_path: Path, stderr_path: Path, stdout: str, stderr: str) -> None:
+    if stdout_path:
+        try:
+            stdout_path.parent.mkdir(parents=True, exist_ok=True)
+            stdout_path.write_text(stdout or "", encoding="utf-8")
+        except Exception as exc:
+            logger.warning("Failed to write stdout stream to %s: %s", stdout_path, exc)
+    if stderr_path:
+        try:
+            stderr_path.parent.mkdir(parents=True, exist_ok=True)
+            stderr_path.write_text(stderr or "", encoding="utf-8")
+        except Exception as exc:
+            logger.warning("Failed to write stderr stream to %s: %s", stderr_path, exc)
+
+
 def _ensure_session_vm(
     session_id: str,
     *,
@@ -221,6 +246,18 @@ class ExecutionBackend:
 
     def run_code(self, session_id: str, code: str) -> RuntimeExecutionResult:  # pragma: no cover - abstract
         raise NotImplementedError
+
+    def run_code_stream(
+        self,
+        session_id: str,
+        code: str,
+        *,
+        stdout_path: Path,
+        stderr_path: Path,
+    ) -> RuntimeExecutionResult:
+        result = self.run_code(session_id, code)
+        _write_stream_files(stdout_path, stderr_path, result.stdout, result.stderr)
+        return result
 
     def stop_session(self, session_id: str) -> bool:  # pragma: no cover - abstract
         raise NotImplementedError
@@ -345,6 +382,28 @@ class LegacyExecutionBackend(ExecutionBackend):
             artifacts=result_payload.get("artifacts", []),
         )
 
+    def run_code_stream(
+        self,
+        session_id: str,
+        code: str,
+        *,
+        stdout_path: Path,
+        stderr_path: Path,
+    ) -> RuntimeExecutionResult:
+        session = self._require_session(session_id)
+        agent = get_vm_agent(session_id, session)
+        result_payload = agent.exec_code_stream(code, stdout_path=stdout_path, stderr_path=stderr_path)
+        session.updated_at = _resolve_now()
+
+        return RuntimeExecutionResult(
+            stdout=result_payload.get("stdout", ""),
+            stderr=result_payload.get("stderr", ""),
+            error=result_payload.get("error"),
+            variables=result_payload.get("variables", {}),
+            outputs=result_payload.get("outputs", []),
+            artifacts=result_payload.get("artifacts", []),
+        )
+
 
 class JupyterExecutionBackend(ExecutionBackend):
     """Executes code inside a persistent Jupyter kernel per session."""
@@ -425,6 +484,57 @@ class JupyterExecutionBackend(ExecutionBackend):
         kernel = self._ensure_kernel(session_id, session)
         effective_code = code if code.strip() else "pass"
         kernel_result = self._execute_in_kernel(kernel, effective_code)
+        session.updated_at = _resolve_now()
+
+        return RuntimeExecutionResult(
+            stdout=kernel_result.stdout,
+            stderr=kernel_result.stderr,
+            error=kernel_result.error,
+            variables=kernel_result.variables,
+            outputs=kernel_result.outputs,
+            artifacts=kernel_result.artifacts,
+        )
+
+    def run_code_stream(
+        self,
+        session_id: str,
+        code: str,
+        *,
+        stdout_path: Path,
+        stderr_path: Path,
+    ) -> RuntimeExecutionResult:
+        session = self._require_session(session_id)
+        vm = session.vm
+        if vm and vm.backend == "docker":
+            agent = get_vm_agent(session_id, session)
+            result_payload = agent.exec_code_stream(code, stdout_path=stdout_path, stderr_path=stderr_path)
+            session.updated_at = _resolve_now()
+            return RuntimeExecutionResult(
+                stdout=result_payload.get("stdout", ""),
+                stderr=result_payload.get("stderr", ""),
+                error=result_payload.get("error"),
+                variables=result_payload.get("variables", {}),
+                outputs=result_payload.get("outputs", []),
+                artifacts=result_payload.get("artifacts", []),
+            )
+
+        kernel = self._ensure_kernel(session_id, session)
+        effective_code = code if code.strip() else "pass"
+        stdout_stream = _open_stream_file(stdout_path)
+        stderr_stream = _open_stream_file(stderr_path)
+        try:
+            kernel_result = self._execute_request(
+                kernel.client,
+                effective_code,
+                capture_vars=True,
+                stdout_stream=stdout_stream,
+                stderr_stream=stderr_stream,
+            )
+        finally:
+            if stdout_stream:
+                stdout_stream.close()
+            if stderr_stream:
+                stderr_stream.close()
         session.updated_at = _resolve_now()
 
         return RuntimeExecutionResult(
@@ -574,7 +684,15 @@ def _booml_snapshot_vars():
     def _execute_in_kernel(self, kernel: _KernelContext, code: str) -> _KernelResult:
         return self._execute_request(kernel.client, code, capture_vars=True)
 
-    def _execute_request(self, client, code: str, *, capture_vars: bool) -> _KernelResult:
+    def _execute_request(
+        self,
+        client,
+        code: str,
+        *,
+        capture_vars: bool,
+        stdout_stream: io.TextIOBase | None = None,
+        stderr_stream: io.TextIOBase | None = None,
+    ) -> _KernelResult:
         user_expressions = {"__booml_vars": "_booml_snapshot_vars()"} if capture_vars else {}
         msg_id = client.execute(
             code,
@@ -601,8 +719,14 @@ def _booml_snapshot_vars():
                 text = content.get("text", "")
                 if name == "stdout":
                     stdout_parts.append(text)
+                    if stdout_stream:
+                        stdout_stream.write(text)
+                        stdout_stream.flush()
                 elif name == "stderr":
                     stderr_parts.append(text)
+                    if stderr_stream:
+                        stderr_stream.write(text)
+                        stderr_stream.flush()
             elif msg_type == "error":
                 trace = content.get("traceback") or []
                 error_text = "\n".join(trace) or f"{content.get('ename')}: {content.get('evalue')}"
@@ -728,6 +852,16 @@ def run_code(session_id: str, code: str) -> RuntimeExecutionResult:
     return _get_backend().run_code(session_id, code)
 
 
+def run_code_stream(
+    session_id: str,
+    code: str,
+    *,
+    stdout_path: Path,
+    stderr_path: Path,
+) -> RuntimeExecutionResult:
+    return _get_backend().run_code_stream(session_id, code, stdout_path=stdout_path, stderr_path=stderr_path)
+
+
 def register_runtime_shutdown_hooks() -> None:
     global _shutdown_hooks_registered
     if _shutdown_hooks_registered:
@@ -750,6 +884,7 @@ __all__ = [
     "cleanup_expired",
     "cleanup_all_sessions",
     "run_code",
+    "run_code_stream",
     "reset_execution_backend",
     "SessionNotFoundError",
     "register_runtime_shutdown_hooks",
