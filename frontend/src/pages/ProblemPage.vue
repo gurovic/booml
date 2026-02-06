@@ -100,7 +100,7 @@
                 >
                   <p>{{ submission.id }}</p>
                   <p>{{ submission.submitted_at }}</p>
-                  <p>{{ submission.status }}</p>
+                  <p>{{ getStatusLabel(submission.status) }}</p>
                   <p>{{ roundMetric(submission.metric) }}</p>
                 </router-link>
               </li>
@@ -171,6 +171,18 @@ const availableFiles = computed(() => {
 const roundMetric = (value) => {
   if (value == null) return '-'
   return value.toFixed(3)
+}
+
+const getStatusLabel = (status) => {
+  const statusMap = {
+    'pending': '⏳ В очереди',
+    'running': '🏃 Выполняется',
+    'accepted': '✅ Протестировано',
+    'failed': '❌ Ошибка',
+    'validation_error': '⚠️ Ошибка валидации',
+    'validated': '✅ Валидировано'
+  }
+  return statusMap[status] || status
 }
 
 const handleFileChange = (event) => {

@@ -10,12 +10,14 @@ class Submission(models.Model):
     STATUS_ACCEPTED = "accepted"
     STATUS_FAILED = "failed"
     STATUS_VALIDATED = "validated"
+    STATUS_VALIDATION_ERROR = "validation_error"
     STATUS_CHOICES = [
         ("pending", "⏳ В очереди"),
         ("running", "🏃 Выполняется"),
-        ("accepted", "✅ Принято"),
+        ("accepted", "✅ Протестировано"),
         ("failed", "❌ Ошибка"),
-        ("validated", "✅ Валидировано")
+        ("validation_error", "⚠️ Ошибка валидации"),
+        ("validated", "✅ Валидировано"),
     ]
 
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="submissions")
