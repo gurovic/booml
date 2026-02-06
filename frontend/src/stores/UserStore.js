@@ -119,17 +119,13 @@ export const useUserStore = defineStore('user', () => {
         try {
             const res = await user.checkAuth()
             if (res?.is_authenticated) {
-                if (currentUser.value == null) {
-                    currentUser.value = {
-                        username: res?.user?.username || null,
-                        email: res?.user?.email || null,
-                    }
-                } else {
-                    currentUser.value = {
-                        ...currentUser.value,
-                        username: res?.user?.username || currentUser.value.username,
-                        email: res?.user?.email || currentUser.value.email,
-                    }
+                currentUser.value = {
+                    'id': res?.user?.id || null,
+                    'username': res?.user?.username || null,
+                    'email': res?.user?.email || null,
+                    'role': res?.user?.role || null,
+                    'accessToken': res?.tokens?.access || res?.user?.accessToken || null,
+                    'refreshToken': res?.tokens?.refresh || res?.user?.refreshToken || null,
                 }
             } else {
                 // Clear all fields when not authenticated

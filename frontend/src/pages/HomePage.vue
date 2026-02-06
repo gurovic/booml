@@ -40,7 +40,7 @@
         </ul>
       </div>
 
-      <div v-if="standalone.length" class="section-card">
+      <div v-if="standalone.length && isAuthorized" class="section-card">
         <button type="button" class="section-header" @click="standaloneOpen = !standaloneOpen">
           <span class="triangle" :class="{ 'triangle--open': standaloneOpen }"></span>
           <h2 class="section-title">Курсы без раздела</h2>
@@ -54,14 +54,14 @@
         </ul>
       </div>
 
-      <div v-if="!sections.length && !standalone.length" class="section-card empty-state">
+      <div v-if="(!sections.length && !standalone.length) || (!isAuthorized)" class="section-card empty-state">
         <div class="empty-state__content">
           <h2 class="empty-state__title">Нет доступных курсов</h2>
           <p class="empty-state__text">
             Войдите в систему, чтобы увидеть доступные курсы
           </p>
-          <button 
-            class="button button--primary empty-state__button" 
+          <button
+            class="button button--primary empty-state__button"
             @click="router.push('/login')"
           >
             Войти
@@ -77,12 +77,17 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { courseApi } from '@/api'
 import UiHeader from '@/components/ui/UiHeader.vue'
+import { useUserStore } from '@/stores/UserStore'
 
 const courses = ref([])
 const openSections = ref({})
 const openNested = ref({})
 const standaloneOpen = ref(true)
 const router = useRouter()
+const userStore = useUserStore()
+
+let user = userStore.getCurrentUser()
+let isAuthorized = computed(() => user.value != null)
 
 const hasChildren = item => Array.isArray(item?.children) && item.children.length > 0
 const sections = computed(() => courses.value.filter(hasChildren))
