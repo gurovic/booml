@@ -93,16 +93,26 @@
                     </button>
 
                     <div class="cell-content">
-                      <div v-if="cell.cell_type === 'code'" class="code-block">
-                        <div class="code-lines">
+                    <div v-if="cell.cell_type === 'code'" class="code-block">
+                      <div class="code-editor">
+                        <div class="code-gutter">
                           <span
-                            v-for="(line, idx) in codeLines(cell.content)"
-                            :key="`${cell.id}-line-${idx}`"
-                            class="code-line"
-                            v-text="line || ' '"
-                          ></span>
+                            v-for="n in codeRows(cell.content)"
+                            :key="`${cell.id}-gutter-${n}`"
+                            class="code-gutter-line"
+                          >
+                            {{ n }}
+                          </span>
                         </div>
+                        <textarea
+                          v-model="cell.content"
+                          class="code-textarea"
+                          :rows="codeRows(cell.content)"
+                          spellcheck="false"
+                          wrap="off"
+                        ></textarea>
                       </div>
+                    </div>
 
                       <div v-else class="text-block">
                         {{ cell.content || ' ' }}
@@ -231,10 +241,10 @@ const cellActions = [
   { id: 'delete', title: 'Удалить', icon: 'delete' },
 ]
 
-const codeLines = (content) => {
+const codeRows = (content) => {
   const text = typeof content === 'string' ? content : ''
-  const lines = text.split('\n')
-  return lines.length ? lines : ['']
+  const lines = text.split('\n').length
+  return Math.max(1, lines)
 }
 
 const isErrorOutput = (output) => {
@@ -498,33 +508,43 @@ watch(notebookId, () => {
   padding: 16px 18px;
 }
 
-.code-lines {
-  margin: 0;
+.code-editor {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 12px;
+  align-items: start;
+}
+
+.code-gutter {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  font-family: 'Courier New', monospace;
+  font-size: 15px;
+  line-height: 1.6;
+  color: #9aa3c7;
+  user-select: none;
+  padding-top: 1px;
+}
+
+.code-gutter-line {
+  height: 1.6em;
+}
+
+.code-textarea {
+  width: 100%;
+  border: none;
+  background: transparent;
   font-family: 'Courier New', monospace;
   font-size: 15px;
   line-height: 1.6;
   color: #1f2a5a;
-}
-
-.code-line {
-  display: block;
-  padding-left: 36px;
-  position: relative;
-  white-space: pre;
-}
-
-.code-lines {
-  counter-reset: line;
-}
-
-.code-line::before {
-  counter-increment: line;
-  content: counter(line);
-  position: absolute;
-  left: 0;
-  width: 28px;
-  text-align: right;
-  color: #9aa3c7;
+  resize: none;
+  outline: none;
+  padding: 0;
+  margin: 0;
+  overflow: hidden;
+  box-sizing: border-box;
 }
 
 .text-block {
