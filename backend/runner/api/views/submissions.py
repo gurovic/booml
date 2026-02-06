@@ -45,7 +45,7 @@ class SubmissionCreateView(generics.CreateAPIView):
     1) создаём Submission (pending)
     2) синхронно запускаем pre-validation
     3) при успехе ставим в очередь основную обработку, отвечаем 201
-       при провале возвращаем 400 (submission.status уже 'failed')
+       при провале возвращаем 400 (submission.status уже 'validation_error')
     """
     queryset = Submission.objects.all()
     serializer_class = SubmissionCreateSerializer

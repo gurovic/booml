@@ -169,8 +169,9 @@ const getStatusLabel = (status) => {
   const statusMap = {
     'pending': '⏳ В очереди',
     'running': '🏃 Выполняется',
-    'accepted': '✅ Принято',
+    'accepted': '✅ Протестировано',
     'failed': '❌ Ошибка',
+    'validation_error': '⚠️ Ошибка валидации',
     'validated': '✅ Валидировано'
   }
   return statusMap[status] || status
