@@ -1,5 +1,7 @@
 from http import HTTPStatus
 from tempfile import TemporaryDirectory
+import importlib.util
+import unittest
 
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -35,6 +37,7 @@ class NotebookSessionAPITests(TestCase):
         self.files_url = reverse("session-files")
         self.download_url = reverse("session-file-download")
         self.upload_url = reverse("session-file-upload")
+        self.preview_url = reverse("session-file-preview")
         _sessions.clear()
 
     def tearDown(self):
@@ -194,6 +197,82 @@ class NotebookSessionAPITests(TestCase):
         )
 
         self.assertEqual(resp.status_code, HTTPStatus.NOT_FOUND)
+
+    def test_session_file_preview_csv(self):
+        session_id = f"notebook:{self.notebook.id}"
+        session = create_session(session_id)
+        csv_path = session.workdir / "sample.csv"
+        csv_path.write_text("a,b\n1,2\n3,4\n", encoding="utf-8")
+
+        resp = self.client.get(f"{self.preview_url}?session_id={session_id}&path=sample.csv")
+
+        self.assertEqual(resp.status_code, HTTPStatus.OK)
+        data = resp.json()
+        self.assertEqual(data["format"], "csv")
+        self.assertEqual(data["columns"], ["a", "b"])
+        self.assertEqual(data["rows"][0], ["1", "2"])
+
+    def test_session_file_preview_prevents_escape(self):
+        session_id = f"notebook:{self.notebook.id}"
+        create_session(session_id)
+
+        resp = self.client.get(f"{self.preview_url}?session_id={session_id}&path=../secret.csv")
+
+        self.assertEqual(resp.status_code, HTTPStatus.NOT_FOUND)
+
+    def test_session_file_preview_unsupported_type(self):
+        session_id = f"notebook:{self.notebook.id}"
+        session = create_session(session_id)
+        txt_path = session.workdir / "notes.txt"
+        txt_path.write_text("hello", encoding="utf-8")
+
+        resp = self.client.get(f"{self.preview_url}?session_id={session_id}&path=notes.txt")
+
+        self.assertEqual(resp.status_code, HTTPStatus.BAD_REQUEST)
+        self.assertIn("Unsupported file type", resp.json().get("detail", ""))
+
+    def test_session_file_preview_forbidden_for_other_user(self):
+        session_id = f"notebook:{self.notebook.id}"
+        session = create_session(session_id)
+        csv_path = session.workdir / "sample.csv"
+        csv_path.write_text("a,b\n1,2\n", encoding="utf-8")
+
+        other = User.objects.create_user(username="other_viewer", password="pass123")
+        self.client.logout()
+        self.client.login(username="other_viewer", password="pass123")
+
+        resp = self.client.get(f"{self.preview_url}?session_id={session_id}&path=sample.csv")
+
+        self.assertEqual(resp.status_code, HTTPStatus.FORBIDDEN)
+
+    def test_session_file_preview_missing_session_returns_404(self):
+        session_id = f"notebook:{self.notebook.id}"
+
+        resp = self.client.get(f"{self.preview_url}?session_id={session_id}&path=sample.csv")
+
+        self.assertEqual(resp.status_code, HTTPStatus.NOT_FOUND)
+
+    @unittest.skipUnless(
+        importlib.util.find_spec("pyarrow") is not None,
+        "pyarrow is not installed",
+    )
+    def test_session_file_preview_parquet(self):
+        import pyarrow as pa
+        import pyarrow.parquet as pq
+
+        session_id = f"notebook:{self.notebook.id}"
+        session = create_session(session_id)
+        parquet_path = session.workdir / "sample.parquet"
+        table = pa.table({"a": [1, 2], "b": ["x", "y"]})
+        pq.write_table(table, parquet_path)
+
+        resp = self.client.get(f"{self.preview_url}?session_id={session_id}&path=sample.parquet")
+
+        self.assertEqual(resp.status_code, HTTPStatus.OK)
+        data = resp.json()
+        self.assertEqual(data["format"], "parquet")
+        self.assertEqual(data["columns"], ["a", "b"])
+        self.assertEqual(data["rows"][0], ["1", "x"])
 
     def test_stop_session_success(self):
         session_id = f"notebook:{self.notebook.id}"

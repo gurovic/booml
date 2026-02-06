@@ -34,6 +34,10 @@ const notebookDetail = {
     currentComputeDevice: 'cpu',
     clipboardCellId: null,
     clipboardIndicator: null,
+    filesPanel: null,
+    filesList: null,
+    filesPreview: null,
+    previewRequestId: 0,
 
     sanitizeUrl(value) {
         if (typeof value !== 'string') {
@@ -903,6 +907,7 @@ const notebookDetail = {
         this.sessionFilesUrl = this.sanitizeUrl(config.sessionFilesUrl) || this.sanitizeUrl(this.notebookElement?.dataset.sessionFilesUrl);
         this.sessionFileUploadUrl = this.sanitizeUrl(config.sessionFileUploadUrl) || this.sanitizeUrl(this.notebookElement?.dataset.sessionFileUploadUrl);
         this.sessionFileDownloadUrl = this.sanitizeUrl(config.sessionFileDownloadUrl) || this.sanitizeUrl(this.notebookElement?.dataset.sessionFileDownloadUrl);
+        this.sessionFilePreviewUrl = this.sanitizeUrl(config.sessionFilePreviewUrl) || this.sanitizeUrl(this.notebookElement?.dataset.sessionFilePreviewUrl);
         this.sessionStopUrl = this.sanitizeUrl(config.sessionStopUrl) || this.sanitizeUrl(this.notebookElement?.dataset.sessionStopUrl);
         this.sessionStatusElement = this.notebookElement?.querySelector('[data-session-status]') || null;
         this.sessionButtons = {
@@ -922,8 +927,10 @@ const notebookDetail = {
         this.clipboardIndicator = this.notebookElement?.querySelector('[data-clipboard-indicator]') || null;
         this.filesPanel = document.querySelector('[data-files-panel]');
         this.filesList = this.filesPanel?.querySelector('[data-files-list]');
+        this.filesPreview = this.filesPanel?.querySelector('[data-files-preview]');
         this.filesLoadedFor = null;
         this.filesRequestId = 0;
+        this.previewRequestId = 0;
         this.initialFilesLoaded = false;
         this.cellStatuses = this.loadCellStatuses();
         this.saveTextCellUrlTemplate = this.notebookElement?.dataset.saveTextCellUrlTemplate || '';
@@ -1113,6 +1120,12 @@ const notebookDetail = {
         }
         else if (action === 'refresh-files') {
             this.refreshSessionFiles();
+        }
+        else if (action === 'preview-file') {
+            this.previewFile(actionTarget);
+        }
+        else if (action === 'hide-preview') {
+            this.clearFilesPreview();
         }
         else if (action === 'upload-file') {
             this.triggerFileUploadSelect();
@@ -1804,6 +1817,7 @@ const notebookDetail = {
             if (this.filesList) {
                 this.filesList.innerHTML = '<div class="files-empty">Создайте сессию, чтобы увидеть файлы.</div>';
             }
+            this.clearFilesPreview();
             return;
         }
         const requestId = ++this.filesRequestId;
@@ -1836,6 +1850,131 @@ const notebookDetail = {
                 this.filesList.innerHTML = '<div class="files-error">Не удалось загрузить список файлов</div>';
             }
         }
+    },
+
+    isPreviewableFile(path) {
+        if (!path) {
+            return false;
+        }
+        const lowered = String(path).toLowerCase();
+        return lowered.endsWith('.csv') || lowered.endsWith('.parquet') || lowered.endsWith('.parq');
+    },
+
+    clearFilesPreview(message = '') {
+        if (!this.filesPreview) {
+            return;
+        }
+        if (!message) {
+            this.filesPreview.innerHTML = '';
+            return;
+        }
+        const safe = NotebookUtils.escapeHtml(message);
+        this.filesPreview.innerHTML = `<div class="files-preview-message">${safe}</div>`;
+    },
+
+    async previewFile(button) {
+        if (!button) {
+            return;
+        }
+        if (!this.sessionFilePreviewUrl) {
+            alert('URL предпросмотра недоступен');
+            return;
+        }
+        const sessionId = await this.ensureSession();
+        if (!sessionId) {
+            alert('Сначала создайте сессию.');
+            return;
+        }
+        const encodedPath = button.dataset.filePath || '';
+        if (!encodedPath) {
+            alert('Путь к файлу недоступен');
+            return;
+        }
+        let path = '';
+        try {
+            path = decodeURIComponent(encodedPath);
+        } catch (_error) {
+            path = encodedPath;
+        }
+        const requestId = ++this.previewRequestId;
+        try {
+            this.clearFilesPreview('Загрузка предпросмотра...');
+            const url = `${this.sessionFilePreviewUrl}?session_id=${encodeURIComponent(sessionId)}&path=${encodeURIComponent(path)}`;
+            const response = await fetch(url, {
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            });
+            let data = null;
+            try {
+                data = await response.json();
+            } catch (_error) {
+                data = null;
+            }
+            if (requestId !== this.previewRequestId) {
+                return;
+            }
+            if (!response.ok) {
+                const message = data?.detail || data?.message || 'Не удалось загрузить предпросмотр';
+                throw new Error(message);
+            }
+            this.renderFilePreview(path, data);
+        } catch (error) {
+            console.error('Не удалось загрузить предпросмотр файла:', error);
+            const message = error?.message || 'Не удалось загрузить предпросмотр';
+            this.clearFilesPreview(message);
+        }
+    },
+
+    renderFilePreview(path, data) {
+        if (!this.filesPreview) {
+            return;
+        }
+        let columns = Array.isArray(data?.columns) ? data.columns : [];
+        const rows = Array.isArray(data?.rows) ? data.rows : [];
+        if (columns.length === 0 && rows.length > 0 && Array.isArray(rows[0])) {
+            columns = Array.from({ length: rows[0].length }, (_value, index) => `col${index + 1}`);
+        }
+        const truncated = data?.truncated || {};
+        const truncatedRows = Boolean(truncated?.rows);
+        const truncatedCols = Boolean(truncated?.cols);
+        const format = data?.format ? String(data.format).toUpperCase() : '';
+        const safePath = NotebookUtils.escapeHtml(path || '');
+        const infoParts = [];
+        infoParts.push(`Строк: ${rows.length}`);
+        infoParts.push(`Колонок: ${columns.length}`);
+        if (format) {
+            infoParts.push(`Формат: ${format}`);
+        }
+        const infoLine = infoParts.join(' · ');
+        const headerCells = columns.map((col) => `<th>${NotebookUtils.escapeHtml(String(col))}</th>`).join('');
+        let bodyHtml = '';
+        const colspan = Math.max(columns.length, 1);
+        if (rows.length === 0) {
+            bodyHtml = `<tr><td colspan="${colspan}">Нет данных для предпросмотра</td></tr>`;
+        } else {
+            bodyHtml = rows.map((row) => {
+                const cells = columns.map((_, index) => {
+                    const value = Array.isArray(row) && row.length > index ? row[index] : '';
+                    return `<td>${NotebookUtils.escapeHtml(String(value ?? ''))}</td>`;
+                }).join('');
+                return `<tr>${cells}</tr>`;
+            }).join('');
+        }
+        const truncationNote = (truncatedRows || truncatedCols)
+            ? '<div class="files-preview-note">Показаны не все данные.</div>'
+            : '';
+
+        this.filesPreview.innerHTML = `
+            <div class="files-preview-header">
+                <strong>Предпросмотр:</strong> ${safePath}
+                <button type="button" data-action="hide-preview">Скрыть</button>
+            </div>
+            <div class="files-preview-info">${infoLine}</div>
+            ${truncationNote}
+            <table class="files-preview-table">
+                <thead><tr>${headerCells}</tr></thead>
+                <tbody>${bodyHtml}</tbody>
+            </table>
+        `;
     },
 
     async triggerFileUploadSelect() {
@@ -1949,6 +2088,7 @@ const notebookDetail = {
         if (!Array.isArray(files) || files.length === 0) {
             this.filesList.innerHTML = '<div class="files-empty">Файлы ещё не созданы</div>';
             this.filesLoadedFor = this.sessionId || null;
+            this.clearFilesPreview();
             return;
         }
         const sessionId = this.sessionId ? encodeURIComponent(this.sessionId) : '';
@@ -1956,15 +2096,20 @@ const notebookDetail = {
         const items = files.slice(0, MAX_FILES_DISPLAY).map((file) => {
             const safePath = NotebookUtils.escapeHtml(file.path || 'file');
             const sizeLabel = this.formatFileSize(file.size);
+            const encodedPath = encodeURIComponent(file.path || '');
             const href = downloadBase && sessionId
                 ? `${downloadBase}?session_id=${sessionId}&path=${encodeURIComponent(file.path)}`
                 : '';
             const link = href
                 ? `<a href="${href}" target="_blank" rel="noopener noreferrer">${safePath}</a>`
                 : `<span>${safePath}</span>`;
+            const previewButton = this.isPreviewableFile(file.path)
+                ? `<button type="button" data-action="preview-file" data-file-path="${encodedPath}">Предпросмотр</button>`
+                : '';
             return `<div class="file-entry">
                 ${link}
                 <span class="file-meta">${sizeLabel}</span>
+                ${previewButton}
             </div>`;
         }).join('');
         this.filesList.innerHTML = items;
@@ -1984,11 +2129,15 @@ const notebookDetail = {
                     <input type="file" data-upload-input multiple style="display: none;">
                 </div>
             </div>
-            <div class="files-panel-body" data-files-list>
-                <div class="files-empty">Файлы ещё не созданы</div>
+            <div class="files-panel-body">
+                <div data-files-list>
+                    <div class="files-empty">Файлы ещё не созданы</div>
+                </div>
+                <div data-files-preview></div>
             </div>
         `;
         this.filesList = this.filesPanel.querySelector('[data-files-list]');
+        this.filesPreview = this.filesPanel.querySelector('[data-files-preview]');
     },
 
     formatFileSize(bytes) {
