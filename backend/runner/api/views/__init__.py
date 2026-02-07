@@ -17,7 +17,11 @@ from .courses import (
     CourseParticipantsUpdateView,
     CourseSelfEnrollView,
     CourseTreeView,
+    MyCoursesView,
+    PinCourseView,
+    ReorderPinsView,
     SectionCreateView,
+    UnpinCourseView,
 )
 from .run_cell import RunCellView
 from .run_cell_stream import RunCellStreamStartView, RunCellStreamStatusView

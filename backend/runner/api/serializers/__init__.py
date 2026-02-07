@@ -14,6 +14,10 @@ from .courses import (
     CourseParticipantsUpdateSerializer,
     CourseParticipantSummarySerializer,
     CourseReadSerializer,
+    MyCourseSerializer,
+    PinnedCourseSerializer,
+    PinCourseSerializer,
+    ReorderPinsSerializer,
     SectionCreateSerializer,
     SectionReadSerializer,
 )

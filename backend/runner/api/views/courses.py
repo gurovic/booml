@@ -1,11 +1,12 @@
-from django.db.models import Q
+from django.db.models import Q, CharField, Value, BooleanField, Subquery, Exists, OuterRef
 from django.shortcuts import get_object_or_404
 from rest_framework import generics, permissions
 from rest_framework.exceptions import PermissionDenied
+from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from ...models import Course, CourseParticipant, Section
+from ...models import Course, CourseParticipant, PinnedCourse, Section
 from ...services import add_users_to_course
 from ...services.section_service import ROOT_SECTION_TITLES
 from ..serializers import (
@@ -13,6 +14,10 @@ from ..serializers import (
     CourseParticipantSummarySerializer,
     CourseParticipantsUpdateSerializer,
     CourseReadSerializer,
+    MyCourseSerializer,
+    PinCourseSerializer,
+    PinnedCourseSerializer,
+    ReorderPinsSerializer,
     SectionCreateSerializer,
     SectionReadSerializer,
 )
@@ -223,3 +228,164 @@ class CourseSelfEnrollView(generics.GenericAPIView):
     def get_course(self) -> Course:
         course_id = self.kwargs.get(self.lookup_url_kwarg)
         return get_object_or_404(Course, pk=course_id)
+
+
+class MyCoursesPagination(PageNumberPagination):
+    page_size = 10
+
+
+class MyCoursesView(APIView):
+    """
+    Return the authenticated user's courses grouped by role.
+    Response includes pinned courses and paginated recent courses.
+    For teachers: separate lists for teaching and student courses.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        role_filter = request.query_params.get("role")
+        page = int(request.query_params.get("page", 1))
+        page_size = 10
+
+        pinned_qs = PinnedCourse.objects.filter(user=user).select_related("course")
+        pinned_course_ids = set(pinned_qs.values_list("course_id", flat=True))
+
+        pinned_data = []
+        for pin in pinned_qs[:5]:
+            participation = CourseParticipant.objects.filter(
+                course=pin.course, user=user
+            ).first()
+            pinned_data.append({
+                "id": pin.course.id,
+                "title": pin.course.title,
+                "description": pin.course.description,
+                "role": participation.role if participation else None,
+                "is_pinned": True,
+                "pin_position": pin.position,
+            })
+
+        def _paginated_courses(participations_qs):
+            total = participations_qs.count()
+            offset = (page - 1) * page_size
+            items = participations_qs[offset:offset + page_size]
+            courses = []
+            for p in items:
+                courses.append({
+                    "id": p.course.id,
+                    "title": p.course.title,
+                    "description": p.course.description,
+                    "role": p.role,
+                    "is_pinned": p.course_id in pinned_course_ids,
+                })
+            return {
+                "count": total,
+                "results": courses,
+            }
+
+        base_qs = CourseParticipant.objects.filter(
+            user=user
+        ).select_related("course").order_by("-added_at")
+
+        if role_filter in ("teacher", "student"):
+            filtered_qs = base_qs.filter(role=role_filter)
+            return Response({
+                "pinned": pinned_data,
+                "courses": _paginated_courses(filtered_qs),
+            })
+
+        teacher_qs = base_qs.filter(role=CourseParticipant.Role.TEACHER)
+        student_qs = base_qs.filter(role=CourseParticipant.Role.STUDENT)
+
+        has_teacher_courses = teacher_qs.exists()
+
+        if has_teacher_courses:
+            return Response({
+                "pinned": pinned_data,
+                "teaching": _paginated_courses(teacher_qs),
+                "studying": _paginated_courses(student_qs),
+            })
+        else:
+            return Response({
+                "pinned": pinned_data,
+                "courses": _paginated_courses(base_qs),
+            })
+
+
+class PinCourseView(APIView):
+    """Pin a course for the authenticated user (max 5 pins)."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        serializer = PinCourseSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        course = serializer.validated_data["course_id"]
+        user = request.user
+
+        if not CourseParticipant.objects.filter(course=course, user=user).exists():
+            return Response(
+                {"detail": "You are not a participant of this course."},
+                status=400,
+            )
+
+        current_count = PinnedCourse.objects.filter(user=user).count()
+        if PinnedCourse.objects.filter(user=user, course=course).exists():
+            return Response({"detail": "Course already pinned."}, status=400)
+
+        if current_count >= 5:
+            return Response(
+                {"detail": "Maximum 5 pinned courses allowed."},
+                status=400,
+            )
+
+        position = serializer.validated_data.get("position", current_count)
+        pin = PinnedCourse.objects.create(
+            user=user, course=course, position=position
+        )
+        return Response(
+            {"id": pin.id, "course_id": course.id, "position": pin.position},
+            status=201,
+        )
+
+
+class UnpinCourseView(APIView):
+    """Unpin a course for the authenticated user."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        course_id = request.data.get("course_id")
+        if not course_id:
+            return Response({"detail": "course_id is required."}, status=400)
+
+        deleted, _ = PinnedCourse.objects.filter(
+            user=request.user, course_id=course_id
+        ).delete()
+
+        if not deleted:
+            return Response({"detail": "Pin not found."}, status=404)
+
+        return Response({"detail": "Unpinned."}, status=200)
+
+
+class ReorderPinsView(APIView):
+    """Reorder pinned courses for the authenticated user."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        serializer = ReorderPinsSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        course_ids = serializer.validated_data["course_ids"]
+        user = request.user
+
+        pins = PinnedCourse.objects.filter(user=user, course_id__in=course_ids)
+        pin_map = {pin.course_id: pin for pin in pins}
+
+        for position, cid in enumerate(course_ids):
+            pin = pin_map.get(cid)
+            if pin and pin.position != position:
+                pin.position = position
+                pin.save(update_fields=["position"])
+
+        return Response({"detail": "Reordered."}, status=200)
