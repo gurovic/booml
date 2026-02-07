@@ -94,24 +94,7 @@
 
                     <div class="cell-content">
                     <div v-if="cell.cell_type === 'code'" class="code-block">
-                      <div class="code-editor">
-                        <div class="code-gutter">
-                          <span
-                            v-for="n in codeRows(cell.content)"
-                            :key="`${cell.id}-gutter-${n}`"
-                            class="code-gutter-line"
-                          >
-                            {{ n }}
-                          </span>
-                        </div>
-                        <textarea
-                          v-model="cell.content"
-                          class="code-textarea"
-                          :rows="codeRows(cell.content)"
-                          spellcheck="false"
-                          wrap="off"
-                        ></textarea>
-                      </div>
+                      <NotebookCodeEditor v-model="cell.content" />
                     </div>
 
                       <div v-else class="text-block">
@@ -186,6 +169,7 @@
 import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import UiHeader from '@/components/ui/UiHeader.vue'
+import NotebookCodeEditor from '@/components/NotebookCodeEditor.vue'
 import { getNotebook } from '@/api/notebook'
 
 const route = useRoute()
@@ -240,12 +224,6 @@ const cellActions = [
   { id: 'down', title: 'Вниз', icon: 'arrow_downward' },
   { id: 'delete', title: 'Удалить', icon: 'delete' },
 ]
-
-const codeRows = (content) => {
-  const text = typeof content === 'string' ? content : ''
-  const lines = text.split('\n').length
-  return Math.max(1, lines)
-}
 
 const isErrorOutput = (output) => {
   if (!output || typeof output !== 'string') return false
@@ -506,45 +484,6 @@ watch(notebookId, () => {
   background: var(--color-bg-primary);
   border-radius: 14px;
   padding: 16px 18px;
-}
-
-.code-editor {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 12px;
-  align-items: start;
-}
-
-.code-gutter {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  font-family: 'Courier New', monospace;
-  font-size: 15px;
-  line-height: 1.6;
-  color: #9aa3c7;
-  user-select: none;
-  padding-top: 1px;
-}
-
-.code-gutter-line {
-  height: 1.6em;
-}
-
-.code-textarea {
-  width: 100%;
-  border: none;
-  background: transparent;
-  font-family: 'Courier New', monospace;
-  font-size: 15px;
-  line-height: 1.6;
-  color: #1f2a5a;
-  resize: none;
-  outline: none;
-  padding: 0;
-  margin: 0;
-  overflow: hidden;
-  box-sizing: border-box;
 }
 
 .text-block {
