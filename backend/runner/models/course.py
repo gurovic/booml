@@ -60,6 +60,7 @@ class CourseParticipant(models.Model):
         indexes = [
             models.Index(fields=["course", "role"], name="runner_course_role_idx"),
             models.Index(fields=["user", "role"], name="runner_user_role_idx"),
+            models.Index(fields=["user", "-last_activity_at"], name="runner_user_activity_idx"),
         ]
         constraints = [
             models.UniqueConstraint(

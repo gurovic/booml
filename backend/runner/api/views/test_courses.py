@@ -352,3 +352,55 @@ class PinCourseTests(TestCase):
             content_type="application/json",
         )
         self.assertEqual(resp.status_code, 400)
+
+
+class MyCoursesActivityTests(TestCase):
+    def setUp(self):
+        self.teacher = User.objects.create_user(username="teacher", password="pass")
+        self.student = User.objects.create_user(username="student", password="pass")
+        self.root_section = Section.objects.get(title="Авторское", parent__isnull=True)
+        self.section = create_section(
+            SectionCreateInput(
+                title="Activity Section",
+                owner=self.teacher,
+                parent=self.root_section,
+            )
+        )
+        self.course1 = create_course(
+            CourseCreateInput(
+                title="Course Old",
+                owner=self.teacher,
+                is_open=True,
+                section=self.section,
+                students=[self.student],
+            )
+        )
+        self.course2 = create_course(
+            CourseCreateInput(
+                title="Course New",
+                owner=self.teacher,
+                is_open=True,
+                section=self.section,
+                students=[self.student],
+            )
+        )
+        self.my_courses_url = reverse("my-courses")
+
+    def test_activity_ordering(self):
+        """Courses with more recent last_activity_at should appear first."""
+        from django.utils import timezone
+        # Set course1 activity to now
+        p1 = CourseParticipant.objects.get(course=self.course1, user=self.student)
+        p1.last_activity_at = timezone.now()
+        p1.save(update_fields=["last_activity_at"])
+
+        self.client.login(username="student", password="pass")
+        resp = self.client.get(self.my_courses_url)
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        results = data["courses"]["results"]
+        # Course1 should be first since it has activity
+        titles = [c["title"] for c in results]
+        self.assertIn("Course Old", titles)
+        self.assertIn("Course New", titles)
+        self.assertEqual(titles[0], "Course Old")
