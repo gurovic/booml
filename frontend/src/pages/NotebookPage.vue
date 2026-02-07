@@ -94,7 +94,11 @@
 
                     <div class="cell-content">
                     <div v-if="cell.cell_type === 'code'" class="code-block">
-                      <NotebookCodeEditor v-model="cell.content" />
+                      <NotebookCodeEditor
+                        v-model="cell.content"
+                        @update:modelValue="() => scheduleSave(cell)"
+                        @blur="() => flushSave(cell)"
+                      />
                     </div>
 
                       <div v-else class="text-block">
@@ -170,13 +174,15 @@ import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import UiHeader from '@/components/ui/UiHeader.vue'
 import NotebookCodeEditor from '@/components/NotebookCodeEditor.vue'
-import { getNotebook } from '@/api/notebook'
+import { getNotebook, saveCodeCell, saveTextCell } from '@/api/notebook'
 
 const route = useRoute()
 
 const notebook = ref(null)
 const state = ref('idle')
 const stateMessage = ref('')
+const saveTimers = new Map()
+const lastSavedContent = new Map()
 
 const notebookId = computed(() => Number(route.params.id))
 const hasValidId = computed(() => Number.isInteger(notebookId.value) && notebookId.value > 0)
@@ -225,6 +231,54 @@ const cellActions = [
   { id: 'delete', title: 'Удалить', icon: 'delete' },
 ]
 
+const seedSavedContent = (cells) => {
+  lastSavedContent.clear()
+  saveTimers.forEach((timer) => clearTimeout(timer))
+  saveTimers.clear()
+  cells.forEach((cell) => {
+    lastSavedContent.set(cell.id, typeof cell.content === 'string' ? cell.content : '')
+  })
+}
+
+const saveCellContent = async (cell) => {
+  if (!cell?.id || !hasValidId.value) return
+  const content = typeof cell.content === 'string' ? cell.content : ''
+  const lastSaved = lastSavedContent.get(cell.id)
+  if (content === lastSaved) return
+
+  try {
+    if (cell.cell_type === 'code') {
+      await saveCodeCell(notebookId.value, cell.id, content, cell.output || '')
+    } else if (cell.cell_type === 'text') {
+      await saveTextCell(notebookId.value, cell.id, content)
+    }
+    lastSavedContent.set(cell.id, content)
+  } catch (error) {
+    console.warn('Failed to autosave cell', cell.id, error)
+  }
+}
+
+const scheduleSave = (cell) => {
+  if (!cell?.id) return
+  const existing = saveTimers.get(cell.id)
+  if (existing) clearTimeout(existing)
+  const timer = setTimeout(() => {
+    saveTimers.delete(cell.id)
+    saveCellContent(cell)
+  }, 1000)
+  saveTimers.set(cell.id, timer)
+}
+
+const flushSave = (cell) => {
+  if (!cell?.id) return
+  const timer = saveTimers.get(cell.id)
+  if (timer) {
+    clearTimeout(timer)
+    saveTimers.delete(cell.id)
+  }
+  saveCellContent(cell)
+}
+
 const isErrorOutput = (output) => {
   if (!output || typeof output !== 'string') return false
   const text = output.toLowerCase()
@@ -243,6 +297,9 @@ const loadNotebook = async () => {
   stateMessage.value = ''
   try {
     notebook.value = await getNotebook(notebookId.value)
+    if (Array.isArray(notebook.value?.cells)) {
+      seedSavedContent(notebook.value.cells)
+    }
     state.value = 'ready'
   } catch (err) {
     const message = err?.message || 'Не удалось загрузить блокнот.'
@@ -634,3 +691,7 @@ watch(notebookId, () => {
   }
 }
 </style>
+
+
+
+

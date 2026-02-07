@@ -21,7 +21,7 @@ const props = defineProps({
   },
 })
 
-const emit = defineEmits(['update:modelValue'])
+const emit = defineEmits(['update:modelValue', 'blur', 'focus'])
 
 const host = ref(null)
 let view = null
@@ -36,6 +36,10 @@ const createState = (value) => {
       keymap.of([indentWithTab]),
       EditorState.tabSize.of(4),
       EditorView.editable.of(!props.readOnly),
+      EditorView.domEventHandlers({
+        blur: () => emit('blur'),
+        focus: () => emit('focus'),
+      }),
       EditorView.updateListener.of((update) => {
         if (!update.docChanged) return
         const next = update.state.doc.toString()
