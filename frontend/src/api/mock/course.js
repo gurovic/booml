@@ -125,3 +125,19 @@ export function getCourse(courseId) {
     description: found.description || '',
   })
 }
+
+export function getMyCourses() {
+  return Promise.resolve({ pinned: [], courses: { count: 0, results: [] } })
+}
+
+export function pinCourse() {
+  return Promise.resolve({ detail: 'ok' })
+}
+
+export function unpinCourse() {
+  return Promise.resolve({ detail: 'ok' })
+}
+
+export function reorderPins() {
+  return Promise.resolve({ detail: 'ok' })
+}

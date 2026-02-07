@@ -13,6 +13,7 @@ import PolygonPage from '@/pages/PolygonPage.vue'
 import PolygonProblemEditPage from '@/pages/PolygonProblemEditPage.vue'
 import SubmissionListPage from '@/pages/SubmissionListPage.vue'
 import NotebookPage from '@/pages/NotebookPage.vue'
+import MyCoursesPage from '@/pages/MyCoursesPage.vue'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -21,6 +22,11 @@ const router = createRouter({
       path: '/',
       name: 'home',
       component: HomePage,
+    },
+    {
+      path: '/my-courses',
+      name: 'my-courses',
+      component: MyCoursesPage,
     },
     {
       path: '/start-page',

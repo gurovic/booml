@@ -1,4 +1,4 @@
-from django.db.models import Q, CharField, Value, BooleanField, Subquery, Exists, OuterRef
+from django.db.models import Q
 from django.shortcuts import get_object_or_404
 from rest_framework import generics, permissions
 from rest_framework.exceptions import PermissionDenied

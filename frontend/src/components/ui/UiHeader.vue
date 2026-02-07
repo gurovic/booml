@@ -10,6 +10,13 @@
           <button
             type="button"
             class="header__nav-link"
+            @click="handleMyCoursesClick"
+          >
+            Мои курсы
+          </button>
+          <button
+            type="button"
+            class="header__nav-link"
             @click="handlePolygonClick"
           >
             Полигон
@@ -52,6 +59,12 @@ const handleButton = async () => {
 const handleHomeClick = () => {
   if (router.currentRoute.value.path !== '/') {
     router.push('/')
+  }
+}
+
+const handleMyCoursesClick = () => {
+  if (router.currentRoute.value.path !== '/my-courses') {
+    router.push('/my-courses')
   }
 }
 
