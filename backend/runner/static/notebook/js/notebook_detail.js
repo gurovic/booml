@@ -2246,6 +2246,132 @@ const notebookDetail = {
         }
     },
 
+    initImportExport() {
+        const importInput = document.getElementById('import-file-input');
+        if (importInput) {
+            importInput.addEventListener('change', (e) => this.handleImportInputChange(e));
+        }
+    },
+
+    triggerImportFileSelect() {
+        const input = document.getElementById('import-file-input');
+        if (!input) {
+            alert('Поле выбора файла недоступно');
+            return;
+        }
+        input.value = '';
+        input.click();
+    },
+
+    async handleImportInputChange(event) {
+        const input = event?.target;
+        if (!input || !input.files || input.files.length === 0) {
+            return;
+        }
+        const file = input.files[0];
+        input.value = '';
+        await this.importNotebook(file);
+    },
+
+    async importNotebook(file) {
+        if (!file) {
+            return;
+        }
+        
+        const importUrl = document.getElementById('import-file-input')?.dataset.importUrl;
+        if (!importUrl) {
+            alert('URL импорта недоступен');
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append('file', file, file.name || 'notebook.json');
+
+        try {
+            const response = await fetch(importUrl, {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': this.config.csrfToken
+                },
+                body: formData
+            });
+
+            let data = null;
+            try {
+                data = await response.json();
+            } catch (_error) {
+                data = null;
+            }
+
+            if (!response.ok) {
+                const message = data?.message || 'Не удалось импортировать блокнот';
+                throw new Error(message);
+            }
+
+            if (data && data.status === 'success') {
+                const message = data.message || 'Блокнот успешно импортирован';
+                alert(message);
+                
+                // Redirect to the imported notebook if we have the ID
+                if (data.notebook_id) {
+                    window.location.href = `/notebook/${data.notebook_id}/`;
+                }
+            } else {
+                throw new Error('Неожиданный ответ от сервера');
+            }
+        } catch (error) {
+            console.error('Ошибка импорта блокнота:', error);
+            alert('Ошибка при импорте: ' + error.message);
+        }
+    },
+
+    async exportNotebook() {
+        const notebookId = this.config?.notebookId;
+        if (!notebookId) {
+            alert('ID блокнота недоступен');
+            return;
+        }
+
+        try {
+            const exportUrl = `/notebook/${notebookId}/export/`;
+            const response = await fetch(exportUrl, {
+                method: 'GET',
+                headers: {
+                    'X-CSRFToken': this.config.csrfToken
+                }
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP error ${response.status}`);
+            }
+
+            const blob = await response.blob();
+            const contentDisposition = response.headers.get('Content-Disposition');
+            let filename = 'notebook.json';
+            
+            if (contentDisposition) {
+                const matches = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/.exec(contentDisposition);
+                if (matches != null && matches[1]) {
+                    filename = matches[1].replace(/['"]/g, '');
+                }
+            }
+
+            // Create download link and trigger download
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.style.display = 'none';
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+        } catch (error) {
+            console.error('Ошибка экспорта блокнота:', error);
+            alert('Ошибка при экспорте: ' + error.message);
+        }
+    },
+
     renderSessionFiles(files) {
         if (!this.filesList) {
             return;
