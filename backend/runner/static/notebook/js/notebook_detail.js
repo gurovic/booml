@@ -2313,7 +2313,7 @@ const notebookDetail = {
                 alert(message);
                 
                 // Redirect to the imported notebook if we have the ID
-                if (data.notebook_id) {
+                if (data.notebook_id && Number.isInteger(data.notebook_id) && data.notebook_id > 0) {
                     window.location.href = `/notebook/${data.notebook_id}/`;
                 }
             } else {
