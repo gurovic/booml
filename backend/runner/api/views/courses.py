@@ -1,3 +1,4 @@
+from django.db import models as db_models
 from django.db.models import Q
 from django.shortcuts import get_object_or_404
 from rest_framework import generics, permissions
@@ -285,7 +286,9 @@ class MyCoursesView(APIView):
 
         base_qs = CourseParticipant.objects.filter(
             user=user
-        ).select_related("course").order_by("-added_at")
+        ).select_related("course").order_by(
+            db_models.F("last_activity_at").desc(nulls_last=True), "-added_at"
+        )
 
         if role_filter in ("teacher", "student"):
             filtered_qs = base_qs.filter(role=role_filter)

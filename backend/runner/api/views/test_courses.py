@@ -12,7 +12,7 @@ User = get_user_model()
 class CourseSelfEnrollTests(TestCase):
     def setUp(self):
         self.teacher = User.objects.create_user(username="teacher", password="pass")
-        self.root_section = Section.objects.get(title="Авторские", parent__isnull=True)
+        self.root_section = Section.objects.get(title="Авторское", parent__isnull=True)
         self.section = create_section(
             SectionCreateInput(
                 title="Teacher Section",
@@ -72,7 +72,7 @@ class CourseCreateTests(TestCase):
         self.user = User.objects.create_user(username="creator", password="pass")
         self.client.login(username="creator", password="pass")
         self.url = reverse("course-create")
-        self.root_section = Section.objects.get(title="Авторские", parent__isnull=True)
+        self.root_section = Section.objects.get(title="Авторское", parent__isnull=True)
         self.section = create_section(
             SectionCreateInput(
                 title="Creator Section",
@@ -99,7 +99,7 @@ class CourseParticipantsTests(TestCase):
     def setUp(self):
         self.teacher = User.objects.create_user(username="teacher", password="pass")
         self.student = User.objects.create_user(username="student", password="pass")
-        self.root_section = Section.objects.get(title="Авторские", parent__isnull=True)
+        self.root_section = Section.objects.get(title="Авторское", parent__isnull=True)
         self.section = create_section(
             SectionCreateInput(
                 title="Teacher Section",
@@ -133,7 +133,7 @@ class CourseTreeTests(TestCase):
     def setUp(self):
         self.teacher = User.objects.create_user(username="teacher", password="pass")
         self.student = User.objects.create_user(username="student", password="pass")
-        self.root_section = Section.objects.get(title="Авторские", parent__isnull=True)
+        self.root_section = Section.objects.get(title="Авторское", parent__isnull=True)
         self.section = create_section(
             SectionCreateInput(
                 title="Teacher Section",
@@ -215,7 +215,7 @@ class MyCoursesTests(TestCase):
     def setUp(self):
         self.teacher = User.objects.create_user(username="teacher", password="pass")
         self.student = User.objects.create_user(username="student", password="pass")
-        self.root_section = Section.objects.get(title="Авторские", parent__isnull=True)
+        self.root_section = Section.objects.get(title="Авторское", parent__isnull=True)
         self.section = create_section(
             SectionCreateInput(
                 title="My Section",
@@ -272,7 +272,7 @@ class PinCourseTests(TestCase):
     def setUp(self):
         self.teacher = User.objects.create_user(username="teacher", password="pass")
         self.student = User.objects.create_user(username="student", password="pass")
-        self.root_section = Section.objects.get(title="Авторские", parent__isnull=True)
+        self.root_section = Section.objects.get(title="Авторское", parent__isnull=True)
         self.section = create_section(
             SectionCreateInput(
                 title="Pin Section",

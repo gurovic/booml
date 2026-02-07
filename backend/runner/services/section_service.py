@@ -9,7 +9,7 @@ from ..models import Section
 
 User = get_user_model()
 
-ROOT_SECTION_TITLES = ("Авторские", "Тематические", "Олимпиады")
+ROOT_SECTION_TITLES = ("Тематическое", "Олимпиады", "Авторское")
 
 
 @dataclass(slots=True)

@@ -49,6 +49,11 @@ class CourseParticipant(models.Model):
     role = models.CharField(max_length=20, choices=Role.choices, default=Role.STUDENT)
     is_owner = models.BooleanField(default=False)
     added_at = models.DateTimeField(auto_now_add=True)
+    last_activity_at = models.DateTimeField(
+        blank=True,
+        null=True,
+        help_text="Last time user had activity in this course",
+    )
 
     class Meta:
         unique_together = ("course", "user")

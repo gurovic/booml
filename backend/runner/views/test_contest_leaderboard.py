@@ -30,7 +30,7 @@ class ContestLeaderboardViewTests(TestCase):
         self.alice = User.objects.create_user(username="alice", password="pass")
         self.bob = User.objects.create_user(username="bob", password="pass")
         self.charlie = User.objects.create_user(username="charlie", password="pass")
-        self.root_section = Section.objects.get(title="Авторские", parent__isnull=True)
+        self.root_section = Section.objects.get(title="Авторское", parent__isnull=True)
         self.section = create_section(
             SectionCreateInput(
                 title="Leaderboard Section",
