@@ -4,6 +4,9 @@ from .views import (
     CourseParticipantsUpdateView,
     CourseSelfEnrollView,
     CourseTreeView,
+    MyCoursesView,
+    PinCourseView,
+    ReorderPinsView,
     SectionCreateView,
     SubmissionCreateView,
     MySubmissionsListView,
@@ -20,6 +23,7 @@ from .views import (
     SessionFileUploadView,
     SessionFilePreviewView,
     StopSessionView,
+    UnpinCourseView,
 )
 
 urlpatterns = [
@@ -40,6 +44,10 @@ urlpatterns = [
     path("cells/run/stream/status/", RunCellStreamStatusView.as_view(), name="run-cell-stream-status"),
     path("courses/", CourseCreateView.as_view(), name="course-create"),
     path("courses/tree/", CourseTreeView.as_view(), name="course-tree"),
+    path("courses/my/", MyCoursesView.as_view(), name="my-courses"),
+    path("courses/pin/", PinCourseView.as_view(), name="course-pin"),
+    path("courses/unpin/", UnpinCourseView.as_view(), name="course-unpin"),
+    path("courses/pins/reorder/", ReorderPinsView.as_view(), name="course-pins-reorder"),
     path("sections/", SectionCreateView.as_view(), name="section-create"),
     path(
         "courses/<int:course_id>/participants/",

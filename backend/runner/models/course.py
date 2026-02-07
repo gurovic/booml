@@ -49,12 +49,18 @@ class CourseParticipant(models.Model):
     role = models.CharField(max_length=20, choices=Role.choices, default=Role.STUDENT)
     is_owner = models.BooleanField(default=False)
     added_at = models.DateTimeField(auto_now_add=True)
+    last_activity_at = models.DateTimeField(
+        blank=True,
+        null=True,
+        help_text="Last time user had activity in this course",
+    )
 
     class Meta:
         unique_together = ("course", "user")
         indexes = [
             models.Index(fields=["course", "role"], name="runner_course_role_idx"),
             models.Index(fields=["user", "role"], name="runner_user_role_idx"),
+            models.Index(fields=["user", "-last_activity_at"], name="runner_user_activity_idx"),
         ]
         constraints = [
             models.UniqueConstraint(
@@ -66,3 +72,28 @@ class CourseParticipant(models.Model):
 
     def __str__(self):
         return f"{self.user} in {self.course} as {self.role}"
+
+
+class PinnedCourse(models.Model):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="pinned_courses",
+    )
+    course = models.ForeignKey(
+        Course,
+        on_delete=models.CASCADE,
+        related_name="pins",
+    )
+    position = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ("user", "course")
+        ordering = ["position", "created_at"]
+        indexes = [
+            models.Index(fields=["user", "position"], name="runner_pinned_user_pos_idx"),
+        ]
+
+    def __str__(self):
+        return f"{self.user} pinned {self.course} at position {self.position}"

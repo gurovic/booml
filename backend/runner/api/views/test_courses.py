@@ -2,7 +2,7 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
 
-from ...models import CourseParticipant, Section
+from ...models import CourseParticipant, PinnedCourse, Section
 from ...services.course_service import CourseCreateInput, create_course
 from ...services.section_service import SectionCreateInput, create_section
 
@@ -12,7 +12,7 @@ User = get_user_model()
 class CourseSelfEnrollTests(TestCase):
     def setUp(self):
         self.teacher = User.objects.create_user(username="teacher", password="pass")
-        self.root_section = Section.objects.get(title="Авторские", parent__isnull=True)
+        self.root_section = Section.objects.get(title="Авторское", parent__isnull=True)
         self.section = create_section(
             SectionCreateInput(
                 title="Teacher Section",
@@ -72,7 +72,7 @@ class CourseCreateTests(TestCase):
         self.user = User.objects.create_user(username="creator", password="pass")
         self.client.login(username="creator", password="pass")
         self.url = reverse("course-create")
-        self.root_section = Section.objects.get(title="Авторские", parent__isnull=True)
+        self.root_section = Section.objects.get(title="Авторское", parent__isnull=True)
         self.section = create_section(
             SectionCreateInput(
                 title="Creator Section",
@@ -99,7 +99,7 @@ class CourseParticipantsTests(TestCase):
     def setUp(self):
         self.teacher = User.objects.create_user(username="teacher", password="pass")
         self.student = User.objects.create_user(username="student", password="pass")
-        self.root_section = Section.objects.get(title="Авторские", parent__isnull=True)
+        self.root_section = Section.objects.get(title="Авторское", parent__isnull=True)
         self.section = create_section(
             SectionCreateInput(
                 title="Teacher Section",
@@ -133,7 +133,7 @@ class CourseTreeTests(TestCase):
     def setUp(self):
         self.teacher = User.objects.create_user(username="teacher", password="pass")
         self.student = User.objects.create_user(username="student", password="pass")
-        self.root_section = Section.objects.get(title="Авторские", parent__isnull=True)
+        self.root_section = Section.objects.get(title="Авторское", parent__isnull=True)
         self.section = create_section(
             SectionCreateInput(
                 title="Teacher Section",
@@ -209,3 +209,198 @@ class CourseTreeTests(TestCase):
         # Owner should see both open and closed courses
         self.assertIn("Open Course", course_titles)
         self.assertIn("Closed Course", course_titles)
+
+
+class MyCoursesTests(TestCase):
+    def setUp(self):
+        self.teacher = User.objects.create_user(username="teacher", password="pass")
+        self.student = User.objects.create_user(username="student", password="pass")
+        self.root_section = Section.objects.get(title="Авторское", parent__isnull=True)
+        self.section = create_section(
+            SectionCreateInput(
+                title="My Section",
+                owner=self.teacher,
+                parent=self.root_section,
+            )
+        )
+        self.course1 = create_course(
+            CourseCreateInput(
+                title="Course 1",
+                owner=self.teacher,
+                is_open=True,
+                section=self.section,
+                students=[self.student],
+            )
+        )
+        self.course2 = create_course(
+            CourseCreateInput(
+                title="Course 2",
+                owner=self.teacher,
+                is_open=True,
+                section=self.section,
+                students=[self.student],
+            )
+        )
+        self.my_courses_url = reverse("my-courses")
+
+    def test_unauthenticated_user_forbidden(self):
+        self.client.logout()
+        resp = self.client.get(self.my_courses_url)
+        self.assertIn(resp.status_code, (401, 403))
+
+    def test_student_sees_courses(self):
+        self.client.login(username="student", password="pass")
+        resp = self.client.get(self.my_courses_url)
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertIn("pinned", data)
+        self.assertIn("courses", data)
+        self.assertEqual(data["courses"]["count"], 2)
+
+    def test_teacher_sees_separate_lists(self):
+        self.client.login(username="teacher", password="pass")
+        resp = self.client.get(self.my_courses_url)
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertIn("pinned", data)
+        self.assertIn("teaching", data)
+        self.assertIn("studying", data)
+        self.assertEqual(data["teaching"]["count"], 2)
+
+
+class PinCourseTests(TestCase):
+    def setUp(self):
+        self.teacher = User.objects.create_user(username="teacher", password="pass")
+        self.student = User.objects.create_user(username="student", password="pass")
+        self.root_section = Section.objects.get(title="Авторское", parent__isnull=True)
+        self.section = create_section(
+            SectionCreateInput(
+                title="Pin Section",
+                owner=self.teacher,
+                parent=self.root_section,
+            )
+        )
+        self.course = create_course(
+            CourseCreateInput(
+                title="Pin Course",
+                owner=self.teacher,
+                is_open=True,
+                section=self.section,
+                students=[self.student],
+            )
+        )
+        self.pin_url = reverse("course-pin")
+        self.unpin_url = reverse("course-unpin")
+
+    def test_pin_course(self):
+        self.client.login(username="student", password="pass")
+        resp = self.client.post(
+            self.pin_url,
+            {"course_id": self.course.id},
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 201)
+        self.assertEqual(PinnedCourse.objects.filter(user=self.student).count(), 1)
+
+    def test_pin_duplicate(self):
+        self.client.login(username="student", password="pass")
+        PinnedCourse.objects.create(user=self.student, course=self.course, position=0)
+        resp = self.client.post(
+            self.pin_url,
+            {"course_id": self.course.id},
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 400)
+
+    def test_unpin_course(self):
+        self.client.login(username="student", password="pass")
+        PinnedCourse.objects.create(user=self.student, course=self.course, position=0)
+        resp = self.client.post(
+            self.unpin_url,
+            {"course_id": self.course.id},
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(PinnedCourse.objects.filter(user=self.student).count(), 0)
+
+    def test_pin_non_participant(self):
+        other = User.objects.create_user(username="other", password="pass")
+        self.client.login(username="other", password="pass")
+        resp = self.client.post(
+            self.pin_url,
+            {"course_id": self.course.id},
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 400)
+
+    def test_pin_max_five(self):
+        self.client.login(username="student", password="pass")
+        for i in range(5):
+            c = create_course(
+                CourseCreateInput(
+                    title=f"Extra {i}",
+                    owner=self.teacher,
+                    is_open=True,
+                    section=self.section,
+                    students=[self.student],
+                )
+            )
+            PinnedCourse.objects.create(user=self.student, course=c, position=i)
+        resp = self.client.post(
+            self.pin_url,
+            {"course_id": self.course.id},
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 400)
+
+
+class MyCoursesActivityTests(TestCase):
+    def setUp(self):
+        self.teacher = User.objects.create_user(username="teacher", password="pass")
+        self.student = User.objects.create_user(username="student", password="pass")
+        self.root_section = Section.objects.get(title="Авторское", parent__isnull=True)
+        self.section = create_section(
+            SectionCreateInput(
+                title="Activity Section",
+                owner=self.teacher,
+                parent=self.root_section,
+            )
+        )
+        self.course1 = create_course(
+            CourseCreateInput(
+                title="Course Old",
+                owner=self.teacher,
+                is_open=True,
+                section=self.section,
+                students=[self.student],
+            )
+        )
+        self.course2 = create_course(
+            CourseCreateInput(
+                title="Course New",
+                owner=self.teacher,
+                is_open=True,
+                section=self.section,
+                students=[self.student],
+            )
+        )
+        self.my_courses_url = reverse("my-courses")
+
+    def test_activity_ordering(self):
+        """Courses with more recent last_activity_at should appear first."""
+        from django.utils import timezone
+        # Set course1 activity to now
+        p1 = CourseParticipant.objects.get(course=self.course1, user=self.student)
+        p1.last_activity_at = timezone.now()
+        p1.save(update_fields=["last_activity_at"])
+
+        self.client.login(username="student", password="pass")
+        resp = self.client.get(self.my_courses_url)
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        results = data["courses"]["results"]
+        # Course1 should be first since it has activity
+        titles = [c["title"] for c in results]
+        self.assertIn("Course Old", titles)
+        self.assertIn("Course New", titles)
+        self.assertEqual(titles[0], "Course Old")

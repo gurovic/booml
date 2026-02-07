@@ -14,7 +14,7 @@ User = get_user_model()
 class CreateCourseTests(TestCase):
     def setUp(self):
         self.owner = User.objects.create_user(username="owner", password="pass")
-        self.root_section = Section.objects.get(title="Авторские", parent__isnull=True)
+        self.root_section = Section.objects.get(title="Авторское", parent__isnull=True)
         self.section = create_section(
             SectionCreateInput(
                 title="Owner Section",

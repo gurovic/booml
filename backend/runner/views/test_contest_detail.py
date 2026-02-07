@@ -17,7 +17,7 @@ class ContestDetailViewTests(TestCase):
         self.teacher = User.objects.create_user(username="teacher", password="pass")
         self.student = User.objects.create_user(username="student", password="pass")
         self.outsider = User.objects.create_user(username="outsider", password="pass")
-        self.root_section = Section.objects.get(title="Авторские", parent__isnull=True)
+        self.root_section = Section.objects.get(title="Авторское", parent__isnull=True)
         self.section = create_section(
             SectionCreateInput(
                 title="Teacher Section",
@@ -115,7 +115,7 @@ class CourseDetailViewTests(TestCase):
         self.teacher = User.objects.create_user(username="teacher", password="pass")
         self.student = User.objects.create_user(username="student", password="pass")
         self.outsider = User.objects.create_user(username="outsider", password="pass")
-        self.root_section = Section.objects.get(title="Авторские", parent__isnull=True)
+        self.root_section = Section.objects.get(title="Авторское", parent__isnull=True)
         self.section = create_section(
             SectionCreateInput(
                 title="Teacher Section",

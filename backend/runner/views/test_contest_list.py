@@ -19,8 +19,8 @@ class ContestListViewTests(TestCase):
         self.outsider = User.objects.create_user(username="outsider", password="pass")
         self.other_teacher = User.objects.create_user(username="other", password="pass")
 
-        self.root_section = Section.objects.get(title="Авторские", parent__isnull=True)
-        self.other_root_section = Section.objects.get(title="Тематические", parent__isnull=True)
+        self.root_section = Section.objects.get(title="Авторское", parent__isnull=True)
+        self.other_root_section = Section.objects.get(title="Тематическое", parent__isnull=True)
         self.section = create_section(
             SectionCreateInput(
                 title="Teacher Section",

@@ -1,11 +1,13 @@
 from django.conf import settings
 from django.db import transaction
+from django.utils import timezone
 from rest_framework import generics, permissions, parsers, status
 from rest_framework.response import Response
 from rest_framework.pagination import PageNumberPagination
 
 from ...models.submission import Submission
 from ...models.problem import Problem
+from ...models.course import CourseParticipant
 from ..serializers import SubmissionCreateSerializer, SubmissionReadSerializer, SubmissionDetailSerializer
 
 from ...services import validation_service
@@ -38,6 +40,20 @@ def build_descriptor_from_problem(problem) -> dict:
     }
 
 
+def _update_course_activity(user, problem):
+    """Update last_activity_at for user's course participations linked to this problem."""
+    from ...models.contest import Contest
+    course_ids = (
+        Contest.objects.filter(problems=problem)
+        .values_list("course_id", flat=True)
+        .distinct()
+    )
+    if course_ids:
+        CourseParticipant.objects.filter(
+            user=user, course_id__in=course_ids
+        ).update(last_activity_at=timezone.now())
+
+
 class SubmissionCreateView(generics.CreateAPIView):
     """
     POST /api/submissions/
@@ -59,6 +75,9 @@ class SubmissionCreateView(generics.CreateAPIView):
         # 1) Сохраняем сабмит и файл
         with transaction.atomic():
             submission: Submission = serializer.save()
+
+        # Update course activity timestamp
+        _update_course_activity(request.user, submission.problem)
 
         # 2) Пре-валидация
         problem = submission.problem

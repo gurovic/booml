@@ -10,10 +10,10 @@ User = get_user_model()
 class SectionServiceTests(TestCase):
     def setUp(self):
         self.owner = User.objects.create_user(username="root-owner", password="pass")
-        self.root = Section.objects.filter(title="Авторские", parent__isnull=True).first()
+        self.root = Section.objects.filter(title="Авторское", parent__isnull=True).first()
         if self.root is None:
             self.root = create_section(
-                SectionCreateInput(title="Авторские", owner=self.owner)
+                SectionCreateInput(title="Авторское", owner=self.owner)
             )
 
     def test_other_owner_can_create_section_under_root(self):

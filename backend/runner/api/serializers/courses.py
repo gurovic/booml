@@ -3,7 +3,7 @@ from typing import Iterable
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
 
-from ...models import Course, CourseParticipant, Section
+from ...models import Course, CourseParticipant, PinnedCourse, Section
 from ...services import (
     CourseCreateInput,
     SectionCreateInput,
@@ -194,3 +194,46 @@ class SectionCreateSerializer(serializers.Serializer):
             parent=validated_data.get("parent"),
         )
         return create_section(payload)
+
+
+class MyCourseSerializer(serializers.ModelSerializer):
+    role = serializers.CharField(read_only=True)
+    is_pinned = serializers.BooleanField(read_only=True, default=False)
+
+    class Meta:
+        model = Course
+        fields = [
+            "id",
+            "title",
+            "description",
+            "role",
+            "is_pinned",
+        ]
+        read_only_fields = fields
+
+
+class PinnedCourseSerializer(serializers.ModelSerializer):
+    course = MyCourseSerializer(read_only=True)
+
+    class Meta:
+        model = PinnedCourse
+        fields = ["id", "course", "position"]
+        read_only_fields = ["id"]
+
+
+class PinCourseSerializer(serializers.Serializer):
+    course_id = serializers.IntegerField()
+    position = serializers.IntegerField(required=False, min_value=0, default=0)
+
+    def validate_course_id(self, value):
+        try:
+            return Course.objects.get(pk=value)
+        except Course.DoesNotExist as exc:
+            raise serializers.ValidationError("Course not found") from exc
+
+
+class ReorderPinsSerializer(serializers.Serializer):
+    course_ids = serializers.ListField(
+        child=serializers.IntegerField(min_value=1),
+        allow_empty=False,
+    )
