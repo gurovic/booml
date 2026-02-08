@@ -2,7 +2,34 @@ from django.db.models import Count
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
 
-from ..models import Contest, Course
+from django.contrib.auth import get_user_model
+from django.contrib.auth.decorators import login_required
+
+from ..models import Contest, Course, CourseParticipant
+
+User = get_user_model()
+
+
+def _course_is_teacher(course: Course, user) -> bool:
+    if not user.is_authenticated:
+        return False
+    if user.is_staff or user.is_superuser:
+        return True
+    if course.owner_id == user.id:
+        return True
+    return course.participants.filter(
+        user=user, role=CourseParticipant.Role.TEACHER
+    ).exists()
+
+
+def _course_is_member(course: Course, user) -> bool:
+    if not user.is_authenticated:
+        return False
+    if user.is_staff or user.is_superuser:
+        return True
+    if course.owner_id == user.id:
+        return True
+    return course.participants.filter(user=user).exists()
 
 
 def course_detail(request, course_id):
@@ -12,17 +39,18 @@ def course_detail(request, course_id):
         return JsonResponse({"detail": "Authentication required"}, status=401)
 
     course = get_object_or_404(
-        Course.objects.select_related("section").prefetch_related("participants__user"),
+        Course.objects.select_related("section", "owner").prefetch_related("participants__user"),
         pk=course_id,
     )
     is_admin = request.user.is_staff or request.user.is_superuser
-    is_owner = course.section.owner_id == request.user.id
-    is_member = course.participants.filter(user=request.user).exists()
-    if not (is_admin or is_owner or is_member or course.is_open):
+    is_owner = course.owner_id == request.user.id
+    is_teacher = _course_is_teacher(course, request.user)
+    is_member = _course_is_member(course, request.user)
+    if not (is_admin or is_member or course.is_open):
         return JsonResponse({"detail": "Forbidden"}, status=403)
 
     participants = []
-    if is_admin or is_owner or is_member:
+    if is_admin or is_member:
         participants = [
             {
                 "id": participant.user_id,
@@ -38,9 +66,13 @@ def course_detail(request, course_id):
             "id": course.id,
             "title": course.title,
             "description": course.description,
+            "is_open": course.is_open,
             "section": course.section_id,
             "section_title": course.section.title,
-            "section_owner_id": course.section.owner_id,
+            "owner_id": course.owner_id,
+            "owner_username": course.owner.username if course.owner_id else None,
+            "can_create_contest": bool(is_teacher),
+            "can_manage_course": bool(is_owner or is_admin),
             "participants": participants,
         },
         status=200,
@@ -58,9 +90,8 @@ def course_contests(request, course_id):
         pk=course_id,
     )
     is_admin = request.user.is_staff or request.user.is_superuser
-    is_owner = course.section.owner_id == request.user.id
-    is_member = course.participants.filter(user=request.user).exists()
-    if not (is_admin or is_owner or is_member or course.is_open):
+    is_member = _course_is_member(course, request.user)
+    if not (is_admin or is_member or course.is_open):
         return JsonResponse({"detail": "Forbidden"}, status=403)
 
     contests = (
@@ -73,7 +104,7 @@ def course_contests(request, course_id):
     for contest in contests:
         if not contest.is_visible_to(request.user):
             continue
-        is_owner = contest.course.section.owner_id == request.user.id
+        is_teacher = _course_is_teacher(course, request.user)
         items.append(
             {
                 "id": contest.id,
@@ -92,8 +123,163 @@ def course_contests(request, course_id):
                 "start_time": contest.start_time.isoformat() if contest.start_time else None,
                 "problems_count": contest.problems_count,
                 "access_token": contest.access_token
-                if contest.access_type == Contest.AccessType.LINK and (is_owner or is_admin)
+                if contest.access_type == Contest.AccessType.LINK and (is_teacher or is_admin)
                 else None,
             }
         )
     return JsonResponse({"items": items}, status=200)
+
+
+@login_required
+def update_course(request, course_id):
+    if request.method != "POST":
+        return JsonResponse({"detail": "Method not allowed"}, status=405)
+
+    course = get_object_or_404(Course, pk=course_id)
+    is_admin = request.user.is_staff or request.user.is_superuser
+    if not (is_admin or course.owner_id == request.user.id):
+        return JsonResponse({"detail": "Only course owner can update course"}, status=403)
+
+    try:
+        import json
+        payload = json.loads(request.body or "{}")
+    except Exception:
+        return JsonResponse({"detail": "Invalid JSON payload"}, status=400)
+
+    update_fields = []
+    if "title" in payload:
+        course.title = str(payload.get("title") or "").strip()
+        update_fields.append("title")
+    if "description" in payload:
+        course.description = str(payload.get("description") or "")
+        update_fields.append("description")
+    if "is_open" in payload:
+        course.is_open = bool(payload.get("is_open"))
+        update_fields.append("is_open")
+
+    if not update_fields:
+        return JsonResponse({"detail": "No fields to update"}, status=400)
+
+    course.save(update_fields=update_fields)
+    return JsonResponse(
+        {
+            "id": course.id,
+            "title": course.title,
+            "description": course.description,
+            "is_open": course.is_open,
+        },
+        status=200,
+    )
+
+
+@login_required
+def delete_course(request, course_id):
+    if request.method not in {"POST", "DELETE"}:
+        return JsonResponse({"detail": "Method not allowed"}, status=405)
+
+    course = get_object_or_404(Course, pk=course_id)
+    is_admin = request.user.is_staff or request.user.is_superuser
+    if not (is_admin or course.owner_id == request.user.id):
+        return JsonResponse({"detail": "Only course owner can delete course"}, status=403)
+
+    course.delete()
+    return JsonResponse({"success": True, "deleted_id": course_id}, status=200)
+
+
+@login_required
+def update_course_participants(request, course_id):
+    if request.method != "POST":
+        return JsonResponse({"detail": "Method not allowed"}, status=405)
+
+    course = get_object_or_404(Course.objects.prefetch_related("participants__user"), pk=course_id)
+    is_admin = request.user.is_staff or request.user.is_superuser
+    if not (is_admin or course.owner_id == request.user.id):
+        return JsonResponse({"detail": "Only course owner can manage participants"}, status=403)
+
+    try:
+        import json
+
+        payload = json.loads(request.body or "{}")
+    except Exception:
+        return JsonResponse({"detail": "Invalid JSON payload"}, status=400)
+
+    teacher_usernames = payload.get("teacher_usernames") or []
+    student_usernames = payload.get("student_usernames") or []
+    allow_role_update = bool(payload.get("allow_role_update", True))
+
+    if not isinstance(teacher_usernames, list) or not isinstance(student_usernames, list):
+        return JsonResponse(
+            {"detail": "teacher_usernames and student_usernames must be lists"},
+            status=400,
+        )
+
+    teacher_usernames = [str(u).strip() for u in teacher_usernames if str(u).strip()]
+    student_usernames = [str(u).strip() for u in student_usernames if str(u).strip()]
+
+    users = list(User.objects.filter(username__in=set(teacher_usernames + student_usernames)))
+    user_by_username = {u.username: u for u in users}
+
+    missing = sorted(
+        {u for u in set(teacher_usernames + student_usernames) if u not in user_by_username}
+    )
+    if missing:
+        return JsonResponse({"detail": "Some users not found", "missing": missing}, status=400)
+
+    from ..services.course_service import add_users_to_course
+
+    result = add_users_to_course(
+        course=course,
+        teachers=[user_by_username[u] for u in teacher_usernames],
+        students=[user_by_username[u] for u in student_usernames],
+        allow_role_update=allow_role_update,
+    )
+
+    def _summarize(participants):
+        return [
+            {
+                "user_id": p.user_id,
+                "username": p.user.username,
+                "role": p.role,
+                "is_owner": p.is_owner,
+            }
+            for p in participants
+        ]
+
+    return JsonResponse(
+        {"course_id": course.id, "created": _summarize(result["created"]), "updated": _summarize(result["updated"])},
+        status=200,
+    )
+
+
+@login_required
+def remove_course_participants(request, course_id):
+    if request.method != "POST":
+        return JsonResponse({"detail": "Method not allowed"}, status=405)
+
+    course = get_object_or_404(Course, pk=course_id)
+    is_admin = request.user.is_staff or request.user.is_superuser
+    if not (is_admin or course.owner_id == request.user.id):
+        return JsonResponse({"detail": "Only course owner can manage participants"}, status=403)
+
+    try:
+        import json
+
+        payload = json.loads(request.body or "{}")
+    except Exception:
+        return JsonResponse({"detail": "Invalid JSON payload"}, status=400)
+
+    usernames = payload.get("usernames") or []
+    if not isinstance(usernames, list) or not usernames:
+        return JsonResponse({"detail": "usernames must be a non-empty list"}, status=400)
+    usernames = [str(u).strip() for u in usernames if str(u).strip()]
+    users = list(User.objects.filter(username__in=set(usernames)))
+    by_name = {u.username: u for u in users}
+    missing = sorted({u for u in set(usernames) if u not in by_name})
+    if missing:
+        return JsonResponse({"detail": "Some users not found", "missing": missing}, status=400)
+
+    if course.owner_id and course.owner.username in set(usernames):
+        return JsonResponse({"detail": "Cannot remove course owner"}, status=400)
+
+    deleted, _ = CourseParticipant.objects.filter(course=course, user__in=users).delete()
+    return JsonResponse({"course_id": course.id, "removed": usernames, "deleted": deleted}, status=200)

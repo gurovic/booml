@@ -9,14 +9,86 @@
         <template v-else>
           <div class="course-header">
             <h1 class="course-title">{{ courseTitle }}</h1>
-            <button 
-              v-if="canCreateContest" 
-              class="button button--primary create-contest-btn"
-              @click="showCreateDialog = true"
-            >
-              Создать контест
-            </button>
+            <div class="course-header__actions">
+              <button
+                v-if="canCreateContest"
+                class="button button--primary create-contest-btn"
+                @click="showCreateDialog = true"
+              >
+                Создать контест
+              </button>
+              <button
+                v-if="canManageCourse"
+                class="button button--secondary"
+                type="button"
+                @click="showCourseSettings = !showCourseSettings"
+              >
+                Настройки курса
+              </button>
+            </div>
           </div>
+
+          <section v-if="canManageCourse && showCourseSettings" class="course-settings">
+            <div class="course-settings__row">
+              <label class="form-checkbox">
+                <input type="checkbox" v-model="courseIsOpen" @change="saveCourseSettings" />
+                <span>Курс открыт для всех (open)</span>
+              </label>
+              <button class="button button--secondary" type="button" @click="deleteThisCourse">
+                Удалить курс
+              </button>
+            </div>
+
+            <div class="participants">
+              <h3 class="participants__title">Участники</h3>
+              <div v-if="!participants.length" class="note">Нет участников</div>
+              <ul v-else class="participants__list">
+                <li v-for="p in participants" :key="p.username" class="participants__item">
+                  <div class="participants__meta">
+                    <span class="participants__name">{{ p.username }}</span>
+                    <span class="participants__role">
+                      {{ p.is_owner ? 'owner' : p.role }}
+                    </span>
+                  </div>
+                  <div class="participants__actions">
+                    <button
+                      v-if="!p.is_owner"
+                      class="participants__btn"
+                      type="button"
+                      @click="toggleParticipantRole(p)"
+                    >
+                      {{ p.role === 'teacher' ? 'Сделать student' : 'Сделать teacher' }}
+                    </button>
+                    <button
+                      v-if="!p.is_owner"
+                      class="participants__btn participants__btn--danger"
+                      type="button"
+                      @click="removeParticipant(p)"
+                    >
+                      Удалить
+                    </button>
+                  </div>
+                </li>
+              </ul>
+
+              <div class="participants__add">
+                <input
+                  v-model="newParticipantUsername"
+                  type="text"
+                  class="form-input"
+                  placeholder="username пользователя"
+                  @keyup.enter="addParticipant"
+                />
+                <select v-model="newParticipantRole" class="form-select">
+                  <option value="student">student</option>
+                  <option value="teacher">teacher</option>
+                </select>
+                <button class="button button--primary" type="button" @click="addParticipant" :disabled="!newParticipantUsername.trim()">
+                  Добавить
+                </button>
+              </div>
+            </div>
+          </section>
           
           <UiLinkList
             title="Контесты"
@@ -134,6 +206,10 @@ const error = ref('')
 const showCreateDialog = ref(false)
 const isCreating = ref(false)
 const createError = ref('')
+const showCourseSettings = ref(false)
+const courseIsOpen = ref(false)
+const newParticipantUsername = ref('')
+const newParticipantRole = ref('student')
 
 const newContest = ref({
   title: '',
@@ -147,8 +223,22 @@ const courseTitle = computed(() => course.value?.title || queryTitle.value || 'C
 
 const canCreateContest = computed(() => {
   if (!userStore.currentUser || !course.value) return false
-  // User can create contest if they are the section owner
-  return course.value.section_owner_id === userStore.currentUser.id
+  return !!course.value.can_create_contest
+})
+
+const canManageCourse = computed(() => {
+  if (!userStore.currentUser || !course.value) return false
+  return !!course.value.can_manage_course
+})
+
+const participants = computed(() => {
+  const list = Array.isArray(course.value?.participants) ? course.value.participants : []
+  return list.map(p => ({
+    id: p.id,
+    username: p.username,
+    role: p.role,
+    is_owner: !!p.is_owner,
+  }))
 })
 
 const contestItems = computed(() => {
@@ -179,6 +269,7 @@ const loadContests = async () => {
       contestApi.getContestsByCourse(courseId.value),
     ])
     course.value = courseData
+    courseIsOpen.value = !!courseData?.is_open
     contests.value = contestData
   } catch (err) {
     console.error('Failed to load contests.', err)
@@ -259,6 +350,74 @@ const deleteContest = async (item) => {
   }
 }
 
+const saveCourseSettings = async () => {
+  try {
+    await courseApi.updateCourse(courseId.value, { is_open: courseIsOpen.value })
+    await loadContests()
+  } catch (err) {
+    console.error('Failed to update course:', err)
+    error.value = err?.message || 'Не удалось обновить курс'
+  }
+}
+
+const addParticipant = async () => {
+  const username = newParticipantUsername.value.trim()
+  if (!username) return
+
+  try {
+    const payload =
+      newParticipantRole.value === 'teacher'
+        ? { teacherUsernames: [username], studentUsernames: [] }
+        : { teacherUsernames: [], studentUsernames: [username] }
+
+    await courseApi.updateCourseParticipants(courseId.value, payload)
+    newParticipantUsername.value = ''
+    await loadContests()
+  } catch (err) {
+    console.error('Failed to add participant:', err)
+    error.value = err?.message || 'Не удалось добавить участника'
+  }
+}
+
+const toggleParticipantRole = async (p) => {
+  if (!p?.username || p.is_owner) return
+  const nextRole = p.role === 'teacher' ? 'student' : 'teacher'
+  try {
+    const payload =
+      nextRole === 'teacher'
+        ? { teacherUsernames: [p.username], studentUsernames: [] }
+        : { teacherUsernames: [], studentUsernames: [p.username] }
+    await courseApi.updateCourseParticipants(courseId.value, payload)
+    await loadContests()
+  } catch (err) {
+    console.error('Failed to update role:', err)
+    error.value = err?.message || 'Не удалось обновить роль'
+  }
+}
+
+const removeParticipant = async (p) => {
+  if (!p?.username || p.is_owner) return
+  if (!confirm(`Удалить пользователя ${p.username} из курса?`)) return
+  try {
+    await courseApi.removeCourseParticipants(courseId.value, [p.username])
+    await loadContests()
+  } catch (err) {
+    console.error('Failed to remove participant:', err)
+    error.value = err?.message || 'Не удалось удалить участника'
+  }
+}
+
+const deleteThisCourse = async () => {
+  if (!confirm('Удалить курс? Это удалит все контесты внутри курса.')) return
+  try {
+    await courseApi.deleteCourse(courseId.value)
+    router.push({ name: 'home' })
+  } catch (err) {
+    console.error('Failed to delete course:', err)
+    error.value = err?.message || 'Не удалось удалить курс'
+  }
+}
+
 watch(courseId, () => {
   loadContests()
 }, { immediate: true })
@@ -301,6 +460,109 @@ watch(courseId, () => {
 
 .create-contest-btn {
   white-space: nowrap;
+}
+
+.course-header__actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.course-settings {
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border-default);
+  border-radius: 12px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.course-settings__row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.participants__title {
+  margin: 0 0 8px;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.participants__list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0;
+  margin: 0;
+}
+
+.participants__item {
+  list-style: none;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  background: var(--color-bg-default);
+  border: 1px solid var(--color-border-default);
+  border-radius: 10px;
+}
+
+.participants__meta {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.participants__name {
+  font-weight: 600;
+}
+
+.participants__role {
+  font-size: 12px;
+  color: var(--color-text-muted);
+  border: 1px solid var(--color-border-default);
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
+.participants__actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.participants__btn {
+  border: 1px solid var(--color-border-default);
+  background: #fff;
+  padding: 6px 10px;
+  border-radius: 10px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.participants__btn--danger {
+  border-color: var(--color-border-danger);
+  color: var(--color-text-danger);
+}
+
+.participants__add {
+  display: grid;
+  grid-template-columns: 1fr 150px auto;
+  gap: 10px;
+  align-items: center;
+}
+
+@media (max-width: 700px) {
+  .participants__add {
+    grid-template-columns: 1fr;
+  }
 }
 
 .state {

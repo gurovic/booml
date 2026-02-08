@@ -91,6 +91,21 @@ class CreateContestViewTests(TestCase):
         self.assertEqual(response.status_code, 403)
         self.assertFalse(Contest.objects.filter(title="Blocked").exists())
 
+    def test_teacher_can_create_contest(self):
+        data = {
+            "title": "Teacher contest",
+            "description": "",
+            "is_published": False,
+            "scoring": "ioi",
+        }
+        request = self.factory.post("/", data=data)
+        request.user = self.teacher
+
+        response = create_contest.__wrapped__(request, course_id=self.course.id)
+
+        self.assertEqual(response.status_code, 201)
+        self.assertTrue(Contest.objects.filter(title="Teacher contest").exists())
+
     def test_get_method_not_allowed(self):
         request = self.factory.get("/")
         request.user = self.teacher

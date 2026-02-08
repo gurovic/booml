@@ -43,14 +43,22 @@ def _build_section_tree(sections, courses):
                     "id": course.id,
                     "title": course.title,
                     "description": course.description,
+                    "is_open": course.is_open,
+                    "owner_id": course.owner_id,
+                    "owner_username": course.owner.username if course.owner_id else None,
                     "children": [],
                     "type": "course",
                 }
             )
+        is_root = section.parent_id is None and section.title in ROOT_SECTION_TITLES
         return {
             "id": section.id,
             "title": section.title,
             "description": section.description,
+            "parent_id": section.parent_id,
+            "owner_id": section.owner_id,
+            "owner_username": section.owner.username if section.owner_id else None,
+            "is_root": bool(is_root),
             "children": child_nodes,
             "type": "section",
         }
@@ -90,7 +98,7 @@ class CourseParticipantsUpdateView(generics.GenericAPIView):
     lookup_url_kwarg = "course_id"
 
     """
-    Allow section owner to add or update participants.
+    Allow course owner to add or update participants.
     """
 
     def post(self, request, *args, **kwargs):
@@ -123,8 +131,8 @@ class CourseParticipantsUpdateView(generics.GenericAPIView):
         return get_object_or_404(Course, pk=course_id)
 
     def _ensure_owner(self, user, course: Course) -> None:
-        if course.section.owner_id != user.id:
-            raise PermissionDenied("Only section owner can manage course participants")
+        if course.owner_id != user.id:
+            raise PermissionDenied("Only course owner can manage course participants")
 
 
 class CourseTreeView(APIView):
@@ -140,8 +148,8 @@ class CourseTreeView(APIView):
         if not request.user.is_authenticated:
             return Response([])
 
-        sections = list(Section.objects.select_related("parent").all())
-        courses_qs = Course.objects.select_related("section").all()
+        sections = list(Section.objects.select_related("parent", "owner").all())
+        courses_qs = Course.objects.select_related("section", "owner").all()
         is_admin = request.user.is_staff or request.user.is_superuser
         if not is_admin:
             courses_qs = courses_qs.filter(
@@ -199,8 +207,8 @@ class CourseSelfEnrollView(generics.GenericAPIView):
 
     def post(self, request, *args, **kwargs):
         course = self.get_course()
-        if course.section.owner_id != request.user.id:
-            raise PermissionDenied("Only section owner can add participants.")
+        if course.owner_id != request.user.id:
+            raise PermissionDenied("Only course owner can add participants.")
 
         if CourseParticipant.objects.filter(course=course, user=request.user).exists():
             return Response({"detail": "User already enrolled."}, status=400)

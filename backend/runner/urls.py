@@ -37,6 +37,7 @@ from .views.contest_draft import (
 )
 from .views.contest_leaderboard import contest_problem_leaderboard
 from .views.course import course_contests, course_detail
+from .views.course import update_course, delete_course, update_course_participants, remove_course_participants
 from .views.run_code import run_code
 from .views.list_of_problems_polygon import problem_list_polygon
 from .views.create_problem_polygon import create_problem_polygon
@@ -66,6 +67,10 @@ urlpatterns = [
     path("problems/", problem_list, name="problem_list"),
     path('course/<int:course_id>/', course_detail, name='course_detail'),
     path('course/<int:course_id>/contests/', course_contests, name='course_contests'),
+    path('backend/course/<int:course_id>/update/', update_course, name='backend_course_update'),
+    path('backend/course/<int:course_id>/delete/', delete_course, name='backend_course_delete'),
+    path('backend/course/<int:course_id>/participants/update/', update_course_participants, name='backend_course_participants_update'),
+    path('backend/course/<int:course_id>/participants/remove/', remove_course_participants, name='backend_course_participants_remove'),
     path('contest/', list_contests, name='contest_list'),
     path('contest/<int:contest_id>/', contest_detail, name='contest_detail'),
     path('contest/<int:contest_id>/leaderboard/', contest_problem_leaderboard, name='contest_problem_leaderboard'),
