@@ -11,10 +11,13 @@ from .models import (
     Section,
     Course,
     CourseParticipant,
+    FavoriteCourse,
     PreValidation,
     Leaderboard,
     ProblemDescriptor,
-    Tag
+    Tag,
+    ContestProblem,
+    SiteUpdate,
 )
 
 @admin.register(Report)  # Регистрируем модель в админке
@@ -71,6 +74,14 @@ class CellAdmin(admin.ModelAdmin):
     search_fields = ("notebook__title",)
 
 
+class ContestProblemInline(admin.TabularInline):
+    model = ContestProblem
+    extra = 0
+    autocomplete_fields = ("problem",)
+    ordering = ("position", "id")
+    fields = ("problem", "position")
+
+
 @admin.register(Contest)
 class ContestAdmin(admin.ModelAdmin):
     list_display = (
@@ -91,7 +102,8 @@ class ContestAdmin(admin.ModelAdmin):
     )
     list_filter = ("is_published", "approval_status", "access_type", "is_rated", "scoring", "registration_type", "status", "course")
     search_fields = ("title", "course__title", "created_by__username", "source")
-    filter_horizontal = ("problems", "allowed_participants")
+    inlines = (ContestProblemInline,)
+    filter_horizontal = ("allowed_participants",)
     list_editable = ("is_published", "approval_status", "access_type")
 
     def save_model(self, request, obj, form, change):
@@ -156,6 +168,20 @@ class CourseParticipantAdmin(admin.ModelAdmin):
     list_display = ("id", "course", "user", "role", "is_owner", "added_at")
     list_filter = ("role", "is_owner")
     search_fields = ("course__title", "user__username")
+
+@admin.register(FavoriteCourse)
+class FavoriteCourseAdmin(admin.ModelAdmin):
+    list_display = ("id", "user", "course", "position", "created_at")
+    list_filter = ("created_at",)
+    search_fields = ("user__username", "course__title")
+    ordering = ("user_id", "position", "id")
+
+@admin.register(SiteUpdate)
+class SiteUpdateAdmin(admin.ModelAdmin):
+    list_display = ("id", "title", "is_published", "created_at")
+    list_filter = ("is_published", "created_at")
+    search_fields = ("title", "body")
+    ordering = ("-created_at",)
 
 @admin.register(Tag)
 class TagAdmin(admin.ModelAdmin):

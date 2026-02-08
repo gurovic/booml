@@ -56,6 +56,33 @@ export async function addProblemToContest(contestId, problemId) {
   }
 }
 
+export async function bulkAddProblemsToContest(contestId, problemIds = []) {
+  try {
+    return await apiPost(`backend/contest/${contestId}/problems/bulk_add/`, { problem_ids: problemIds })
+  } catch (err) {
+    console.error('Failed to bulk add problems to contest.', err)
+    throw err
+  }
+}
+
+export async function reorderContestProblems(contestId, problemIds = []) {
+  try {
+    return await apiPost(`backend/contest/${contestId}/problems/reorder/`, { problem_ids: problemIds })
+  } catch (err) {
+    console.error('Failed to reorder contest problems.', err)
+    throw err
+  }
+}
+
+export async function removeProblemFromContest(contestId, problemId) {
+  try {
+    return await apiPost(`backend/contest/${contestId}/problems/remove/`, { problem_id: problemId })
+  } catch (err) {
+    console.error('Failed to remove problem from contest.', err)
+    throw err
+  }
+}
+
 export async function deleteContest(contestId) {
   try {
     return await apiPost(`backend/contest/${contestId}/delete/`, {})

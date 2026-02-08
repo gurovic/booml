@@ -1,4 +1,5 @@
 from django import forms
+from django.db.models import Max
 from ..models import Contest
 
 
@@ -34,6 +35,15 @@ class ContestForm(forms.ModelForm):
             contest.created_by = created_by
         elif contest.created_by_id is None and commit:
             raise ValueError("created_by is required to save contest")
+
+        # Append new contests to the end of the course list by default.
+        if contest.pk is None and course_value is not None:
+            max_pos = (
+                Contest.objects.filter(course=course_value)
+                .aggregate(Max("position"))
+                .get("position__max")
+            )
+            contest.position = (max_pos + 1) if max_pos is not None else 0
         if commit:
             contest.save()
             self.save_m2m()

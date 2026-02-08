@@ -95,6 +95,26 @@
             :items="contestItems"
           >
             <template #action="{ item }">
+              <div v-if="canReorderContests" class="contest-order-actions">
+                <button
+                  class="contest-order-btn"
+                  type="button"
+                  title="Вверх"
+                  :disabled="isFirstContest(item)"
+                  @click.stop.prevent="moveContest(item, -1)"
+                >
+                  ↑
+                </button>
+                <button
+                  class="contest-order-btn"
+                  type="button"
+                  title="Вниз"
+                  :disabled="isLastContest(item)"
+                  @click.stop.prevent="moveContest(item, 1)"
+                >
+                  ↓
+                </button>
+              </div>
               <button
                 v-if="canDeleteContestItem(item)"
                 class="contest-delete-btn"
@@ -226,6 +246,10 @@ const canCreateContest = computed(() => {
   return !!course.value.can_create_contest
 })
 
+const canReorderContests = computed(() => {
+  return canCreateContest.value && Array.isArray(contests.value) && contests.value.length > 1
+})
+
 const canManageCourse = computed(() => {
   if (!userStore.currentUser || !course.value) return false
   return !!course.value.can_manage_course
@@ -334,6 +358,38 @@ const canDeleteContestItem = (item) => {
   const me = userStore.currentUser?.id
   if (!me) return false
   return Number(item?.created_by_id) === Number(me)
+}
+
+const _contestIndex = (contestId) => {
+  const list = Array.isArray(contests.value) ? contests.value : []
+  return list.findIndex(c => Number(c?.id) === Number(contestId))
+}
+
+const isFirstContest = (item) => _contestIndex(item?.id) <= 0
+const isLastContest = (item) => {
+  const list = Array.isArray(contests.value) ? contests.value : []
+  const idx = _contestIndex(item?.id)
+  return idx < 0 || idx >= list.length - 1
+}
+
+const moveContest = async (item, delta) => {
+  const list = Array.isArray(contests.value) ? [...contests.value] : []
+  const idx = list.findIndex(c => Number(c?.id) === Number(item?.id))
+  const next = idx + delta
+  if (idx < 0 || next < 0 || next >= list.length) return
+
+  const tmp = list[idx]
+  list[idx] = list[next]
+  list[next] = tmp
+  contests.value = list
+
+  try {
+    await courseApi.reorderCourseContests(courseId.value, list.map(c => c.id))
+  } catch (err) {
+    console.error('Failed to reorder contests:', err)
+    error.value = err?.message || 'Не удалось поменять порядок контестов'
+    await loadContests()
+  }
 }
 
 const deleteContest = async (item) => {
@@ -599,6 +655,26 @@ watch(courseId, () => {
   font-size: 13px;
   cursor: pointer;
   transition: filter 0.15s ease, background 0.15s ease;
+}
+
+.contest-order-actions {
+  display: inline-flex;
+  gap: 6px;
+  margin-right: 8px;
+}
+
+.contest-order-btn {
+  border: 1px solid var(--color-border-default);
+  background: rgba(255, 255, 255, 0.65);
+  padding: 6px 10px;
+  border-radius: 10px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.contest-order-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .contest-delete-btn:hover {

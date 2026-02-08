@@ -5,7 +5,7 @@ from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from ...models import Course, CourseParticipant, Section
+from ...models import Course, CourseParticipant, FavoriteCourse, Section
 from ...services import add_users_to_course
 from ...services.section_service import ROOT_SECTION_TITLES
 from ..serializers import (
@@ -18,7 +18,7 @@ from ..serializers import (
 )
 
 
-def _build_section_tree(sections, courses):
+def _build_section_tree(sections, courses, favorite_positions=None):
     sections_by_parent = {}
     for section in sections:
         sections_by_parent.setdefault(section.parent_id, []).append(section)
@@ -38,6 +38,9 @@ def _build_section_tree(sections, courses):
         for child in sort_sections(sections_by_parent.get(section.id, [])):
             child_nodes.append(build(child))
         for course in sort_courses(courses_by_section.get(section.id, [])):
+            fav_pos = None
+            if favorite_positions is not None:
+                fav_pos = favorite_positions.get(course.id)
             child_nodes.append(
                 {
                     "id": course.id,
@@ -46,6 +49,8 @@ def _build_section_tree(sections, courses):
                     "is_open": course.is_open,
                     "owner_id": course.owner_id,
                     "owner_username": course.owner.username if course.owner_id else None,
+                    "is_favorite": fav_pos is not None,
+                    "favorite_position": fav_pos,
                     "children": [],
                     "type": "course",
                 }
@@ -160,6 +165,14 @@ class CourseTreeView(APIView):
             ).distinct()
         courses = list(courses_qs)
 
+        favorite_positions = {}
+        if request.user.is_authenticated:
+            favorite_positions = dict(
+                FavoriteCourse.objects.filter(
+                    user=request.user, course_id__in=[course.id for course in courses]
+                ).values_list("course_id", "position")
+            )
+
         if not is_admin:
             section_parent = {section.id: section.parent_id for section in sections}
             allowed_section_ids = {section.id for section in sections if section.parent_id is None}
@@ -181,7 +194,7 @@ class CourseTreeView(APIView):
                     current_id = section_parent.get(current_id)
             sections = [section for section in sections if section.id in allowed_section_ids]
 
-        tree = _build_section_tree(sections, courses)
+        tree = _build_section_tree(sections, courses, favorite_positions=favorite_positions)
         return Response(tree)
 
 

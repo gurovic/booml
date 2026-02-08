@@ -19,5 +19,12 @@ from .courses import (
     CourseTreeView,
     SectionCreateView,
 )
+from .home import (
+    HomeSidebarView,
+    FavoriteCoursesListView,
+    FavoriteCoursesAddView,
+    FavoriteCoursesRemoveView,
+    FavoriteCoursesReorderView,
+)
 from .run_cell import RunCellView
 from .run_cell_stream import RunCellStreamStartView, RunCellStreamStatusView

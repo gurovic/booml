@@ -52,3 +52,7 @@ export async function updateCourseParticipants(courseId, { teacherUsernames = []
 export async function removeCourseParticipants(courseId, usernames = []) {
   return await apiPost(`backend/course/${courseId}/participants/remove/`, { usernames })
 }
+
+export async function reorderCourseContests(courseId, contestIds = []) {
+  return await apiPost(`backend/course/${courseId}/contests/reorder/`, { contest_ids: contestIds })
+}

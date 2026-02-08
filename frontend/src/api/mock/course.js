@@ -205,3 +205,7 @@ export function updateCourseParticipants(courseId, payload) {
 export function removeCourseParticipants(courseId, usernames) {
   return Promise.resolve({ course_id: Number(courseId), removed: usernames || [] })
 }
+
+export function reorderCourseContests(courseId, contestIds) {
+  return Promise.resolve({ course_id: Number(courseId), contest_ids: contestIds || [] })
+}
