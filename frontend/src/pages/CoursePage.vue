@@ -19,7 +19,7 @@
           </div>
           
           <UiLinkList
-            :title="'Контесты'"
+            title="Контесты"
             :items="contestItems"
           />
           <p v-if="!contestItems.length" class="note">This course has no contests yet.</p>

@@ -48,7 +48,7 @@
         <div class="dialog__body">
           <div v-if="loadingProblems" class="dialog-loading">Загрузка задач...</div>
           <div v-else-if="availableProblems.length === 0" class="dialog-empty">
-            <p>У вас нет задач. Создайте задачу в <router-link to="/polygon">Полигоне</router-link>.</p>
+            <p>У вас нет задач. Создайте задачу в <router-link :to="{ name: 'polygon' }">Полигоне</router-link>.</p>
           </div>
           <div v-else class="problem-list">
             <div
