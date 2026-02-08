@@ -168,3 +168,23 @@ export async function addProblemToContest(contestId, problemId) {
     problems_count: 1,
   })
 }
+
+export async function deleteContest(contestId) {
+  const numericId = Number(contestId)
+  let deleted = false
+
+  for (const key of Object.keys(mockContests)) {
+    const list = mockContests[key] || []
+    const next = list.filter(item => Number(item.id) !== numericId)
+    if (next.length !== list.length) {
+      mockContests[key] = next
+      deleted = true
+    }
+  }
+
+  if (!deleted) {
+    return Promise.reject(new Error('Contest not found'))
+  }
+
+  return Promise.resolve({ success: true, deleted_id: numericId })
+}

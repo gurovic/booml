@@ -3,10 +3,17 @@
     <h2>{{ title }}</h2>
 
     <ul class="menu-list__items">
-      <li v-for="item in items" :key="item.text" class="menu-list__item">
+      <li
+        v-for="item in items"
+        :key="item.key || item.id || item.text"
+        class="menu-list__item"
+      >
         <router-link :to="item.route" class="menu-list__link">
           {{ item.text }}
         </router-link>
+        <div v-if="$slots.action" class="menu-list__action">
+          <slot name="action" :item="item" />
+        </div>
       </li>
     </ul>
   </div>
@@ -46,6 +53,8 @@ export default {
 }
 
 .menu-list__item {
+  display: flex;
+  align-items: center;
   background: var(--color-button-secondary);
   border-radius: 8px;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
@@ -67,5 +76,12 @@ export default {
   padding: 8px 10px;
   color: var(--color-text-primary);
   border-radius: 8px;
+  flex: 1;
+}
+
+.menu-list__action {
+  padding-right: 10px;
+  display: flex;
+  align-items: center;
 }
 </style>

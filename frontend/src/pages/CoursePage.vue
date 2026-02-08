@@ -21,7 +21,19 @@
           <UiLinkList
             title="Контесты"
             :items="contestItems"
-          />
+          >
+            <template #action="{ item }">
+              <button
+                v-if="canDeleteContestItem(item)"
+                class="contest-delete-btn"
+                type="button"
+                title="Удалить контест"
+                @click.stop.prevent="deleteContest(item)"
+              >
+                Удалить
+              </button>
+            </template>
+          </UiLinkList>
           <p v-if="!contestItems.length" class="note">This course has no contests yet.</p>
         </template>
       </section>
@@ -144,8 +156,10 @@ const contestItems = computed(() => {
   return list
     .filter(contest => contest?.id != null)
     .map(contest => ({
+      id: contest.id,
       text: contest.title || `Contest ${contest.id}`,
       route: { name: 'contest', params: { id: contest.id }},
+      created_by_id: contest.created_by_id,
     }))
 })
 
@@ -224,6 +238,27 @@ const createContest = async () => {
   }
 }
 
+const canDeleteContestItem = (item) => {
+  const me = userStore.currentUser?.id
+  if (!me) return false
+  return Number(item?.created_by_id) === Number(me)
+}
+
+const deleteContest = async (item) => {
+  const contestId = item?.id
+  if (!contestId) return
+  const title = item?.text || `Contest ${contestId}`
+  if (!confirm(`Удалить контест "${title}"? Это действие необратимо.`)) return
+
+  try {
+    await contestApi.deleteContest(contestId)
+    await loadContests()
+  } catch (err) {
+    console.error('Failed to delete contest:', err)
+    error.value = err?.message || 'Не удалось удалить контест'
+  }
+}
+
 watch(courseId, () => {
   loadContests()
 }, { immediate: true })
@@ -290,6 +325,22 @@ watch(courseId, () => {
   border: 1px solid var(--color-border-light);
   font-size: 14px;
   color: var(--color-text-muted);
+}
+
+.contest-delete-btn {
+  border: 1px solid var(--color-border-danger);
+  color: var(--color-text-danger);
+  background: rgba(255, 255, 255, 0.65);
+  padding: 6px 10px;
+  border-radius: 10px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: filter 0.15s ease, background 0.15s ease;
+}
+
+.contest-delete-btn:hover {
+  filter: brightness(0.98);
+  background: rgba(255, 255, 255, 0.9);
 }
 
 /* Dialog styles */

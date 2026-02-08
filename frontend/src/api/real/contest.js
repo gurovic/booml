@@ -38,7 +38,8 @@ export async function getContestLeaderboard(contestId) {
 
 export async function createContest(courseId, contestData) {
   try {
-    return await apiPost(`contest/${courseId}/new/`, contestData)
+    // Use /backend/* so Vue devServer proxy forwards to Django backend.
+    return await apiPost(`backend/contest/${courseId}/new/`, contestData)
   } catch (err) {
     console.error('Failed to create contest.', err)
     throw err
@@ -47,9 +48,19 @@ export async function createContest(courseId, contestData) {
 
 export async function addProblemToContest(contestId, problemId) {
   try {
-    return await apiPost(`contest/${contestId}/problems/add/`, { problem_id: problemId })
+    // Use /backend/* so Vue devServer proxy forwards to Django backend.
+    return await apiPost(`backend/contest/${contestId}/problems/add/`, { problem_id: problemId })
   } catch (err) {
     console.error('Failed to add problem to contest.', err)
+    throw err
+  }
+}
+
+export async function deleteContest(contestId) {
+  try {
+    return await apiPost(`backend/contest/${contestId}/delete/`, {})
+  } catch (err) {
+    console.error('Failed to delete contest.', err)
     throw err
   }
 }

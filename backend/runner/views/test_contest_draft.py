@@ -5,7 +5,7 @@ from django.test import RequestFactory, TestCase
 
 from runner.models import Contest, Course, CourseParticipant, Section
 from runner.services.section_service import SectionCreateInput, create_section
-from runner.views.contest_draft import create_contest
+from runner.views.contest_draft import create_contest, delete_contest
 
 User = get_user_model()
 
@@ -98,3 +98,46 @@ class CreateContestViewTests(TestCase):
         response = create_contest.__wrapped__(request, course_id=self.course.id)
 
         self.assertEqual(response.status_code, 405)
+
+
+class DeleteContestViewTests(TestCase):
+    def setUp(self):
+        self.factory = RequestFactory()
+        self.owner = User.objects.create_user(username="owner", password="pass")
+        self.other_owner = User.objects.create_user(username="other_owner", password="pass")
+        self.root_section = Section.objects.get(title="Авторские", parent__isnull=True)
+        self.section = create_section(
+            SectionCreateInput(
+                title="Owner Section",
+                owner=self.owner,
+                parent=self.root_section,
+            )
+        )
+        self.course = Course.objects.create(
+            title="Course A",
+            owner=self.owner,
+            section=self.section,
+        )
+        self.contest = Contest.objects.create(
+            course=self.course,
+            title="To delete",
+            created_by=self.owner,
+        )
+
+    def test_creator_can_delete(self):
+        request = self.factory.post("/")
+        request.user = self.owner
+
+        response = delete_contest.__wrapped__(request, contest_id=self.contest.id)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Contest.objects.filter(id=self.contest.id).exists())
+
+    def test_non_creator_forbidden(self):
+        request = self.factory.post("/")
+        request.user = self.other_owner
+
+        response = delete_contest.__wrapped__(request, contest_id=self.contest.id)
+
+        self.assertEqual(response.status_code, 403)
+        self.assertTrue(Contest.objects.filter(id=self.contest.id).exists())
