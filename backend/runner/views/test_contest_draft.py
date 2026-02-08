@@ -156,3 +156,13 @@ class DeleteContestViewTests(TestCase):
 
         self.assertEqual(response.status_code, 403)
         self.assertTrue(Contest.objects.filter(id=self.contest.id).exists())
+
+    def test_admin_can_delete(self):
+        admin = User.objects.create_user(username="admin", password="pass", is_staff=True)
+        request = self.factory.post("/")
+        request.user = admin
+
+        response = delete_contest.__wrapped__(request, contest_id=self.contest.id)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Contest.objects.filter(id=self.contest.id).exists())

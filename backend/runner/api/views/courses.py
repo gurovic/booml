@@ -199,7 +199,7 @@ class SectionCreateView(generics.CreateAPIView):
 
 class CourseSelfEnrollView(generics.GenericAPIView):
     """
-    Allow section owner to ensure they are enrolled.
+    Allow course owner to ensure they are enrolled.
     Returns 400 if user already enrolled.
     """
     permission_classes = [permissions.IsAuthenticated]

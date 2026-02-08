@@ -90,20 +90,32 @@ def list_contests(request):
     except (TypeError, ValueError):
         return JsonResponse({"detail": "course_id must be an integer"}, status=400)
 
+    # Avoid N+1 queries for course/creator fields in the response.
     contests = (
-        Contest.objects.select_related("course__section")
+        Contest.objects.select_related("created_by", "course__section", "course__owner")
         .annotate(problems_count=Count("problems"))
         .order_by("-created_at")
     )
     if course_filter is not None:
         contests = contests.filter(course_id=course_filter)
 
+    is_admin = request.user.is_staff or request.user.is_superuser
+    teacher_course_ids: set[int] = set()
+    if not is_admin:
+        teacher_course_ids |= set(
+            Course.objects.filter(owner=request.user).values_list("id", flat=True)
+        )
+        teacher_course_ids |= set(
+            CourseParticipant.objects.filter(
+                user=request.user, role=CourseParticipant.Role.TEACHER
+            ).values_list("course_id", flat=True)
+        )
+
     visible = []
     for contest in contests:
         if contest.course is None or not contest.is_visible_to(request.user):
             continue
-        is_teacher = _course_is_teacher(contest.course, request.user)
-        is_admin = request.user.is_staff or request.user.is_superuser
+        is_teacher = is_admin or contest.course_id in teacher_course_ids
         visible.append(
             {
                 "id": contest.id,
@@ -138,12 +150,14 @@ def delete_contest(request, contest_id):
         return JsonResponse({"detail": "Method not allowed"}, status=405)
 
     contest = get_object_or_404(
-        Contest.objects.select_related("course__section"),
+        Contest.objects.select_related("course__section", "course__owner", "created_by"),
         pk=contest_id,
     )
 
-    # Only the teacher who created the contest can delete it.
-    if contest.created_by_id != request.user.id:
+    is_admin = request.user.is_staff or request.user.is_superuser
+    # Default rule: only the contest creator can delete.
+    # Admin override: staff/superuser can delete any contest.
+    if not is_admin and contest.created_by_id != request.user.id:
         return JsonResponse({"detail": "Only contest creator can delete this contest"}, status=403)
 
     contest.delete()
@@ -164,10 +178,10 @@ def contest_detail(request, contest_id):
     if not contest.is_visible_to(request.user):
         return JsonResponse({"detail": "Forbidden"}, status=403)
 
-    is_owner = contest.course.owner_id == request.user.id
     is_admin = request.user.is_staff or request.user.is_superuser
+    can_manage = bool(_course_is_teacher(contest.course, request.user) or is_admin)
     allowed_participants = []
-    if _course_is_teacher(contest.course, request.user) or is_admin:
+    if can_manage:
         allowed_participants = list(
             contest.allowed_participants.values("id", "username")
         )
@@ -191,7 +205,7 @@ def contest_detail(request, contest_id):
             "is_published": contest.is_published,
             "access_type": contest.access_type,
             "access_token": contest.access_token
-            if (is_owner or is_admin) and contest.access_type == Contest.AccessType.LINK
+            if can_manage and contest.access_type == Contest.AccessType.LINK
             else None,
             "approval_status": contest.approval_status,
             "status": contest.status,
@@ -205,7 +219,7 @@ def contest_detail(request, contest_id):
             "problems": problems,
             "leaderboards": leaderboards,
             "overall_leaderboard": overall_leaderboard,
-            "can_manage": bool(_course_is_teacher(contest.course, request.user) or is_admin),
+            "can_manage": can_manage,
             "course_owner_id": contest.course.owner_id,
         },
         status=200,

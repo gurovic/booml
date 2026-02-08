@@ -100,11 +100,11 @@ def course_contests(request, course_id):
         .annotate(problems_count=Count("problems"))
         .order_by("-created_at")
     )
+    is_teacher = _course_is_teacher(course, request.user)
     items = []
     for contest in contests:
         if not contest.is_visible_to(request.user):
             continue
-        is_teacher = _course_is_teacher(course, request.user)
         items.append(
             {
                 "id": contest.id,

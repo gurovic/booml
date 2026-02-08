@@ -1,8 +1,8 @@
-# Contest Creation Feature - Implementation Summary
+# Course & Contest Management - Implementation Summary
 
 ## Overview
 
-Successfully implemented the contest creation and management feature for teachers in the Booml platform. This feature allows teachers (section owners) to create contests within their courses and add problems to those contests.
+Implemented course/section creation entry points in the UI, plus course-based permission model for contest management. Course teachers (owner + assigned teachers) can create and manage contests within their courses; course owners can manage course settings and participants.
 
 ## What Was Implemented
 
@@ -21,17 +21,19 @@ Successfully implemented the contest creation and management feature for teacher
    - Filters out problems already in the contest
 
 3. **Access Control**
-   - Only section owners can create and manage contests
-   - Backend authorization checks on all endpoints
-   - Frontend UI elements conditionally rendered based on permissions
+   - Course owner: can manage course settings and participants
+   - Course teachers: can create/manage contests inside the course
+   - Students: can view only approved & published contests (per contest visibility rules)
+   - Backend authorization checks on endpoints + frontend conditionally renders UI by permission flags
 
 ## Technical Implementation
 
 ### Backend Changes (Django)
 
 **Modified Files:**
-- `backend/runner/views/course.py` - Added `section_owner_id` to course API
-- `backend/runner/views/contest_draft.py` - Added ownership info to contest API
+- `backend/runner/views/course.py` - Course settings + participant management endpoints; permission flags in payload
+- `backend/runner/views/contest_draft.py` - Course-teacher-based contest management; contest deletion; JSON handling
+- `backend/runner/api/views/courses.py` - Course tree payload enriched for UI creation flow
 
 **API Endpoints Used:**
 - `POST /contest/{course_id}/new/` - Create contest
@@ -82,12 +84,12 @@ Successfully implemented the contest creation and management feature for teacher
 ### Access Control Pattern
 ```python
 # Backend
-if course.section.owner_id != request.user.id:
-    return JsonResponse({"detail": "Forbidden"}, status=403)
+if course.owner_id != request.user.id:
+    return JsonResponse({"detail": "Only course owner can manage"}, status=403)
 
 # Frontend
 const canCreateContest = computed(() => {
-  return course.value.section_owner_id === userStore.currentUser.id
+  return !!course.value.can_create_contest
 })
 ```
 

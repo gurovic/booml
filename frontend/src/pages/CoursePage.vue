@@ -171,7 +171,7 @@
           <button 
             class="button button--primary" 
             @click="createContest"
-            :disabled="isCreating || !newContest.title"
+            :disabled="isCreating || !newContest.title.trim()"
           >
             {{ isCreating ? 'Создание...' : 'Создать' }}
           </button>
@@ -292,7 +292,8 @@ const closeCreateDialog = () => {
 }
 
 const createContest = async () => {
-  if (!newContest.value.title.trim()) {
+  const title = newContest.value.title.trim()
+  if (!title) {
     createError.value = 'Название контеста обязательно'
     return
   }
@@ -302,7 +303,7 @@ const createContest = async () => {
   
   try {
     const contestData = {
-      title: newContest.value.title,
+      title,
       description: newContest.value.description,
       scoring: newContest.value.scoring,
       is_published: newContest.value.is_published,
