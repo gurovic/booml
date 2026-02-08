@@ -154,6 +154,8 @@ def contest_detail(request, contest_id):
             "problems": problems,
             "leaderboards": leaderboards,
             "overall_leaderboard": overall_leaderboard,
+            "is_owner": is_owner,
+            "section_owner_id": contest.course.section.owner_id,
         },
         status=200,
     )
