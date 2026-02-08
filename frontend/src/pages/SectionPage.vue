@@ -8,6 +8,15 @@
           <p v-if="section.description" class="section-description">{{ section.description }}</p>
         </div>
 
+        <div v-if="canCreateInSection" class="section-actions">
+          <button class="button button--primary" type="button" @click="showCreateCourseDialog = true">
+            Создать курс
+          </button>
+          <button class="button button--secondary" type="button" @click="showCreateSectionDialog = true">
+            Создать раздел
+          </button>
+        </div>
+
         <div v-if="hasChildren" class="section-content">
           <ul class="course-list">
             <li
@@ -50,6 +59,88 @@
         </div>
       </div>
 
+      <!-- Create Course Dialog -->
+      <div v-if="showCreateCourseDialog" class="dialog-overlay" @click="closeDialogs">
+        <div class="dialog" @click.stop>
+          <div class="dialog__header">
+            <h2 class="dialog__title">Создать курс</h2>
+            <button class="dialog__close" @click="closeDialogs">×</button>
+          </div>
+          <div class="dialog__body">
+            <div class="form-group">
+              <label class="form-label">Название курса *</label>
+              <input
+                v-model="newCourse.title"
+                type="text"
+                class="form-input"
+                placeholder="Введите название"
+                @keyup.enter="createCourse"
+              />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Описание</label>
+              <textarea
+                v-model="newCourse.description"
+                class="form-textarea"
+                placeholder="Описание курса (необязательно)"
+                rows="4"
+              ></textarea>
+            </div>
+            <div class="form-group">
+              <label class="form-checkbox">
+                <input type="checkbox" v-model="newCourse.is_open" />
+                <span>Открытый курс (виден всем)</span>
+              </label>
+            </div>
+            <div v-if="createError" class="form-error">{{ createError }}</div>
+          </div>
+          <div class="dialog__footer">
+            <button class="button button--secondary" @click="closeDialogs">Отмена</button>
+            <button class="button button--primary" @click="createCourse" :disabled="isCreating || !newCourse.title.trim()">
+              {{ isCreating ? 'Создание...' : 'Создать' }}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Create Section Dialog -->
+      <div v-if="showCreateSectionDialog" class="dialog-overlay" @click="closeDialogs">
+        <div class="dialog" @click.stop>
+          <div class="dialog__header">
+            <h2 class="dialog__title">Создать раздел</h2>
+            <button class="dialog__close" @click="closeDialogs">×</button>
+          </div>
+          <div class="dialog__body">
+            <div class="form-group">
+              <label class="form-label">Название раздела *</label>
+              <input
+                v-model="newSection.title"
+                type="text"
+                class="form-input"
+                placeholder="Введите название"
+                @keyup.enter="createSubsection"
+              />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Описание</label>
+              <textarea
+                v-model="newSection.description"
+                class="form-textarea"
+                placeholder="Описание раздела (необязательно)"
+                rows="4"
+              ></textarea>
+            </div>
+            <div v-if="createError" class="form-error">{{ createError }}</div>
+          </div>
+          <div class="dialog__footer">
+            <button class="button button--secondary" @click="closeDialogs">Отмена</button>
+            <button class="button button--primary" @click="createSubsection" :disabled="isCreating || !newSection.title.trim()">
+              {{ isCreating ? 'Создание...' : 'Создать' }}
+            </button>
+          </div>
+        </div>
+      </div>
+
       <div v-else-if="loading" class="section-card">
         <p>Загрузка...</p>
       </div>
@@ -66,15 +157,33 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { courseApi } from '@/api'
 import UiHeader from '@/components/ui/UiHeader.vue'
+import { useUserStore } from '@/stores/UserStore'
 
 const route = useRoute()
 const router = useRouter()
+const userStore = useUserStore()
 const id = computed(() => route.params.id)
 
 const courses = ref([])
 const section = ref(null)
 const loading = ref(true)
 const openNested = ref({})
+
+const showCreateCourseDialog = ref(false)
+const showCreateSectionDialog = ref(false)
+const isCreating = ref(false)
+const createError = ref('')
+
+const newCourse = ref({
+  title: '',
+  description: '',
+  is_open: false,
+})
+
+const newSection = ref({
+  title: '',
+  description: '',
+})
 
 const hasChildrenItems = item => Array.isArray(item?.children) && item.children.length > 0
 
@@ -89,6 +198,14 @@ const orderedChildren = computed(() => {
     ...list.filter(item => hasChildrenItems(item)),
     ...list.filter(item => !hasChildrenItems(item)),
   ]
+})
+
+const isAuthorized = computed(() => !!userStore.currentUser)
+
+const canCreateInSection = computed(() => {
+  if (!isAuthorized.value || !section.value) return false
+  if (section.value.is_root) return true
+  return Number(section.value.owner_id) === Number(userStore.currentUser.id)
 })
 
 const isNestedOpen = nestedId => !!openNested.value[String(nestedId)]
@@ -131,6 +248,72 @@ const load = async () => {
   }
 }
 
+const closeDialogs = () => {
+  showCreateCourseDialog.value = false
+  showCreateSectionDialog.value = false
+  createError.value = ''
+  isCreating.value = false
+  newCourse.value = { title: '', description: '', is_open: false }
+  newSection.value = { title: '', description: '' }
+}
+
+const createCourse = async () => {
+  if (!canCreateInSection.value) return
+  const title = newCourse.value.title.trim()
+  if (!title) {
+    createError.value = 'Название курса обязательно'
+    return
+  }
+
+  isCreating.value = true
+  createError.value = ''
+  try {
+    const res = await courseApi.createCourse({
+      title,
+      description: newCourse.value.description || '',
+      is_open: !!newCourse.value.is_open,
+      section_id: Number(section.value.id),
+    })
+    closeDialogs()
+    if (res?.id) {
+      router.push({ name: 'course', params: { id: res.id }, query: { title: res.title } })
+    } else {
+      await load()
+    }
+  } catch (err) {
+    console.error('Не удалось создать курс', err)
+    createError.value = err?.message || 'Не удалось создать курс'
+  } finally {
+    isCreating.value = false
+  }
+}
+
+const createSubsection = async () => {
+  if (!canCreateInSection.value) return
+  const title = newSection.value.title.trim()
+  if (!title) {
+    createError.value = 'Название раздела обязательно'
+    return
+  }
+
+  isCreating.value = true
+  createError.value = ''
+  try {
+    await courseApi.createSection({
+      title,
+      description: newSection.value.description || '',
+      parent_id: Number(section.value.id),
+    })
+    closeDialogs()
+    await load()
+  } catch (err) {
+    console.error('Не удалось создать раздел', err)
+    createError.value = err?.message || 'Не удалось создать раздел'
+  } finally {
+    isCreating.value = false
+  }
+}
+
 onMounted(load)
 </script>
 
@@ -164,6 +347,134 @@ onMounted(load)
   padding: 6px 4px 16px;
   border-bottom: 1px solid #e5e9f1;
   margin-bottom: 16px;
+}
+
+.section-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 0 4px 16px;
+}
+
+/* Dialog styles (mirrors CoursePage/ContestPage patterns) */
+.dialog-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 16px;
+}
+
+.dialog {
+  background: var(--color-bg-card, #fff);
+  border-radius: 16px;
+  width: 100%;
+  max-width: 650px;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+}
+
+.dialog__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--color-border-default, #e0e0e0);
+}
+
+.dialog__title {
+  font-size: 20px;
+  font-weight: 600;
+  margin: 0;
+  color: var(--color-text-primary, #000);
+}
+
+.dialog__close {
+  background: none;
+  border: none;
+  font-size: 32px;
+  line-height: 1;
+  color: var(--color-text-muted, #666);
+  cursor: pointer;
+  padding: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: background 0.2s ease;
+}
+
+.dialog__close:hover {
+  background: var(--color-bg-muted, #f5f5f5);
+}
+
+.dialog__body {
+  padding: 24px;
+}
+
+.dialog__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 16px 24px;
+  border-top: 1px solid var(--color-border-default, #e0e0e0);
+}
+
+.form-group {
+  margin-bottom: 16px;
+}
+
+.form-label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-text-primary, #000);
+}
+
+.form-input,
+.form-textarea,
+.form-select {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border-default, #d0d0d0);
+  border-radius: 8px;
+  font-size: 15px;
+  font-family: inherit;
+  color: var(--color-text-primary, #000);
+  background: var(--color-bg-default, #fff);
+  transition: border-color 0.2s ease;
+}
+
+.form-textarea {
+  resize: vertical;
+  min-height: 80px;
+}
+
+.form-input:focus,
+.form-textarea:focus,
+.form-select:focus {
+  outline: none;
+  border-color: var(--color-primary, #3b82f6);
+}
+
+.form-error {
+  margin-top: 12px;
+  padding: 10px 12px;
+  background: #fee;
+  border: 1px solid #fcc;
+  border-radius: 8px;
+  color: #c33;
+  font-size: 14px;
 }
 
 .section-title {

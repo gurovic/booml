@@ -10,5 +10,6 @@ export const courseApi = useMock ? courseMock : courseReal
 export const contestApi = useMock ? contestMock : contestReal
 
 export async function getStartMessage() {
-  return apiGet('start/')
+  // Django exposes this under /backend/start/ (proxied in vue.config.js).
+  return apiGet('backend/start/')
 }
