@@ -40,6 +40,7 @@ def course_detail(request, course_id):
             "description": course.description,
             "section": course.section_id,
             "section_title": course.section.title,
+            "section_owner_id": course.section.owner_id,
             "participants": participants,
         },
         status=200,

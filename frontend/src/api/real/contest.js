@@ -1,4 +1,4 @@
-import { apiGet } from '../http'
+import { apiGet, apiPost } from '../http'
 
 export async function getContestsByCourse(courseId) {
   const params = {}
@@ -32,6 +32,35 @@ export async function getContestLeaderboard(contestId) {
     return await apiGet(`backend/contest/${contestId}/leaderboard/`)
   } catch (err) {
     console.error('Failed to load contest leaderboard.', err)
+    throw err
+  }
+}
+
+export async function createContest(courseId, contestData) {
+  try {
+    // Use /backend/* so Vue devServer proxy forwards to Django backend.
+    return await apiPost(`backend/contest/${courseId}/new/`, contestData)
+  } catch (err) {
+    console.error('Failed to create contest.', err)
+    throw err
+  }
+}
+
+export async function addProblemToContest(contestId, problemId) {
+  try {
+    // Use /backend/* so Vue devServer proxy forwards to Django backend.
+    return await apiPost(`backend/contest/${contestId}/problems/add/`, { problem_id: problemId })
+  } catch (err) {
+    console.error('Failed to add problem to contest.', err)
+    throw err
+  }
+}
+
+export async function deleteContest(contestId) {
+  try {
+    return await apiPost(`backend/contest/${contestId}/delete/`, {})
+  } catch (err) {
+    console.error('Failed to delete contest.', err)
     throw err
   }
 }
