@@ -41,6 +41,7 @@ const notebookDetail = {
     filesPreview: null,
     previewRequestId: 0,
 
+
     sanitizeUrl(value) {
         if (typeof value !== 'string') {
             return '';
@@ -961,6 +962,117 @@ const notebookDetail = {
             document.addEventListener(evt, this.activityHandler, { passive: true });
         });
         this.scheduleInactivityPrompt();
+    },
+
+    initImportExport() {
+    // Инициализация импорта/экспорта
+    // Методы будут вызываться из обработчиков событий
+    },
+
+    exportNotebook() {
+    /** Экспортирует текущий ноутбук в формате .ipynb */
+    if (!this.config.notebookId) {
+        alert('ID ноутбука не найден');
+        return;
+    }
+    
+    const exportUrl = this.sanitizeUrl(this.notebookElement?.dataset.exportNotebookUrl);
+    if (!exportUrl) {
+        alert('URL экспорта недоступен');
+        return;
+    }
+    
+    // Открываем ссылку для скачивания
+    const link = document.createElement('a');
+    link.href = `${exportUrl}?notebook_id=${this.config.notebookId}`;
+    link.download = '';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    },
+
+    triggerImportFileSelect() {
+    /** Открывает диалог выбора файла для импорта */
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.ipynb,.json';
+    input.style.display = 'none';
+    
+    input.addEventListener('change', (event) => {
+        const file = event.target.files?.[0];
+        if (file) {
+            this.handleImportFile(file);
+        }
+        document.body.removeChild(input);
+    });
+    
+    document.body.appendChild(input);
+    input.click();
+},
+
+async handleImportFile(file) {
+    /** Обрабатывает загруженный файл для импорта */
+    if (!file) {
+        return;
+    }
+    
+    const importUrl = this.sanitizeUrl(this.notebookElement?.dataset.importNotebookUrl);
+    if (!importUrl) {
+        alert('URL импорта недоступен');
+        return;
+    }
+    
+    // Проверяем расширение
+    const fileName = file.name.toLowerCase();
+    if (!fileName.endsWith('.ipynb') && !fileName.endsWith('.json')) {
+        alert('Поддерживаются только .ipynb и .json файлы');
+        return;
+    }
+    
+    try {
+        const formData = new FormData();
+        formData.append('file', file);
+        
+        const response = await fetch(importUrl, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': this.config.csrfToken
+            },
+            body: formData
+        });
+        
+        const data = await response.json();
+        
+        if (!response.ok) {
+            throw new Error(data?.message || 'Ошибка импорта');
+        }
+        
+        if (data.status === 'success') {
+            alert(data.message);
+            // Перенаправляем на новый ноутбук
+            if (data.notebook_id) {
+                const redirectUrl = this.buildNotebookUrl(data.notebook_id);
+                if (redirectUrl) {
+                    window.location.href = redirectUrl;
+                } else {
+                    // Или просто перезагружаем страницу
+                    window.location.reload();
+                }
+            }
+        }
+    } catch (error) {
+        console.error('Ошибка импорта:', error);
+        alert('Ошибка импорта: ' + (error.message || error));
+    }
+    },
+
+    buildNotebookUrl(notebookId) {
+    /** Строит URL для ноутбука */
+    const template = this.notebookElement?.dataset.notebookUrlTemplate;
+    if (!template || !notebookId) {
+        return null;
+    }
+    return template.replace('{id}', notebookId);
     },
 
     markActivity() {
