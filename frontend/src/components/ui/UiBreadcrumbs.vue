@@ -118,6 +118,17 @@ const refresh = async () => {
   const list = []
   _pushHome(list)
 
+  if (name === 'courses') {
+    list.push({
+      key: 'courses',
+      label: 'Мои курсы',
+      title: 'Мои курсы',
+      to: null,
+    })
+    items.value = list
+    return
+  }
+
   let sectionId = null
   let courseId = null
   let contestId = null

@@ -45,15 +45,36 @@
               class="course-item"
             >
               <template v-if="hasChildrenItems(child)">
-                <button
-                  type="button"
-                  class="section-header section-header--inline"
-                  @click="toggleNested(child.id)"
-                  :aria-expanded="isNestedOpen(child.id)"
-                >
-                  <span class="triangle triangle--nested" :class="{ 'triangle--open': isNestedOpen(child.id) }"></span>
-                  <h2 class="course-title course-title--section">{{ child.title }}</h2>
-                </button>
+                <div class="nested-header-row">
+                  <button
+                    type="button"
+                    class="section-toggle section-toggle--nested"
+                    :disabled="!(child.children || []).length"
+                    @click="toggleNested(child.id)"
+                    :aria-expanded="isNestedOpen(child.id)"
+                    aria-label="Раскрыть/свернуть"
+                  >
+                    <span class="triangle triangle--nested" :class="{ 'triangle--open': isNestedOpen(child.id) }"></span>
+                  </button>
+                  <button
+                    type="button"
+                    class="row-link row-link--section"
+                    @click="navigateTo(child)"
+                    :title="child.title"
+                  >
+                    <span class="row-icon row-icon--section" aria-hidden="true">
+                      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path
+                          d="M3 7.5c0-1.1.9-2 2-2h5l2 2h7c1.1 0 2 .9 2 2v8.5c0 1.1-.9 2-2 2H5c-1.1 0-2-.9-2-2V7.5Z"
+                          stroke="currentColor"
+                          stroke-width="2"
+                          stroke-linejoin="round"
+                        />
+                      </svg>
+                    </span>
+                    <span class="row-text">{{ child.title }}</span>
+                  </button>
+                </div>
                 <div v-if="isNestedOpen(child.id) && (child.children || []).length" class="badge-list">
                   <div v-for="grand in child.children" :key="grand.id" class="badge-row">
                     <button
@@ -85,9 +106,37 @@
                 </div>
               </template>
               <template v-else>
-                <div class="course-row">
-                  <button type="button" class="course-link" @click="navigateTo(child)">
-                    {{ child.title }}
+                <div class="course-row" :class="child.type === 'section' ? 'course-row--section' : 'course-row--course'">
+                  <button
+                    type="button"
+                    class="row-link"
+                    :class="child.type === 'section' ? 'row-link--section' : 'row-link--course'"
+                    @click="navigateTo(child)"
+                    :title="child.title"
+                  >
+                    <span
+                      class="row-icon"
+                      :class="child.type === 'section' ? 'row-icon--section' : 'row-icon--course'"
+                      aria-hidden="true"
+                    >
+                      <svg v-if="child.type === 'section'" viewBox="0 0 24 24" width="18" height="18" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path
+                          d="M3 7.5c0-1.1.9-2 2-2h5l2 2h7c1.1 0 2 .9 2 2v8.5c0 1.1-.9 2-2 2H5c-1.1 0-2-.9-2-2V7.5Z"
+                          stroke="currentColor"
+                          stroke-width="2"
+                          stroke-linejoin="round"
+                        />
+                      </svg>
+                      <svg v-else viewBox="0 0 24 24" width="18" height="18" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path
+                          d="M6 3h11a2 2 0 0 1 2 2v14.5a1.5 1.5 0 0 1-2.34 1.25L12 17.7l-4.66 3.05A1.5 1.5 0 0 1 5 19.5V5a2 2 0 0 1 1-2Z"
+                          stroke="currentColor"
+                          stroke-width="2"
+                          stroke-linejoin="round"
+                        />
+                      </svg>
+                    </span>
+                    <span class="row-text">{{ child.title }}</span>
                   </button>
                   <button
                     v-if="isAuthorized && child.type === 'course'"
@@ -213,7 +262,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { courseApi, homeApi } from '@/api'
 import UiHeader from '@/components/ui/UiHeader.vue'
@@ -223,7 +272,7 @@ import { useUserStore } from '@/stores/UserStore'
 const route = useRoute()
 const router = useRouter()
 const userStore = useUserStore()
-const id = computed(() => route.params.id)
+const id = computed(() => Number(route.params.id))
 
 const courses = ref([])
 const section = ref(null)
@@ -307,7 +356,7 @@ const toggleNested = nestedId => {
 const navigateTo = (item) => {
   // Use the type field from API to determine route, fallback to section for non-course types
   const name = item.type === 'course' ? 'course' : 'section'
-  router.push({ name, params: { id: item.id }, query: { title: item.title } })
+  router.push({ name, params: { id: Number(item.id) }, query: { title: item.title } })
 }
 
 const findSectionById = (items, targetId) => {
@@ -416,6 +465,18 @@ const createSubsection = async () => {
     isCreating.value = false
   }
 }
+
+watch(
+  () => Number(route.params.id),
+  async (next, prev) => {
+    // Component instance is reused for /section/:id; reload on param changes.
+    if (!Number.isFinite(next)) return
+    if (prev == null) return
+    if (next === prev) return
+    openNested.value = {}
+    await load()
+  }
+)
 
 onMounted(load)
 </script>
@@ -672,11 +733,60 @@ onMounted(load)
   color: inherit;
 }
 
+.nested-header-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(59, 130, 246, 0.22);
+  background: rgba(59, 130, 246, 0.06);
+}
+
+.section-toggle {
+  flex: 0 0 auto;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--color-border-default, #e5e9f1);
+  background: #fff;
+  border-radius: 10px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.section-toggle:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.section-toggle--nested {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+}
+
 .course-row {
   display: flex;
   align-items: center;
   gap: 10px;
   width: 100%;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid #e5e9f1;
+  background: #ffffff;
+}
+
+.course-row--section {
+  border-color: rgba(59, 130, 246, 0.22);
+  background: rgba(59, 130, 246, 0.06);
+}
+
+.course-row--course {
+  border-color: #e5e9f1;
+  background: #ffffff;
 }
 
 .badge-row {
@@ -707,14 +817,51 @@ onMounted(load)
   white-space: nowrap;
 }
 
-.course-link {
+.row-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
   font-size: 16px;
-  font-weight: 400;
+  font-weight: 500;
   line-height: 1.4;
   color: var(--color-text-primary);
   background: none;
-  padding: 6px 0;
+  border: none;
+  padding: 0;
   text-align: left;
+  cursor: pointer;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.row-link--section {
+  font-weight: 700;
+  color: rgba(22, 33, 89, 0.92);
+}
+
+.row-link--course {
+  font-weight: 600;
+  color: rgba(22, 33, 89, 0.92);
+}
+
+.row-icon {
+  flex: 0 0 auto;
+  color: rgba(22, 33, 89, 0.70);
+}
+
+.row-icon--section {
+  color: rgba(37, 99, 235, 0.95);
+}
+
+.row-icon--course {
+  color: rgba(22, 33, 89, 0.80);
+}
+
+.row-text {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .star-btn {
@@ -741,7 +888,7 @@ onMounted(load)
   background: rgba(251, 191, 36, 0.12);
 }
 
-.course-link:hover,
+.row-link:hover,
 .badge:hover {
   opacity: 0.9;
 }

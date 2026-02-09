@@ -1,6 +1,7 @@
 from django.urls import path
 from .views import (
     CourseCreateView,
+    CourseBrowseView,
     CourseParticipantsUpdateView,
     CourseSelfEnrollView,
     CourseTreeView,
@@ -45,6 +46,7 @@ urlpatterns = [
     path("cells/run/stream/", RunCellStreamStartView.as_view(), name="run-cell-stream-start"),
     path("cells/run/stream/status/", RunCellStreamStatusView.as_view(), name="run-cell-stream-status"),
     path("courses/", CourseCreateView.as_view(), name="course-create"),
+    path("courses/browse/", CourseBrowseView.as_view(), name="course-browse"),
     path("courses/tree/", CourseTreeView.as_view(), name="course-tree"),
     path("sections/", SectionCreateView.as_view(), name="section-create"),
     path("sections/<int:section_id>/delete/", SectionDeleteView.as_view(), name="section-delete"),

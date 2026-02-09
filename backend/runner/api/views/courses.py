@@ -1,4 +1,5 @@
-from django.db.models import Q
+from django.core.paginator import Paginator
+from django.db.models import Exists, OuterRef, Q
 from django.shortcuts import get_object_or_404
 from collections import deque
 from rest_framework import generics, permissions
@@ -222,6 +223,153 @@ class CourseTreeView(APIView):
             section_teacher_ids=section_teacher_ids,
         )
         return Response(tree)
+
+
+class CourseBrowseView(APIView):
+    """
+    Paginated course lists for the dedicated "Courses" page.
+
+    Tabs:
+    - tab=mine: for students/teachers: open courses where the user has at least one submission
+      in a contest problem of that course, plus private courses where the user is a participant.
+    - tab=admin: for teachers: courses where the user is owner or a teacher participant.
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        tab = str(request.query_params.get("tab") or "mine").strip().lower()
+        q = str(request.query_params.get("q") or "").strip()
+
+        try:
+            page = int(request.query_params.get("page") or 1)
+        except (TypeError, ValueError):
+            page = 1
+        try:
+            page_size = int(request.query_params.get("page_size") or 10)
+        except (TypeError, ValueError):
+            page_size = 10
+
+        page = max(page, 1)
+        page_size = min(max(page_size, 1), 50)
+
+        user = request.user
+        is_admin = bool(user.is_staff or user.is_superuser)
+
+        # Favorite flag for star UI.
+        fav_exists = Exists(
+            FavoriteCourse.objects.filter(user=user, course_id=OuterRef("pk"))
+        )
+
+        qs = Course.objects.select_related("section", "owner").annotate(
+            is_favorite=fav_exists
+        )
+
+        if tab == "admin":
+            if is_admin:
+                pass
+            else:
+                qs = qs.filter(
+                    Q(owner=user)
+                    | Q(
+                        participants__user=user,
+                        participants__role=CourseParticipant.Role.TEACHER,
+                    )
+                ).distinct()
+        else:
+            # mine
+            open_participated = Q(
+                is_open=True,
+                contests__problems__submissions__user=user,
+            )
+            private_invited = Q(
+                is_open=False,
+                participants__user=user,
+            )
+            qs = qs.filter(open_participated | private_invited | Q(owner=user)).distinct()
+
+        if q:
+            qs = qs.filter(title__icontains=q)
+
+        qs = qs.order_by("title", "id")
+
+        paginator = Paginator(qs, page_size)
+        page_obj = paginator.get_page(page)
+
+        page_courses = list(page_obj.object_list)
+        course_ids = [c.id for c in page_courses]
+        participant_role_by_course_id = {}
+        if course_ids:
+            participant_role_by_course_id = {
+                int(cid): role
+                for cid, role in CourseParticipant.objects.filter(
+                    user=user, course_id__in=course_ids
+                ).values_list("course_id", "role")
+            }
+
+        items = []
+        if tab == "admin":
+            teacher_ids = set()
+            if not is_admin:
+                teacher_ids = {
+                    int(cid)
+                    for cid, role in participant_role_by_course_id.items()
+                    if role == CourseParticipant.Role.TEACHER
+                }
+            for course in page_courses:
+                can_admin = bool(
+                    is_admin or course.owner_id == user.id or course.id in teacher_ids
+                )
+                items.append(
+                    self._serialize_course(
+                        course,
+                        user=user,
+                        can_admin=can_admin,
+                        participant_role=participant_role_by_course_id.get(course.id),
+                    )
+                )
+        else:
+            for course in page_courses:
+                items.append(
+                    self._serialize_course(
+                        course,
+                        user=user,
+                        can_admin=False,
+                        participant_role=participant_role_by_course_id.get(course.id),
+                    )
+                )
+
+        return Response(
+            {
+                "items": items,
+                "page": page_obj.number,
+                "page_size": page_size,
+                "total_pages": paginator.num_pages,
+                "total": paginator.count,
+            },
+            status=200,
+        )
+
+    def _serialize_course(
+        self, course: Course, *, user, can_admin: bool, participant_role=None
+    ) -> dict:
+        # Find current user's role if they are a participant (optional, for UI).
+        # Role is pre-fetched per page to avoid N+1 queries.
+        role = "owner" if course.owner_id == user.id else participant_role
+
+        return {
+            "id": course.id,
+            "title": course.title,
+            "description": course.description,
+            "is_open": course.is_open,
+            "section_id": course.section_id,
+            "section_title": course.section.title if course.section_id else None,
+            "owner_id": course.owner_id,
+            "owner_username": course.owner.username if course.owner_id else None,
+            "is_favorite": bool(getattr(course, "is_favorite", False)),
+            "role": role,
+            "can_admin": bool(can_admin),
+        }
 
 
 class SectionCreateView(generics.CreateAPIView):

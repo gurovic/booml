@@ -10,6 +10,13 @@
           <button
             type="button"
             class="header__nav-link"
+            @click="handleCoursesClick"
+          >
+            Мои курсы
+          </button>
+          <button
+            type="button"
+            class="header__nav-link"
             @click="handlePolygonClick"
           >
             Полигон
@@ -58,6 +65,12 @@ const handleHomeClick = () => {
 const handlePolygonClick = () => {
   if (router.currentRoute.value.path !== '/polygon') {
     router.push('/polygon')
+  }
+}
+
+const handleCoursesClick = () => {
+  if (router.currentRoute.value.path !== '/courses') {
+    router.push('/courses')
   }
 }
 </script>

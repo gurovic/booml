@@ -22,7 +22,7 @@
                 :to="leaderboardRoute"
                 class="button button--secondary contest-link"
               >
-                Таблица лидеров
+                Результаты
               </router-link>
             </div>
           </div>
