@@ -3,13 +3,13 @@ import uuid
 
 from django.contrib.auth import get_user_model
 from django.db import transaction
-from django.db.models import Count
+from django.db.models import Count, Max
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.utils import timezone
 
-from ..models import Contest, Course, Problem, CourseParticipant
+from ..models import Contest, Course, Problem, CourseParticipant, ContestProblem
 from ..forms.contest_draft import ContestForm
 from .contest_leaderboard import build_contest_leaderboards
 
@@ -94,7 +94,7 @@ def list_contests(request):
     contests = (
         Contest.objects.select_related("created_by", "course__section", "course__owner")
         .annotate(problems_count=Count("problems"))
-        .order_by("-created_at")
+        .order_by("position", "-created_at")
     )
     if course_filter is not None:
         contests = contests.filter(course_id=course_filter)
@@ -119,6 +119,7 @@ def list_contests(request):
         visible.append(
             {
                 "id": contest.id,
+                "position": contest.position,
                 "title": contest.title,
                 "description": contest.description,
                 "course": contest.course_id,
@@ -186,12 +187,14 @@ def contest_detail(request, contest_id):
             contest.allowed_participants.values("id", "username")
         )
 
+    problem_links = (
+        ContestProblem.objects.filter(contest_id=contest.id)
+        .select_related("problem")
+        .order_by("position", "id")
+    )
     problems = [
-        {
-            "id": problem.id,
-            "title": problem.title,
-        }
-        for problem in contest.problems.all()
+        {"id": link.problem_id, "title": link.problem.title, "position": link.position}
+        for link in problem_links
     ]
     leaderboards, overall_leaderboard = build_contest_leaderboards(contest)
 
@@ -224,6 +227,37 @@ def contest_detail(request, contest_id):
         },
         status=200,
     )
+
+
+def _bulk_add_problems(contest: Contest, problem_ids: list[int]) -> dict:
+    """
+    Add problems to contest preserving order:
+    - existing problems stay in place
+    - new problems are appended in the provided order
+    """
+    if not problem_ids:
+        return {"added": [], "already_present": []}
+
+    existing = set(
+        ContestProblem.objects.filter(contest=contest, problem_id__in=problem_ids)
+        .values_list("problem_id", flat=True)
+    )
+    to_add = [pid for pid in problem_ids if pid not in existing]
+    if not to_add:
+        return {"added": [], "already_present": sorted(existing)}
+
+    max_pos = (
+        ContestProblem.objects.filter(contest=contest)
+        .aggregate(Max("position"))
+        .get("position__max")
+    )
+    start = (max_pos + 1) if max_pos is not None else 0
+    links = [
+        ContestProblem(contest=contest, problem_id=pid, position=start + idx)
+        for idx, pid in enumerate(to_add)
+    ]
+    ContestProblem.objects.bulk_create(links)
+    return {"added": to_add, "already_present": sorted(existing)}
 
 @login_required
 def set_contest_access(request, contest_id):
@@ -451,21 +485,199 @@ def add_problem_to_contest(request, contest_id):
     except (TypeError, ValueError):
         return JsonResponse({"detail": "problem_id must be an integer"}, status=400)
 
+    # Keep backwards compatible single-add endpoint by delegating to bulk add.
+    # Return the legacy "problem" object in the response (tests + any older callers rely on it).
     problem = get_object_or_404(Problem, pk=problem_id)
-    already_attached = contest.problems.filter(pk=problem.pk).exists()
-    contest.problems.add(problem)
-
+    result = _bulk_add_problems(contest, [problem_id])
+    added = bool(result["added"])
     return JsonResponse(
         {
             "contest": contest.id,
-            "problem": {
-                "id": problem.id,
-                "title": problem.title,
-            },
-            "added": not already_attached,
-            "problems_count": contest.problems.count(),
+            "problem": {"id": problem.id, "title": problem.title},
+            "added": added,
+            "added_ids": result["added"],
+            "already_present_ids": result["already_present"],
+            "problems_count": ContestProblem.objects.filter(contest=contest).count(),
         },
-        status=201 if not already_attached else 200,
+        status=201 if added else 200,
+    )
+
+
+@login_required
+def bulk_add_problems_to_contest(request, contest_id):
+    if request.method != "POST":
+        return JsonResponse({"detail": "Method not allowed"}, status=405)
+
+    contest = get_object_or_404(
+        Contest.objects.select_related("course__section", "course__owner"),
+        pk=contest_id,
+    )
+    if contest.course is None:
+        return JsonResponse({"detail": "Contest must belong to a course"}, status=400)
+    if not _course_is_teacher(contest.course, request.user):
+        return JsonResponse({"detail": "Only course teachers can modify this contest"}, status=403)
+
+    try:
+        payload = json.loads(request.body or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"detail": "Invalid JSON payload"}, status=400)
+
+    problem_ids = payload.get("problem_ids") or []
+    if not isinstance(problem_ids, list) or not problem_ids:
+        return JsonResponse({"detail": "problem_ids must be a non-empty list"}, status=400)
+    try:
+        problem_ids_int = [int(pid) for pid in problem_ids]
+    except (TypeError, ValueError):
+        return JsonResponse({"detail": "problem_ids must contain integers"}, status=400)
+
+    problems = list(Problem.objects.filter(id__in=set(problem_ids_int)))
+    if len(problems) != len(set(problem_ids_int)):
+        found = {p.id for p in problems}
+        missing = sorted(set(problem_ids_int) - found)
+        return JsonResponse({"detail": "Some problems not found", "missing": missing}, status=400)
+
+    # Preserve caller order.
+    result = _bulk_add_problems(contest, problem_ids_int)
+    return JsonResponse(
+        {
+            "contest": contest.id,
+            "added_ids": result["added"],
+            "already_present_ids": result["already_present"],
+            "problems_count": ContestProblem.objects.filter(contest=contest).count(),
+        },
+        status=200,
+    )
+
+
+@login_required
+def reorder_contest_problems(request, contest_id):
+    if request.method != "POST":
+        return JsonResponse({"detail": "Method not allowed"}, status=405)
+
+    contest = get_object_or_404(
+        Contest.objects.select_related("course__section", "course__owner"),
+        pk=contest_id,
+    )
+    if contest.course is None:
+        return JsonResponse({"detail": "Contest must belong to a course"}, status=400)
+    if not _course_is_teacher(contest.course, request.user):
+        return JsonResponse({"detail": "Only course teachers can modify this contest"}, status=403)
+
+    try:
+        payload = json.loads(request.body or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"detail": "Invalid JSON payload"}, status=400)
+
+    problem_ids = payload.get("problem_ids") or []
+    if not isinstance(problem_ids, list) or not problem_ids:
+        return JsonResponse({"detail": "problem_ids must be a non-empty list"}, status=400)
+    try:
+        problem_ids_int = [int(pid) for pid in problem_ids]
+    except (TypeError, ValueError):
+        return JsonResponse({"detail": "problem_ids must contain integers"}, status=400)
+
+    links = list(
+        ContestProblem.objects.filter(contest=contest).order_by("position", "id")
+    )
+    by_pid = {link.problem_id: link for link in links}
+    existing_order = [link.problem_id for link in links]
+
+    requested = [pid for pid in problem_ids_int if pid in by_pid]
+    if not requested:
+        return JsonResponse({"detail": "No provided problem_ids belong to this contest"}, status=400)
+
+    remaining = [pid for pid in existing_order if pid not in set(requested)]
+    new_order = requested + remaining
+
+    for idx, pid in enumerate(new_order):
+        by_pid[pid].position = idx
+    ContestProblem.objects.bulk_update([by_pid[pid] for pid in new_order], ["position"])
+
+    return JsonResponse(
+        {"contest": contest.id, "problem_ids": new_order, "problems_count": len(new_order)},
+        status=200,
+    )
+
+
+@login_required
+@transaction.atomic
+def remove_problem_from_contest(request, contest_id):
+    if request.method not in {"POST", "DELETE"}:
+        return JsonResponse({"detail": "Method not allowed"}, status=405)
+
+    contest = get_object_or_404(
+        Contest.objects.select_related("course__section", "course__owner"),
+        pk=contest_id,
+    )
+    if contest.course is None:
+        return JsonResponse({"detail": "Contest must belong to a course"}, status=400)
+    if not _course_is_teacher(contest.course, request.user):
+        return JsonResponse({"detail": "Only course teachers can modify this contest"}, status=403)
+
+    # Accept either {problem_id} or {problem_ids: []} (JSON preferred; form fallback).
+    problem_ids = None
+    if request.content_type and "application/json" in (request.content_type or "").lower():
+        try:
+            payload = json.loads(request.body or "{}")
+        except json.JSONDecodeError:
+            return JsonResponse({"detail": "Invalid JSON payload"}, status=400)
+        if isinstance(payload, dict):
+            if payload.get("problem_ids") is not None:
+                problem_ids = payload.get("problem_ids")
+            else:
+                problem_ids = payload.get("problem_id")
+    else:
+        if request.POST.getlist("problem_ids"):
+            problem_ids = request.POST.getlist("problem_ids")
+        else:
+            problem_ids = request.POST.get("problem_id")
+
+    if problem_ids in (None, "", []):
+        return JsonResponse({"detail": "problem_id or problem_ids is required"}, status=400)
+
+    if isinstance(problem_ids, list):
+        try:
+            ids = [int(x) for x in problem_ids]
+        except (TypeError, ValueError):
+            return JsonResponse({"detail": "problem_ids must contain integers"}, status=400)
+    else:
+        try:
+            ids = [int(problem_ids)]
+        except (TypeError, ValueError):
+            return JsonResponse({"detail": "problem_id must be an integer"}, status=400)
+
+    ids = [pid for pid in ids if pid is not None]
+    if not ids:
+        return JsonResponse({"detail": "No valid problem ids provided"}, status=400)
+
+    existing = set(
+        ContestProblem.objects.filter(contest=contest, problem_id__in=set(ids)).values_list(
+            "problem_id", flat=True
+        )
+    )
+    if not existing:
+        return JsonResponse({"detail": "No provided problems belong to this contest"}, status=400)
+
+    ContestProblem.objects.filter(contest=contest, problem_id__in=existing).delete()
+
+    # Re-pack positions so they remain contiguous and stable.
+    remaining_links = list(
+        ContestProblem.objects.filter(contest=contest).order_by("position", "id")
+    )
+    for idx, link in enumerate(remaining_links):
+        link.position = idx
+    if remaining_links:
+        ContestProblem.objects.bulk_update(remaining_links, ["position"])
+
+    remaining_ids = [link.problem_id for link in remaining_links]
+    return JsonResponse(
+        {
+            "contest": contest.id,
+            "removed_ids": sorted(existing),
+            "problem_ids": remaining_ids,
+            "problems_count": len(remaining_ids),
+        },
+        status=200,
     )
 
 @login_required

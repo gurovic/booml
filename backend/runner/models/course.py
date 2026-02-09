@@ -66,3 +66,34 @@ class CourseParticipant(models.Model):
 
     def __str__(self):
         return f"{self.user} in {self.course} as {self.role}"
+
+
+class FavoriteCourse(models.Model):
+    """
+    Per-user favorite courses, displayed on HomePage in a stable order.
+    """
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="favorite_courses",
+    )
+    course = models.ForeignKey(
+        Course,
+        on_delete=models.CASCADE,
+        related_name="favorited_by",
+    )
+    # Lower comes first.
+    position = models.PositiveIntegerField(default=0, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["position", "id"]
+        unique_together = ("user", "course")
+        indexes = [
+            models.Index(fields=["user", "position"], name="runner_favcourse_userpos_idx"),
+            models.Index(fields=["course", "user"], name="runner_fav_crsusr_idx"),
+        ]
+
+    def __str__(self):
+        return f"{self.user} -> {self.course}"

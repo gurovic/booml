@@ -32,6 +32,12 @@ class PolygonProblemsApiTests(TestCase):
             is_published=True,
             rating=2000
         )
+        self.other_draft = Problem.objects.create(
+            title="Other Draft",
+            author=self.other_user,
+            is_published=False,
+            rating=2100
+        )
 
     def test_list_requires_authentication(self):
         """Test that listing problems requires authentication"""
@@ -40,18 +46,19 @@ class PolygonProblemsApiTests(TestCase):
         self.assertEqual(resp.status_code, 401)
 
     def test_list_returns_only_user_problems(self):
-        """Test that list returns only problems created by the current user"""
+        """Test that list returns own problems + other users' published problems"""
         self.client.login(username="author", password="pass")
         resp = self.client.get(self.url)
         self.assertEqual(resp.status_code, 200)
         
         data = resp.json()
-        self.assertEqual(len(data), 2)
+        self.assertEqual(len(data), 3)
         
         problem_ids = [p['id'] for p in data]
         self.assertIn(self.problem1.id, problem_ids)
         self.assertIn(self.problem2.id, problem_ids)
-        self.assertNotIn(self.other_problem.id, problem_ids)
+        self.assertIn(self.other_problem.id, problem_ids)
+        self.assertNotIn(self.other_draft.id, problem_ids)
 
     def test_list_includes_all_fields(self):
         """Test that list includes required fields"""
@@ -67,7 +74,18 @@ class PolygonProblemsApiTests(TestCase):
         self.assertIn('title', problem)
         self.assertIn('rating', problem)
         self.assertIn('is_published', problem)
+        self.assertIn('author_username', problem)
         self.assertIn('created_at', problem)
+
+    def test_search_filters_by_title(self):
+        self.client.login(username="author", password="pass")
+        resp = self.client.get(self.url, {"q": "Other"})
+        self.assertEqual(resp.status_code, 200)
+
+        payload = resp.json()
+        items = payload.get("items", []) if isinstance(payload, dict) else payload
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]["id"], self.other_problem.id)
 
 
 class CreatePolygonProblemApiTests(TestCase):

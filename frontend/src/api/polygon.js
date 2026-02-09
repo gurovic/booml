@@ -1,7 +1,7 @@
 import { apiGet, apiPost } from './http'
 
-export function getPolygonProblems() {
-    return apiGet('backend/polygon/problems')
+export function getPolygonProblems(params = {}) {
+    return apiGet('backend/polygon/problems', params)
 }
 
 export function createPolygonProblem(data) {

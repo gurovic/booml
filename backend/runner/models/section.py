@@ -46,3 +46,35 @@ class Section(models.Model):
                         raise ValidationError("Section cannot reference itself in hierarchy")
                 current = current.parent
         super().clean()
+
+
+class SectionTeacher(models.Model):
+    """
+    Extra teachers (besides the owner) who can manage a section:
+    - create courses inside the section
+    - create nested sections under it
+
+    Root categories do not need explicit memberships: any teacher can create inside them.
+    """
+
+    section = models.ForeignKey(
+        Section,
+        on_delete=models.CASCADE,
+        related_name="section_teachers",
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="section_teacher_memberships",
+    )
+    added_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ("section", "user")
+        indexes = [
+            models.Index(fields=["section", "user"], name="runner_secteacher_secusr_idx"),
+            models.Index(fields=["user", "section"], name="runner_secteacher_usrsec_idx"),
+        ]
+
+    def __str__(self):
+        return f"{self.user} teacher in {self.section}"

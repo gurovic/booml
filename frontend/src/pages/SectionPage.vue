@@ -201,10 +201,12 @@ const orderedChildren = computed(() => {
 })
 
 const isAuthorized = computed(() => !!userStore.currentUser)
+const isTeacher = computed(() => String(userStore.currentUser?.role || '') === 'teacher')
 
 const canCreateInSection = computed(() => {
   if (!isAuthorized.value || !section.value) return false
-  if (section.value.is_root) return true
+  if (typeof section.value.can_manage === 'boolean') return section.value.can_manage
+  if (section.value.is_root) return isTeacher.value
   return Number(section.value.owner_id) === Number(userStore.currentUser.id)
 })
 

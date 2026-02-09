@@ -11,6 +11,8 @@ from ..models.notebook import Notebook
 from ..services import enqueue_submission_for_evaluation, validation_service
 from .submissions import submission_list, _primary_metric
 from django.http import JsonResponse
+from django.utils import timezone
+from zoneinfo import ZoneInfo
 
 
 def _report_is_valid(report) -> bool:
@@ -152,9 +154,12 @@ def problem_detail_api(request):
 
         for submission in raw_submissions:
             metric_value = _primary_metric(submission.metrics)
+            submitted = submission.submitted_at
+            if submitted:
+                submitted = timezone.localtime(submitted, ZoneInfo("Europe/Moscow"))
             submissions.append({
                 "id": submission.id,
-                "submitted_at": submission.submitted_at.strftime("%H:%M"),
+                "submitted_at": submitted.strftime("%H:%M") if submitted else None,
                 "status": submission.status,
                 "metric": metric_value,
                 "metrics": submission.metrics,

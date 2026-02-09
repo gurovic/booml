@@ -1,4 +1,4 @@
-from django.db.models import Count
+from django.db.models import Count, Max
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
 
@@ -86,7 +86,7 @@ def course_contests(request, course_id):
         return JsonResponse({"detail": "Authentication required"}, status=401)
 
     course = get_object_or_404(
-        Course.objects.select_related("section").prefetch_related("participants__user"),
+        Course.objects.select_related("section", "owner").prefetch_related("participants__user"),
         pk=course_id,
     )
     is_admin = request.user.is_staff or request.user.is_superuser
@@ -96,9 +96,9 @@ def course_contests(request, course_id):
 
     contests = (
         Contest.objects.filter(course=course)
-        .select_related("course__section")
+        .select_related("course__section", "course__owner", "created_by")
         .annotate(problems_count=Count("problems"))
-        .order_by("-created_at")
+        .order_by("position", "-created_at")
     )
     is_teacher = _course_is_teacher(course, request.user)
     items = []
@@ -108,10 +108,13 @@ def course_contests(request, course_id):
         items.append(
             {
                 "id": contest.id,
+                "position": contest.position,
                 "title": contest.title,
                 "description": contest.description,
                 "course": contest.course_id,
                 "course_title": contest.course.title if contest.course else None,
+                "created_by_id": contest.created_by_id,
+                "created_by_username": contest.created_by.username if contest.created_by_id else None,
                 "is_published": contest.is_published,
                 "access_type": contest.access_type,
                 "approval_status": contest.approval_status,
@@ -128,6 +131,50 @@ def course_contests(request, course_id):
             }
         )
     return JsonResponse({"items": items}, status=200)
+
+
+@login_required
+def reorder_course_contests(request, course_id):
+    if request.method != "POST":
+        return JsonResponse({"detail": "Method not allowed"}, status=405)
+
+    course = get_object_or_404(
+        Course.objects.prefetch_related("participants__user"),
+        pk=course_id,
+    )
+    if not _course_is_teacher(course, request.user):
+        return JsonResponse({"detail": "Only course teachers can reorder contests"}, status=403)
+
+    try:
+        import json
+
+        payload = json.loads(request.body or "{}")
+    except Exception:
+        return JsonResponse({"detail": "Invalid JSON payload"}, status=400)
+
+    contest_ids = payload.get("contest_ids") or []
+    if not isinstance(contest_ids, list) or not contest_ids:
+        return JsonResponse({"detail": "contest_ids must be a non-empty list"}, status=400)
+    try:
+        contest_ids_int = [int(cid) for cid in contest_ids]
+    except (TypeError, ValueError):
+        return JsonResponse({"detail": "contest_ids must contain integers"}, status=400)
+
+    contests = list(Contest.objects.filter(course=course).order_by("position", "-created_at", "-id"))
+    by_id = {c.id: c for c in contests}
+    existing_order = [c.id for c in contests]
+
+    requested = [cid for cid in contest_ids_int if cid in by_id]
+    if not requested:
+        return JsonResponse({"detail": "No provided contest_ids belong to this course"}, status=400)
+
+    remaining = [cid for cid in existing_order if cid not in set(requested)]
+    new_order = requested + remaining
+    for idx, cid in enumerate(new_order):
+        by_id[cid].position = idx
+    Contest.objects.bulk_update([by_id[cid] for cid in new_order], ["position"])
+
+    return JsonResponse({"course_id": course.id, "contest_ids": new_order}, status=200)
 
 
 @login_required

@@ -31,7 +31,38 @@
           <UiLinkList
             :title="problemsTitle"
             :items="problemItems"
-          />
+          >
+            <template #action="{ item }">
+              <div v-if="canManageContest" class="problem-order-actions">
+                <button
+                  class="problem-order-btn problem-order-btn--danger"
+                  type="button"
+                  title="Удалить из контеста"
+                  @click.stop.prevent="removeProblem(item)"
+                >
+                  ✕
+                </button>
+                <button
+                  class="problem-order-btn"
+                  type="button"
+                  title="Вверх"
+                  :disabled="isFirstProblem(item)"
+                  @click.stop.prevent="moveProblem(item, -1)"
+                >
+                  ↑
+                </button>
+                <button
+                  class="problem-order-btn"
+                  type="button"
+                  title="Вниз"
+                  :disabled="isLastProblem(item)"
+                  @click.stop.prevent="moveProblem(item, 1)"
+                >
+                  ↓
+                </button>
+              </div>
+            </template>
+          </UiLinkList>
           <p v-if="!problemItems.length" class="note">This contest has no problems yet.</p>
         </template>
         <div v-else class="state">Contest not found.</div>
@@ -46,21 +77,64 @@
           <button class="dialog__close" @click="closeAddProblemDialog">×</button>
         </div>
         <div class="dialog__body">
+          <div class="dialog-toolbar">
+            <div class="search">
+              <span class="search__icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M10.5 18a7.5 7.5 0 1 1 0-15 7.5 7.5 0 0 1 0 15Z" stroke="currentColor" stroke-width="2"/>
+                  <path d="M16.5 16.5 21 21" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                </svg>
+              </span>
+              <input
+                v-model="problemSearch"
+                type="search"
+                class="search__input"
+                placeholder="Поиск по названию"
+                autocomplete="off"
+                @input="onSearchInput"
+              />
+              <button
+                v-if="problemSearch.trim()"
+                class="search__clear"
+                type="button"
+                title="Очистить"
+                @click="clearSearch"
+              >
+                ×
+              </button>
+            </div>
+          </div>
           <div v-if="loadingProblems" class="dialog-loading">Загрузка задач...</div>
           <div v-else-if="availableProblems.length === 0" class="dialog-empty">
-            <p>У вас нет задач. Создайте задачу в <router-link :to="{ name: 'polygon' }">Полигоне</router-link>.</p>
+            <p v-if="problemSearch.trim()">
+              Ничего не найдено по запросу "{{ problemSearch.trim() }}".
+            </p>
+            <p v-else>
+              Нет доступных задач. Создайте задачу в <router-link :to="{ name: 'polygon' }">Полигоне</router-link>.
+            </p>
           </div>
           <div v-else class="problem-list">
-            <div
+            <label
               v-for="problem in availableProblems"
               :key="problem.id"
-              class="problem-item"
-              :class="{ 'problem-item--selected': selectedProblemId === problem.id }"
-              @click="selectedProblemId = problem.id"
+              class="problem-item problem-item--checkbox"
+              :class="{
+                'problem-item--disabled': isProblemInContest(problem.id),
+              }"
             >
+              <input
+                class="problem-item__checkbox"
+                type="checkbox"
+                :disabled="isProblemInContest(problem.id)"
+                :checked="isSelected(problem.id)"
+                @change="toggleSelected(problem.id, $event.target.checked)"
+              />
               <div class="problem-item__info">
                 <div class="problem-item__title">{{ problem.title }}</div>
                 <div class="problem-item__meta">
+                  <span v-if="problem.author_username" class="problem-item__author">
+                    Автор: {{ problem.author_username }}
+                  </span>
                   <span class="problem-item__rating">Рейтинг: {{ problem.rating }}</span>
                   <span
                     class="problem-item__status"
@@ -68,9 +142,21 @@
                   >
                     {{ problem.is_published ? 'Опубликована' : 'Черновик' }}
                   </span>
+                  <span v-if="isProblemInContest(problem.id)" class="problem-item__already">
+                    Уже в контесте
+                  </span>
                 </div>
               </div>
-              <div v-if="selectedProblemId === problem.id" class="problem-item__check">✓</div>
+            </label>
+
+            <div v-if="totalPages > 1" class="pager">
+              <button class="pager__btn" type="button" :disabled="page <= 1" @click="setPage(page - 1)">
+                Назад
+              </button>
+              <div class="pager__info">Стр. {{ page }} / {{ totalPages }}</div>
+              <button class="pager__btn" type="button" :disabled="page >= totalPages" @click="setPage(page + 1)">
+                Вперед
+              </button>
             </div>
           </div>
           <div v-if="addProblemError" class="form-error">{{ addProblemError }}</div>
@@ -81,10 +167,10 @@
           </button>
           <button
             class="button button--primary"
-            @click="addProblemToContest"
-            :disabled="isAddingProblem || !selectedProblemId"
+            @click="addProblemsToContest"
+            :disabled="isAddingProblem || selectedProblemIds.length === 0"
           >
-            {{ isAddingProblem ? 'Добавление...' : 'Добавить' }}
+            {{ isAddingProblem ? 'Добавление...' : `Добавить (${selectedProblemIds.length})` }}
           </button>
         </div>
       </div>
@@ -112,9 +198,13 @@ const error = ref('')
 const showAddProblemDialog = ref(false)
 const loadingProblems = ref(false)
 const availableProblems = ref([])
-const selectedProblemId = ref(null)
+const selectedProblemIds = ref([])
 const isAddingProblem = ref(false)
 const addProblemError = ref('')
+const problemSearch = ref('')
+const page = ref(1)
+const totalPages = ref(1)
+const pageSize = 10
 
 const contestTitle = computed(() => {
   if (contest.value?.title) return contest.value.title
@@ -133,6 +223,7 @@ const problemItems = computed(() => {
   return problems
     .filter(problem => problem?.id != null)
     .map(problem => ({
+      id: problem.id,
       text: problem.title || `Problem ${problem.id}`,
       route: { name: 'problem', params: { id: problem.id }},
     }))
@@ -166,12 +257,11 @@ const loadContest = async () => {
 const loadAvailableProblems = async () => {
   loadingProblems.value = true
   try {
-    const problems = await getPolygonProblems()
-    // Filter out problems already in contest
-    const contestProblemIds = new Set(
-      (contest.value?.problems || []).map(p => p.id)
-    )
-    availableProblems.value = problems.filter(p => !contestProblemIds.has(p.id))
+    const res = await getPolygonProblems({ q: problemSearch.value, page: page.value, page_size: pageSize })
+    const items = Array.isArray(res) ? res : (res?.items || [])
+    const tp = Array.isArray(res) ? 1 : Number(res?.total_pages || 1)
+    totalPages.value = Number.isFinite(tp) && tp > 0 ? tp : 1
+    availableProblems.value = items
   } catch (err) {
     console.error('Failed to load problems:', err)
     addProblemError.value = 'Не удалось загрузить задачи'
@@ -182,18 +272,62 @@ const loadAvailableProblems = async () => {
 
 const closeAddProblemDialog = () => {
   showAddProblemDialog.value = false
-  selectedProblemId.value = null
+  selectedProblemIds.value = []
   addProblemError.value = ''
+  problemSearch.value = ''
+  page.value = 1
+  totalPages.value = 1
 }
 
-const addProblemToContest = async () => {
-  if (!selectedProblemId.value) return
+const isProblemInContest = (problemId) => {
+  const set = new Set((contest.value?.problems || []).map(p => p.id))
+  return set.has(Number(problemId))
+}
+
+const isSelected = (problemId) => {
+  return selectedProblemIds.value.includes(Number(problemId))
+}
+
+const toggleSelected = (problemId, checked) => {
+  const id = Number(problemId)
+  if (isProblemInContest(id)) return
+  if (checked) {
+    if (!selectedProblemIds.value.includes(id)) selectedProblemIds.value = [...selectedProblemIds.value, id]
+  } else {
+    selectedProblemIds.value = selectedProblemIds.value.filter(x => x !== id)
+  }
+}
+
+let _searchTimer = null
+const onSearchInput = () => {
+  if (_searchTimer) clearTimeout(_searchTimer)
+  _searchTimer = setTimeout(() => {
+    page.value = 1
+    loadAvailableProblems()
+  }, 250)
+}
+
+const clearSearch = () => {
+  problemSearch.value = ''
+  page.value = 1
+  loadAvailableProblems()
+}
+
+const setPage = (next) => {
+  const n = Number(next)
+  if (!Number.isFinite(n) || n < 1) return
+  page.value = n
+  loadAvailableProblems()
+}
+
+const addProblemsToContest = async () => {
+  if (!selectedProblemIds.value.length) return
 
   isAddingProblem.value = true
   addProblemError.value = ''
 
   try {
-    await contestApi.addProblemToContest(contestId.value, selectedProblemId.value)
+    await contestApi.bulkAddProblemsToContest(contestId.value, selectedProblemIds.value)
     
     // Reload contest to get updated problem list
     await loadContest()
@@ -208,12 +342,62 @@ const addProblemToContest = async () => {
   }
 }
 
+const _problemIndex = (problemId) => {
+  const list = Array.isArray(contest.value?.problems) ? contest.value.problems : []
+  return list.findIndex(p => Number(p?.id) === Number(problemId))
+}
+
+const isFirstProblem = (item) => _problemIndex(item?.id) <= 0
+const isLastProblem = (item) => {
+  const list = Array.isArray(contest.value?.problems) ? contest.value.problems : []
+  const idx = _problemIndex(item?.id)
+  return idx < 0 || idx >= list.length - 1
+}
+
+const moveProblem = async (item, delta) => {
+  const list = Array.isArray(contest.value?.problems) ? [...contest.value.problems] : []
+  const idx = list.findIndex(p => Number(p?.id) === Number(item?.id))
+  const next = idx + delta
+  if (idx < 0 || next < 0 || next >= list.length) return
+
+  const tmp = list[idx]
+  list[idx] = list[next]
+  list[next] = tmp
+  contest.value = { ...contest.value, problems: list }
+
+  try {
+    await contestApi.reorderContestProblems(contestId.value, list.map(p => p.id))
+  } catch (err) {
+    console.error('Failed to reorder problems:', err)
+    error.value = err?.message || 'Не удалось поменять порядок задач'
+    await loadContest()
+  }
+}
+
+const removeProblem = async (item) => {
+  const pid = Number(item?.id)
+  if (!Number.isFinite(pid)) return
+  if (!confirm('Удалить задачу из контеста?')) return
+
+  try {
+    await contestApi.removeProblemFromContest(contestId.value, pid)
+    await loadContest()
+  } catch (err) {
+    console.error('Failed to remove problem:', err)
+    error.value = err?.message || 'Не удалось удалить задачу'
+    await loadContest()
+  }
+}
+
 watch(contestId, () => {
   loadContest()
 }, { immediate: true })
 
 watch(showAddProblemDialog, (newValue) => {
   if (newValue) {
+    selectedProblemIds.value = []
+    page.value = 1
+    totalPages.value = 1
     loadAvailableProblems()
   }
 })
@@ -374,6 +558,63 @@ watch(showAddProblemDialog, (newValue) => {
   border-top: 1px solid var(--color-border-default, #e0e0e0);
 }
 
+.dialog-toolbar {
+  margin-bottom: 12px;
+}
+
+.search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 2px solid var(--color-border-default, #e0e0e0);
+  border-radius: 999px;
+  background: var(--color-bg-default, #fff);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.search:focus-within {
+  border-color: var(--color-primary, #3b82f6);
+  box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.12);
+}
+
+.search__icon {
+  color: var(--color-text-muted, #666);
+  display: inline-flex;
+}
+
+.search__input {
+  width: 100%;
+  border: none;
+  outline: none;
+  font-size: 16px;
+  background: transparent;
+}
+
+.search__input::placeholder {
+  color: var(--color-text-muted, #666);
+}
+
+.search__clear {
+  border: 1px solid var(--color-border-default, #e0e0e0);
+  background: #fff;
+  border-radius: 999px;
+  width: 32px;
+  height: 32px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  line-height: 1;
+  color: var(--color-text-muted, #666);
+}
+
+.search__clear:hover {
+  border-color: var(--color-primary, #3b82f6);
+  color: var(--color-text-primary, #000);
+}
+
 .dialog-loading,
 .dialog-empty {
   display: flex;
@@ -396,8 +637,8 @@ watch(showAddProblemDialog, (newValue) => {
 
 .problem-item {
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  gap: 12px;
   padding: 12px 16px;
   background: var(--color-bg-default, #fff);
   border: 2px solid var(--color-border-default, #e0e0e0);
@@ -406,14 +647,28 @@ watch(showAddProblemDialog, (newValue) => {
   transition: all 0.2s ease;
 }
 
+.problem-item--checkbox {
+  cursor: pointer;
+}
+
+.problem-item--disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.problem-item__checkbox {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+}
+
+.problem-item--disabled .problem-item__checkbox {
+  cursor: not-allowed;
+}
+
 .problem-item:hover {
   border-color: var(--color-primary, #3b82f6);
   background: var(--color-bg-hover, #f8f9fa);
-}
-
-.problem-item--selected {
-  border-color: var(--color-primary, #3b82f6);
-  background: var(--color-primary-light, #eff6ff);
 }
 
 .problem-item__info {
@@ -430,7 +685,12 @@ watch(showAddProblemDialog, (newValue) => {
 .problem-item__meta {
   display: flex;
   gap: 12px;
+  flex-wrap: wrap;
   font-size: 13px;
+}
+
+.problem-item__author {
+  color: var(--color-text-muted, #666);
 }
 
 .problem-item__rating {
@@ -446,11 +706,70 @@ watch(showAddProblemDialog, (newValue) => {
   font-weight: 500;
 }
 
-.problem-item__check {
-  font-size: 24px;
-  color: var(--color-primary, #3b82f6);
-  font-weight: bold;
-  margin-left: 12px;
+.problem-item__already {
+  color: var(--color-text-muted, #666);
+  border: 1px solid var(--color-border-default, #e0e0e0);
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--color-border-default, #e0e0e0);
+}
+
+.pager__btn {
+  border: 1px solid var(--color-border-default);
+  background: #fff;
+  padding: 8px 12px;
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.pager__btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.pager__info {
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
+.problem-order-actions {
+  display: inline-flex;
+  gap: 6px;
+  margin-right: 8px;
+}
+
+.problem-order-btn {
+  border: 1px solid var(--color-border-default);
+  background: rgba(255, 255, 255, 0.65);
+  padding: 6px 10px;
+  border-radius: 10px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.problem-order-btn--danger {
+  border-color: rgba(239, 68, 68, 0.35);
+  background: rgba(239, 68, 68, 0.08);
+  color: rgb(185, 28, 28);
+}
+
+.problem-order-btn--danger:hover {
+  border-color: rgba(239, 68, 68, 0.6);
+  background: rgba(239, 68, 68, 0.12);
+}
+
+.problem-order-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .form-error {

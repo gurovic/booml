@@ -169,6 +169,33 @@ export async function addProblemToContest(contestId, problemId) {
   })
 }
 
+export async function bulkAddProblemsToContest(contestId, problemIds = []) {
+  return Promise.resolve({
+    contest: contestId,
+    added_ids: problemIds || [],
+    already_present_ids: [],
+    problems_count: (problemIds || []).length,
+  })
+}
+
+export async function reorderContestProblems(contestId, problemIds = []) {
+  return Promise.resolve({
+    contest: contestId,
+    problem_ids: problemIds || [],
+    problems_count: (problemIds || []).length,
+  })
+}
+
+export async function removeProblemFromContest(contestId, problemId) {
+  // Mock remove: no-op success.
+  return Promise.resolve({
+    contest: contestId,
+    removed_ids: [Number(problemId)],
+    problem_ids: [],
+    problems_count: 0,
+  })
+}
+
 export async function deleteContest(contestId) {
   const numericId = Number(contestId)
   let deleted = false
