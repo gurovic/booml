@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import logging
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
+
+logger = logging.getLogger(__name__)
 
 
 def _parse_id(value):
@@ -81,31 +84,37 @@ class ProblemSubmissionsConsumer(AsyncJsonWebsocketConsumer):
         )
 
         if raw_problem_id is None:
+            logger.warning("ProblemSubmissionsConsumer: No problem_id in URL")
             await self.close(code=4404)
             return
 
         parsed_problem_id = _parse_id(raw_problem_id)
         if parsed_problem_id is None:
+            logger.warning(f"ProblemSubmissionsConsumer: Invalid problem_id: {raw_problem_id}")
             await self.close(code=4400)
             return
 
         self.problem_id = parsed_problem_id
 
         if self.channel_layer is None:
+            logger.error("ProblemSubmissionsConsumer: Channel layer is None")
             await self.close(code=4500)
             return
 
         self.group_name = f"problem_submissions_{self.problem_id}"
         await self.channel_layer.group_add(self.group_name, self.channel_name)
+        logger.info(f"ProblemSubmissionsConsumer: Client connected to {self.group_name}")
         await self.accept()
 
     async def disconnect(self, close_code: int) -> None:  # pragma: no cover - tested indirectly
         if self.channel_layer is None or not hasattr(self, "group_name"):
             return
+        logger.info(f"ProblemSubmissionsConsumer: Client disconnected from {self.group_name}")
         await self.channel_layer.group_discard(self.group_name, self.channel_name)
 
     async def submission_update(self, event):
         """Handle submission status update events."""
+        logger.info(f"ProblemSubmissionsConsumer: Received submission_update: {event}")
         await self.send_json(
             {
                 "type": "submission_update",
@@ -114,3 +123,4 @@ class ProblemSubmissionsConsumer(AsyncJsonWebsocketConsumer):
                 "metrics": event.get("metrics"),
             }
         )
+        logger.info(f"ProblemSubmissionsConsumer: Sent update to client for submission {event.get('submission_id')}")

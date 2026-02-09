@@ -104,33 +104,40 @@ const connectWebSocket = () => {
   const host = window.location.host
   const wsUrl = `${protocol}//${host}/ws/problems/${problemId}/submissions/`
   
+  console.log(`[WebSocket] Attempting to connect to: ${wsUrl}`)
+  
   try {
     ws.value = new WebSocket(wsUrl)
     
     ws.value.onopen = () => {
-      console.log('WebSocket connected for problem submissions')
+      console.log('[WebSocket] Connected successfully for problem submissions')
     }
     
     ws.value.onmessage = (event) => {
+      console.log('[WebSocket] Message received:', event.data)
       try {
         const data = JSON.parse(event.data)
+        console.log('[WebSocket] Parsed message:', data)
         if (data.type === 'submission_update') {
+          console.log('[WebSocket] Handling submission_update:', data)
           handleSubmissionUpdate(data)
+        } else {
+          console.log('[WebSocket] Unknown message type:', data.type)
         }
       } catch (err) {
-        console.error('Failed to parse WebSocket message:', err)
+        console.error('[WebSocket] Failed to parse message:', err, 'Raw data:', event.data)
       }
     }
     
     ws.value.onerror = (err) => {
-      console.error('WebSocket error:', err)
+      console.error('[WebSocket] Error occurred:', err)
     }
     
     ws.value.onclose = () => {
-      console.log('WebSocket disconnected')
+      console.log('[WebSocket] Connection closed')
     }
   } catch (err) {
-    console.error('Failed to establish WebSocket connection:', err)
+    console.error('[WebSocket] Failed to establish connection:', err)
   }
 }
 
@@ -144,20 +151,32 @@ const disconnectWebSocket = () => {
 const handleSubmissionUpdate = (data) => {
   const { submission_id, status, metrics } = data
   
+  console.log(`[WebSocket] Updating submission ${submission_id}: status=${status}, metrics=`, metrics)
+  
   // Find the submission in our current list
   const index = submissions.value.findIndex(s => s.id === submission_id)
   
+  console.log(`[WebSocket] Found submission at index: ${index}, current list length: ${submissions.value.length}`)
+  
   if (index !== -1) {
     // Update existing submission
+    const oldSubmission = submissions.value[index]
+    console.log(`[WebSocket] Old submission state:`, oldSubmission)
+    
     submissions.value[index] = {
       ...submissions.value[index],
       status,
       metrics
     }
+    
+    console.log(`[WebSocket] Updated submission state:`, submissions.value[index])
   } else if (currentPage.value === 1) {
+    console.log('[WebSocket] Submission not in list and on page 1, refreshing list')
     // If we're on the first page and this is a new submission, refresh the list
     // to get the new submission at the top
     fetchSubmissions(1)
+  } else {
+    console.log(`[WebSocket] Submission ${submission_id} not found in current page`)
   }
 }
 
