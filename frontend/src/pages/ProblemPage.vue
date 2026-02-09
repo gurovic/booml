@@ -7,7 +7,10 @@
     <div class="container">
       <div v-if="problem != null" class="problem__inner">
         <div class="problem__content">
-          <h1 class="problem__name">{{ problem.title }}</h1>
+          <h1 class="problem__name">
+            <UiIdPill v-if="problem?.id" class="problem__id" :id="problem.id" title="ID задачи" />
+            <span class="problem__title-text">{{ problem.title }}</span>
+          </h1>
           <div class="problem__text" v-html="problem.rendered_statement"></div>
         </div>
         <ul class="problem__menu">
@@ -143,6 +146,7 @@ import MarkdownIt from 'markdown-it'
 import mkKatex from 'markdown-it-katex'
 import UiHeader from '@/components/ui/UiHeader.vue'
 import UiBreadcrumbs from '@/components/ui/UiBreadcrumbs.vue'
+import UiIdPill from '@/components/ui/UiIdPill.vue'
 
 const md = new MarkdownIt({
   html: false,
@@ -332,6 +336,20 @@ const handleCreateNotebook = async () => {
 
   padding-left: 16px;
   border-left: 6px solid var(--color-primary);
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  min-width: 0;
+}
+
+.problem__id {
+  flex: 0 0 auto;
+}
+
+.problem__title-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .problem__text {

@@ -274,8 +274,9 @@
             <div v-else-if="recentProblems.length === 0" class="side-state">Пока нет посылок</div>
             <ul v-else class="recent-list">
               <li v-for="item in recentProblems" :key="item.problem_id" class="recent-item">
-                <button type="button" class="recent-link" @click="goToProblem(item)">
-                  {{ item.title }}
+                <button type="button" class="recent-link" @click="goToProblem(item)" :title="item.title">
+                  <UiIdPill class="recent-id" :id="item.problem_id" title="ID задачи" />
+                  <span class="recent-title">{{ item.title }}</span>
                 </button>
                 <div class="recent-meta">
                   <div v-if="item.last_submitted_at" class="recent-time">
@@ -314,6 +315,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { courseApi, homeApi } from '@/api'
 import UiHeader from '@/components/ui/UiHeader.vue'
+import UiIdPill from '@/components/ui/UiIdPill.vue'
 import { useUserStore } from '@/stores/UserStore'
 import { formatDateTimeMsk } from '@/utils/datetime'
 
@@ -907,6 +909,9 @@ onMounted(loadSidebar)
 
 .recent-link {
   text-align: left;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
   background: transparent;
   color: var(--color-text-primary);
   font-size: 14px;
@@ -914,6 +919,15 @@ onMounted(loadSidebar)
   padding: 6px 8px;
   border-radius: 10px;
   cursor: pointer;
+  min-width: 0;
+}
+
+.recent-id {
+  flex: 0 0 auto;
+}
+
+.recent-title {
+  min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
