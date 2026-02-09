@@ -5,7 +5,7 @@
     <main class="contest-content">
       <UiBreadcrumbs :contest="contest" />
       <section class="contest-panel">
-        <div v-if="isLoading" class="state">Loading contest...</div>
+        <div v-if="isLoading" class="state">Загрузка...</div>
         <div v-else-if="error" class="state state--error">{{ error }}</div>
         <template v-else-if="contest">
           <div class="contest-header">
@@ -22,7 +22,7 @@
                 :to="leaderboardRoute"
                 class="button button--secondary contest-link"
               >
-                Leaderboard
+                Таблица лидеров
               </router-link>
             </div>
           </div>
@@ -64,9 +64,9 @@
               </div>
             </template>
           </UiLinkList>
-          <p v-if="!problemItems.length" class="note">This contest has no problems yet.</p>
+          <p v-if="!problemItems.length" class="note">В этом контесте пока нет задач.</p>
         </template>
-        <div v-else class="state">Contest not found.</div>
+        <div v-else class="state">Контест не найден.</div>
       </section>
     </main>
 
@@ -210,10 +210,10 @@ const pageSize = 10
 
 const contestTitle = computed(() => {
   if (contest.value?.title) return contest.value.title
-  return hasValidId.value ? `Contest ${contestId.value}` : 'Contest'
+  return hasValidId.value ? `Контест ${contestId.value}` : 'Контест'
 })
 
-const problemsTitle = computed(() => (contest.value ? 'Problems' : contestTitle.value))
+const problemsTitle = computed(() => (contest.value ? 'Задачи' : contestTitle.value))
 
 const canManageContest = computed(() => {
   if (!userStore.currentUser || !contest.value) return false
@@ -240,7 +240,7 @@ const leaderboardRoute = computed(() => {
 const loadContest = async () => {
   if (!hasValidId.value) {
     contest.value = null
-    error.value = 'Invalid contest id.'
+    error.value = 'Некорректный id контеста.'
     return
   }
 
@@ -250,7 +250,7 @@ const loadContest = async () => {
     contest.value = await contestApi.getContest(contestId.value)
   } catch (err) {
     console.error('Failed to load contest.', err)
-    error.value = err?.message || 'Failed to load contest.'
+    error.value = err?.message || 'Не удалось загрузить контест.'
   } finally {
     isLoading.value = false
   }

@@ -1,9 +1,10 @@
 from django.contrib.auth import get_user_model
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 from django.urls import reverse
 import json
 
-from runner.models import FavoriteCourse, Section, SiteUpdate
+from runner.models import Contest, ContestProblem, FavoriteCourse, Problem, Section, SiteUpdate, Submission
 from runner.services.course_service import CourseCreateInput, create_course
 from runner.services.section_service import SectionCreateInput, create_section
 
@@ -34,6 +35,45 @@ class HomeSidebarTests(TestCase):
         titles = [x["title"] for x in payload["updates"]]
         self.assertIn("A", titles)
         self.assertNotIn("B", titles)
+
+    def test_recent_problems_include_contest_context_when_possible(self):
+        user = User.objects.create_user(username="u", password="pass")
+        owner = User.objects.create_user(username="owner", password="pass")
+        root_section = Section.objects.get(title="Авторские", parent__isnull=True)
+        section = create_section(
+            SectionCreateInput(title="S", owner=owner, parent=root_section)
+        )
+        course = create_course(
+            CourseCreateInput(title="Course", owner=owner, is_open=True, section=section)
+        )
+        problem = Problem.objects.create(title="P", statement="", author=owner, is_published=True)
+        contest = Contest.objects.create(
+            course=course,
+            title="Contest",
+            description="",
+            created_by=owner,
+            is_published=True,
+            approval_status=Contest.ApprovalStatus.APPROVED,
+            access_type=Contest.AccessType.PUBLIC,
+        )
+        ContestProblem.objects.create(contest=contest, problem=problem, position=0)
+        Submission.objects.create(
+            user=user,
+            problem=problem,
+            file=SimpleUploadedFile("a.csv", b"1,2,3\n", content_type="text/csv"),
+            status=Submission.STATUS_ACCEPTED,
+            metrics={"score": 0.42},
+        )
+
+        self.client.login(username="u", password="pass")
+        resp = self.client.get(self.url)
+        self.assertEqual(resp.status_code, 200)
+        payload = resp.json()
+        self.assertEqual(len(payload["recent_problems"]), 1)
+        row = payload["recent_problems"][0]
+        self.assertEqual(row["problem_id"], problem.id)
+        self.assertEqual(row["contest_id"], contest.id)
+        self.assertEqual(row["course_id"], course.id)
 
 
 class FavoriteCoursesTests(TestCase):

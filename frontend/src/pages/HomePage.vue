@@ -208,7 +208,7 @@
             <div v-else-if="recentProblems.length === 0" class="side-state">Пока нет посылок</div>
             <ul v-else class="recent-list">
               <li v-for="item in recentProblems" :key="item.problem_id" class="recent-item">
-                <button type="button" class="recent-link" @click="goToProblem(item.problem_id, item.title)">
+                <button type="button" class="recent-link" @click="goToProblem(item)">
                   {{ item.title }}
                 </button>
                 <div class="recent-meta">
@@ -307,8 +307,29 @@ const goToCourse = (item) => {
   router.push({ name, params: { id: item.id }, query: { title: item.title } })
 }
 
-const goToProblem = (problemId, title) => {
-  router.push({ name: 'problem', params: { id: problemId }, query: { title } })
+const goToProblem = (itemOrId, title) => {
+  // goToProblem(item) OR goToProblem(id, title)
+  let problemId = itemOrId
+  let contestId = null
+  let courseTitle = null
+  let contestTitle = null
+
+  if (itemOrId && typeof itemOrId === 'object') {
+    problemId = itemOrId.problem_id
+    contestId = itemOrId.contest_id
+    courseTitle = itemOrId.course_title
+    contestTitle = itemOrId.contest_title
+    title = itemOrId.title
+  }
+
+  const query = {}
+  if (contestId != null) query.contest = contestId
+  // Optional hints for breadcrumbs fallbacks.
+  if (courseTitle) query.course_title = courseTitle
+  if (contestTitle) query.title = contestTitle
+  if (Object.keys(query).length === 0 && title) query.title = title
+
+  router.push({ name: 'problem', params: { id: problemId }, query })
 }
 
 const formatDate = (iso) => formatDateTimeMsk(iso)

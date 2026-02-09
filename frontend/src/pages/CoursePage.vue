@@ -5,7 +5,7 @@
     <main class="contest-content">
       <UiBreadcrumbs :course="course" />
       <section class="contest-panel">
-        <div v-if="isLoading" class="state">Loading contests...</div>
+        <div v-if="isLoading" class="state">Загрузка...</div>
         <div v-else-if="error" class="state state--error">{{ error }}</div>
         <template v-else>
           <div class="course-header">
@@ -68,7 +68,7 @@
                   <div class="participants__meta">
                     <span class="participants__name">{{ p.username }}</span>
                     <span class="participants__role">
-                      {{ p.is_owner ? 'owner' : p.role }}
+                      {{ roleLabel(p) }}
                     </span>
                   </div>
                   <div class="participants__actions">
@@ -78,7 +78,7 @@
                       type="button"
                       @click="toggleParticipantRole(p)"
                     >
-                      {{ p.role === 'teacher' ? 'Сделать student' : 'Сделать teacher' }}
+                      {{ p.role === 'teacher' ? 'Сделать учеником' : 'Сделать учителем' }}
                     </button>
                     <button
                       v-if="!p.is_owner"
@@ -101,8 +101,8 @@
                   @keyup.enter="addParticipant"
                 />
                 <select v-model="newParticipantRole" class="form-select">
-                  <option value="student">student</option>
-                  <option value="teacher">teacher</option>
+                  <option value="student">ученик</option>
+                  <option value="teacher">учитель</option>
                 </select>
                 <button class="button button--primary" type="button" @click="addParticipant" :disabled="!newParticipantUsername.trim()">
                   Добавить
@@ -147,7 +147,7 @@
               </button>
             </template>
           </UiLinkList>
-          <p v-if="!contestItems.length" class="note">This course has no contests yet.</p>
+          <p v-if="!contestItems.length" class="note">В этом курсе пока нет контестов.</p>
         </template>
       </section>
     </main>
@@ -312,6 +312,14 @@ const canManageCourse = computed(() => {
   return !!course.value.can_manage_course
 })
 
+const roleLabel = (p) => {
+  if (!p) return ''
+  if (p.is_owner) return 'владелец'
+  if (p.role === 'teacher') return 'учитель'
+  if (p.role === 'student') return 'ученик'
+  return String(p.role || '')
+}
+
 const participants = computed(() => {
   const list = Array.isArray(course.value?.participants) ? course.value.participants : []
   return list.map(p => ({
@@ -328,7 +336,7 @@ const contestItems = computed(() => {
     .filter(contest => contest?.id != null)
     .map(contest => ({
       id: contest.id,
-      text: contest.title || `Contest ${contest.id}`,
+      text: contest.title || `Контест ${contest.id}`,
       route: { name: 'contest', params: { id: contest.id }},
       created_by_id: contest.created_by_id,
     }))
@@ -337,7 +345,7 @@ const contestItems = computed(() => {
 const loadContests = async () => {
   if (!hasValidId.value) {
     contests.value = []
-    error.value = 'Invalid course id.'
+    error.value = 'Некорректный id курса.'
     course.value = null
     favorites.value = []
     return
@@ -356,7 +364,7 @@ const loadContests = async () => {
     await loadFavorites()
   } catch (err) {
     console.error('Failed to load contests.', err)
-    error.value = err?.message || 'Failed to load contests.'
+    error.value = err?.message || 'Не удалось загрузить контесты.'
   } finally {
     isLoading.value = false
   }

@@ -80,6 +80,8 @@ const _courseTitle = (courseId) => {
   if (fromProp) return String(fromProp)
   const fromTree = getCourseById(courseId)?.title
   if (fromTree) return String(fromTree)
+  const fromFetched = fetchedContest.value?.course_title
+  if (fromFetched) return String(fromFetched)
   const fromQuery = _titleFromQuery('course_title') || _titleFromQuery('title')
   if (fromQuery) return fromQuery
   return `Курс ${courseId}`

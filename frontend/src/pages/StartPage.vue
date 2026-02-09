@@ -1,14 +1,14 @@
 <template>
-    <h1>Start Page</h1>
-    <h2>Frontend</h2>
-    <h3>Message from backend: {{ message }}</h3>
+    <h1>Стартовая страница</h1>
+    <h2>Фронтенд</h2>
+    <h3>Сообщение от бэкенда: {{ message }}</h3>
 
-    <h1>Title 1</h1>
-    <h2>Title 2</h2>
-    <h3>Title 3</h3>
-    <p>Body text</p>
-    <button class="button button--primary">Primary button</button>
-    <button class="button button--secondary">Secondary button</button>
+    <h1>Заголовок 1</h1>
+    <h2>Заголовок 2</h2>
+    <h3>Заголовок 3</h3>
+    <p>Текст</p>
+    <button class="button button--primary">Основная кнопка</button>
+    <button class="button button--secondary">Вторичная кнопка</button>
 </template>
 
 <script setup>
@@ -22,7 +22,7 @@ onMounted(async () => {
         const data = await getStartMessage()
         message.value = data.message
     } catch(err) {
-        message.value = 'Error getting message'
+        message.value = 'Не удалось получить сообщение'
         console.error(err)
     }
 })

@@ -5,7 +5,7 @@
     <main class="contest-content">
       <UiBreadcrumbs :contest="contest" />
       <section class="contest-panel">
-        <div v-if="isLoading" class="state">Loading leaderboard...</div>
+        <div v-if="isLoading" class="state">Загрузка...</div>
         <div v-else-if="error" class="state state--error">{{ error }}</div>
         <template v-else>
           <div class="leaderboard-card">
@@ -22,7 +22,7 @@
               </router-link>
             </div>
 
-            <p v-if="!entries.length" class="note">No participants yet.</p>
+            <p v-if="!entries.length" class="note">Пока нет участников.</p>
             <div v-else class="leaderboard-table-wrap">
               <table class="leaderboard-table">
                 <thead>
@@ -94,7 +94,7 @@ const error = ref('')
 const contestTitle = computed(() => {
   if (contest.value?.title) return contest.value.title
   if (queryTitle.value) return queryTitle.value
-  return hasValidId.value ? `Contest ${contestId.value}` : 'Contest'
+  return hasValidId.value ? `Контест ${contestId.value}` : 'Контест'
 })
 
 const scoringType = computed(() => overallLeaderboard.value?.scoring || contest.value?.scoring || '')
@@ -103,14 +103,14 @@ const scoringLabel = computed(() => {
   const labelMap = {
     icpc: 'ICPC',
     ioi: 'IOI',
-    partial: 'Partial',
+    partial: 'Частичная',
   }
   const label = labelMap[scoringType.value] || scoringType.value
   const count = overallLeaderboard.value?.problems_count
   if (count != null) {
-    return `Scoring: ${label} | Problems: ${count}`
+    return `Система: ${label} | Задач: ${count}`
   }
-  return `Scoring: ${label}`
+  return `Система: ${label}`
 })
 
 const showPenalty = computed(() => scoringType.value === 'icpc')
@@ -121,7 +121,7 @@ const problemColumns = computed(() => {
     ? problemLeaderboards.value
     : []
   return list.map((board) => {
-    const title = board.problem_title || `Problem ${board.problem_id}`
+    const title = board.problem_title || `Задача ${board.problem_id}`
     const trimmed = title.length > 16 ? `${title.slice(0, 16)}…` : title
     return {
       id: board.problem_id,
@@ -188,7 +188,7 @@ const loadLeaderboard = async () => {
   if (!hasValidId.value) {
     contest.value = null
     overallLeaderboard.value = null
-    error.value = 'Invalid contest id.'
+    error.value = 'Некорректный id контеста.'
     return
   }
 
@@ -205,11 +205,11 @@ const loadLeaderboard = async () => {
       ? leaderboardData.leaderboards
       : []
     if (!overallLeaderboard.value) {
-      error.value = 'Leaderboard data is unavailable.'
+      error.value = 'Данные таблицы недоступны.'
     }
   } catch (err) {
     console.error('Failed to load leaderboard.', err)
-    error.value = err?.message || 'Failed to load leaderboard.'
+    error.value = err?.message || 'Не удалось загрузить таблицу.'
   } finally {
     isLoading.value = false
   }
