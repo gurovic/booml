@@ -27,22 +27,15 @@ def import_notebook(request):
     
     uploaded_file = request.FILES['file']
     
-    # Поддерживаем как .ipynb, так и .json
-    if not (uploaded_file.name.endswith('.ipynb') or uploaded_file.name.endswith('.json')):
-        return JsonResponse({
-            'status': 'error',
-            'message': 'Поддерживаются только .ipynb и .json файлы'
-        }, status=400)
-    
     try:
         file_content = uploaded_file.read().decode('utf-8')
         notebook_data = json.loads(file_content)
         
-        # Проверяем, является ли это валидным Jupyter Notebook
+        # Проверяем, является ли это валидным Jupyter Notebook по содержимому
         if 'cells' not in notebook_data:
             return JsonResponse({
                 'status': 'error',
-                'message': 'Неверный формат файла. Ожидается структура Jupyter Notebook (.ipynb)'
+                'message': 'Неверный формат файла. Ожидается структура Jupyter Notebook (.ipynb) с ключом "cells"'
             }, status=400)
         
         cells_data = notebook_data.get('cells', [])
@@ -67,7 +60,7 @@ def import_notebook(request):
             counter = 1
             while Notebook.objects.filter(owner=user, title=f"{notebook_title} ({counter})").exists():
                 counter += 1
-            notebook_title = f"{notebook_title} ({counter)}"
+            notebook_title = f"{notebook_title} ({counter})"
         
         # Создаем новый ноутбук
         notebook = Notebook.objects.create(
@@ -161,4 +154,26 @@ def import_notebook(request):
         
         response_data = {
             'status': 'success',
-            'message': f'Ноутбук успешно импортирован. Создано ячеек: {len(created
+            'message': f'Ноутбук успешно импортирован. Создано ячеек: {len(created_cells)}',
+            'notebook_id': notebook.id
+        }
+        if errors:
+            response_data['errors'] = errors
+        return JsonResponse(response_data)
+
+    except json.JSONDecodeError as e:
+        # Файл должен быть валидным JSON (формат Jupyter Notebook)
+        return JsonResponse({
+            'status': 'error',
+            'message': f'Ошибка парсинга JSON: {str(e)}. Убедитесь, что файл является валидным файлом Jupyter Notebook (.ipynb)'
+        }, status=400)
+    except UnicodeDecodeError as e:
+        return JsonResponse({
+            'status': 'error',
+            'message': f'Ошибка декодирования файла: {str(e)}. Файл должен быть в кодировке UTF-8'
+        }, status=400)
+    except Exception as e:
+        return JsonResponse({
+            'status': 'error',
+            'message': f'Ошибка импорта: {str(e)}'
+        }, status=400)

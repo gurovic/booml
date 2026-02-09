@@ -114,9 +114,14 @@ def export_notebook(request, notebook_id):
     json_content = json.dumps(notebook_data, ensure_ascii=False, indent=2)
     
     if request.method == 'GET':
+        # Используем правильный MIME type для .ipynb файлов
         response = HttpResponse(json_content, content_type='application/x-ipynb+json; charset=utf-8')
-        filename = f"{notebook.title.replace(' ', '_')}_{notebook.id}.ipynb"
-        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        # Очищаем имя файла от недопустимых символов
+        safe_title = "".join(c for c in notebook.title if c.isalnum() or c in (' ', '-', '_')).strip()
+        safe_title = safe_title.replace(' ', '_')
+        filename = f"{safe_title}_{notebook.id}.ipynb"
+        # Явно указываем расширение .ipynb в Content-Disposition
+        response['Content-Disposition'] = f'attachment; filename="{filename}"; filename*=UTF-8\'\'{filename}'
         return response
     
     return JsonResponse({

@@ -375,19 +375,18 @@
 
     {% csrf_token %}
 
+    {% url "run-cell" as run_cell_url %}
+    {% url "run-cell-stream-start" as run_cell_stream_start_url %}
+    {% url "run-cell-stream-status" as run_cell_stream_status_url %}
+    {% url "notebook-session-create" as session_create_url %}
+    {% url "session-reset" as session_reset_url %}
+    {% url "session-files" as session_files_url %}
+    {% url "session-file-preview" as session_file_preview_url %}
+    {% url "session-file-download" as session_file_download_url %}
+    {% url "session-stop" as session_stop_url %}
+
     <script>
     document.addEventListener('DOMContentLoaded', function() {
-        // Предварительно экранируем все значения через переменные шаблона
-        {% url "run-cell" as run_cell_url %}
-        {% url "run-cell-stream-start" as run_cell_stream_start_url %}
-        {% url "run-cell-stream-status" as run_cell_stream_status_url %}
-        {% url "notebook-session-create" as session_create_url %}
-        {% url "session-reset" as session_reset_url %}
-        {% url "session-files" as session_files_url %}
-        {% url "session-file-preview" as session_file_preview_url %}
-        {% url "session-file-download" as session_file_download_url %}
-        {% url "session-stop" as session_stop_url %}
-        
         notebookDetail.init({
             notebookId: {{ notebook.id }},  // ✅ Число — кавычки не нужны
             csrfToken: '{{ csrf_token|escapejs }}',  // ✅ Обязательно экранируем!
