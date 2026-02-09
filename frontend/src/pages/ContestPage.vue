@@ -125,7 +125,7 @@ const problemsTitle = computed(() => (contest.value ? 'Problems' : contestTitle.
 
 const canManageContest = computed(() => {
   if (!userStore.currentUser || !contest.value) return false
-  return contest.value.section_owner_id === userStore.currentUser.id
+  return !!contest.value.can_manage
 })
 
 const problemItems = computed(() => {

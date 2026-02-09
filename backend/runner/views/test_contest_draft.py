@@ -91,6 +91,21 @@ class CreateContestViewTests(TestCase):
         self.assertEqual(response.status_code, 403)
         self.assertFalse(Contest.objects.filter(title="Blocked").exists())
 
+    def test_teacher_can_create_contest(self):
+        data = {
+            "title": "Teacher contest",
+            "description": "",
+            "is_published": False,
+            "scoring": "ioi",
+        }
+        request = self.factory.post("/", data=data)
+        request.user = self.teacher
+
+        response = create_contest.__wrapped__(request, course_id=self.course.id)
+
+        self.assertEqual(response.status_code, 201)
+        self.assertTrue(Contest.objects.filter(title="Teacher contest").exists())
+
     def test_get_method_not_allowed(self):
         request = self.factory.get("/")
         request.user = self.teacher
@@ -141,3 +156,13 @@ class DeleteContestViewTests(TestCase):
 
         self.assertEqual(response.status_code, 403)
         self.assertTrue(Contest.objects.filter(id=self.contest.id).exists())
+
+    def test_admin_can_delete(self):
+        admin = User.objects.create_user(username="admin", password="pass", is_staff=True)
+        request = self.factory.post("/")
+        request.user = admin
+
+        response = delete_contest.__wrapped__(request, contest_id=self.contest.id)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Contest.objects.filter(id=self.contest.id).exists())

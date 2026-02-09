@@ -127,14 +127,18 @@ class Contest(models.Model):
 
     def is_visible_to(self, user):
         """
-        Drafts are visible only to the section owner.
+        Drafts are visible only to course teachers (including course owner).
         Published contests follow access_type and course membership.
         """
         if not user.is_authenticated:
             return False
 
-        is_owner = self.course.section.owner_id == user.id
-        if is_owner:
+        is_admin = user.is_staff or user.is_superuser
+        is_teacher = (
+            self.course.owner_id == user.id
+            or self.course.participants.filter(user=user, role=CourseParticipant.Role.TEACHER).exists()
+        )
+        if is_admin or is_teacher:
             return True
 
         # Only approved & published contests are visible to non-owners.

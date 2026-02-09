@@ -2,11 +2,11 @@
 
 ## Overview
 
-This document describes the implementation of the contest creation and management feature for teachers in the Booml platform.
+This document describes the contest creation and management feature in the Booml platform.
 
 ## Feature Description
 
-Teachers (section owners) can now:
+Course teachers (course owner + assigned teachers) can now:
 1. Create contests within their courses
 2. Add problems from their polygon to contests
 3. Configure contest settings (scoring, publication, rating status)
@@ -18,16 +18,20 @@ Teachers (section owners) can now:
 #### 1. Course Detail API Enhancement
 **File**: `backend/runner/views/course.py`
 
-Added `section_owner_id` field to the course detail response to enable frontend access control:
+Course detail response includes ownership and permission flags used by the frontend:
 
 ```python
 return JsonResponse({
     "id": course.id,
     "title": course.title,
     "description": course.description,
+    "is_open": course.is_open,
     "section": course.section_id,
     "section_title": course.section.title,
-    "section_owner_id": course.section.owner_id,  # NEW
+    "owner_id": course.owner_id,
+    "owner_username": course.owner.username,
+    "can_create_contest": True/False,
+    "can_manage_course": True/False,
     "participants": participants,
 })
 ```
@@ -35,13 +39,13 @@ return JsonResponse({
 #### 2. Contest Detail API Enhancement
 **File**: `backend/runner/views/contest_draft.py`
 
-Added ownership information to contest detail response:
+Contest detail response includes a `can_manage` flag used by the frontend to show teacher-only actions:
 
 ```python
 return JsonResponse({
     # ... existing fields ...
-    "is_owner": is_owner,                          # NEW
-    "section_owner_id": contest.course.section.owner_id,  # NEW
+    "can_manage": True/False,
+    "course_owner_id": contest.course.owner_id,
 })
 ```
 
@@ -65,7 +69,7 @@ export async function addProblemToContest(contestId, problemId)
 **File**: `frontend/src/pages/CoursePage.vue`
 
 **New Features**:
-- "Create Contest" button (visible only to section owners)
+- "Create Contest" button (visible only to course teachers)
 - Contest creation dialog with fields:
   - Title (required)
   - Description (optional)
@@ -79,7 +83,7 @@ export async function addProblemToContest(contestId, problemId)
 ```javascript
 const canCreateContest = computed(() => {
   if (!userStore.currentUser || !course.value) return false
-  return course.value.section_owner_id === userStore.currentUser.id
+  return !!course.value.can_create_contest
 })
 ```
 
@@ -87,7 +91,7 @@ const canCreateContest = computed(() => {
 **File**: `frontend/src/pages/ContestPage.vue`
 
 **New Features**:
-- "Add Problem" button (visible only to section owners)
+- "Add Problem" button (visible only to course teachers)
 - Problem selection dialog that:
   - Lists available problems from user's polygon
   - Shows problem metadata (rating, published status)
@@ -100,7 +104,7 @@ const canCreateContest = computed(() => {
 ```javascript
 const canManageContest = computed(() => {
   if (!userStore.currentUser || !contest.value) return false
-  return contest.value.section_owner_id === userStore.currentUser.id
+  return !!contest.value.can_manage
 })
 ```
 
@@ -110,7 +114,7 @@ const canManageContest = computed(() => {
 Added mock implementations for:
 - `createContest()`
 - `addProblemToContest()`
-- `section_owner_id` field in course response
+- `can_create_contest/can_manage_course` fields in course response
 
 ## User Experience Flow
 

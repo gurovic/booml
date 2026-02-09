@@ -11,7 +11,8 @@ This document describes the user interface and user experience for the contest c
 - Can participate in contests
 - **Cannot** create or modify contests
 
-### Teachers (Section Owners)
+### Course Teachers
+- Course owner and additional teachers assigned to the course
 - Can view all contests in their courses (including drafts)
 - Can create new contests
 - Can add/remove problems to/from contests

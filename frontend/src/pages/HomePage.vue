@@ -3,10 +3,21 @@
     <UiHeader />
     <div class="home__content">
       <div v-for="section in sections" :key="section.id" class="section-card">
-        <button type="button" class="section-header" @click="toggleSection(section.id)">
-          <span class="triangle" :class="{ 'triangle--open': isSectionOpen(section.id) }"></span>
-          <h2 class="section-title">{{ section.title }}</h2>
-        </button>
+        <div class="section-header-row">
+          <button type="button" class="section-header" @click="toggleSection(section.id)">
+            <span class="triangle" :class="{ 'triangle--open': isSectionOpen(section.id) }"></span>
+            <h2 class="section-title">{{ section.title }}</h2>
+          </button>
+          <button
+            v-if="isAuthorized"
+            type="button"
+            class="section-open-btn"
+            @click="goToCourse(section)"
+            title="Открыть страницу раздела"
+          >
+            Открыть
+          </button>
+        </div>
 
         <ul v-if="isSectionOpen(section.id)" class="course-list">
           <li
@@ -166,6 +177,28 @@ onMounted(load)
   padding: 6px 4px 10px;
   text-align: left;
   color: var(--color-text-title);
+}
+
+.section-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.section-open-btn {
+  border: 1px solid var(--color-border-default);
+  background: #fff;
+  color: var(--color-text-primary);
+  padding: 8px 12px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.section-open-btn:hover {
+  opacity: 0.9;
 }
 
 .section-header--inline {
