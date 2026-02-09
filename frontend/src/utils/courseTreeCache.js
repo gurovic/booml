@@ -91,7 +91,7 @@ export function getCourseById(courseId) {
   return _coursesById.get(id) || null
 }
 
-export function getSectionChain(sectionId, { maxDepth = 12 } = {}) {
+export function getSectionChain(sectionId, { maxDepth = 32 } = {}) {
   const chain = []
   let current = getSectionById(sectionId)
   let depth = 0

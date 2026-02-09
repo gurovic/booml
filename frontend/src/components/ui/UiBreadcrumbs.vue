@@ -25,7 +25,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { contestApi } from '@/api'
-import { ensureCourseTreeLoaded, getCourseById, getSectionChain } from '@/utils/courseTreeCache'
+import { ensureCourseTreeLoaded, getCourseById, getSectionById, getSectionChain } from '@/utils/courseTreeCache'
 
 const props = defineProps({
   section: { type: Object, default: null },
@@ -185,8 +185,77 @@ const refresh = async () => {
     sectionId = Number(getCourseById(courseId)?.section_id || null)
   }
 
+  // If we navigated to a newly created section/course, the in-memory tree cache can be stale.
+  // Refresh it only when we detect that the current entity is missing from the cache.
+  if (name === 'section' && sectionId && !getSectionById(sectionId)) {
+    try {
+      await ensureCourseTreeLoaded({ force: true })
+    } catch (e) {
+      // ignore
+    }
+  }
+  if (name === 'course' && courseId && !getCourseById(courseId)) {
+    try {
+      await ensureCourseTreeLoaded({ force: true })
+    } catch (e) {
+      // ignore
+    }
+    if (!sectionId) {
+      sectionId = Number(getCourseById(courseId)?.section_id || null)
+    }
+  }
+
+  // If the section/course exists in the cache but its parent link differs from the page props,
+  // we likely have a stale cache after moving items. Force refresh in that case.
+  if (name === 'section' && sectionId && props.section) {
+    const cached = getSectionById(sectionId)
+    const parentFromPropsRaw = props.section?.parent_id ?? null
+    const parentFromProps =
+      parentFromPropsRaw == null ? null : Number(parentFromPropsRaw)
+    if (
+      cached &&
+      parentFromProps != null &&
+      Number.isFinite(parentFromProps) &&
+      Number(cached.parent_id ?? null) !== parentFromProps
+    ) {
+      try {
+        await ensureCourseTreeLoaded({ force: true })
+      } catch (e) {
+        // ignore
+      }
+    }
+  }
+  if (name === 'course' && courseId && props.course) {
+    const cached = getCourseById(courseId)
+    const sectionFromPropsRaw =
+      props.course?.section_id ?? props.course?.sectionId ?? props.course?.section ?? null
+    const sectionFromProps =
+      sectionFromPropsRaw == null ? null : Number(sectionFromPropsRaw)
+    if (
+      cached &&
+      sectionFromProps != null &&
+      Number.isFinite(sectionFromProps) &&
+      Number(cached.section_id ?? null) !== sectionFromProps
+    ) {
+      try {
+        await ensureCourseTreeLoaded({ force: true })
+      } catch (e) {
+        // ignore
+      }
+    }
+  }
+
   if (sectionId) {
-    _pushSectionChain(list, sectionId)
+    // If the current section is missing from the tree but we do have its parent_id (from props),
+    // show at least the parent chain and append the current section as a fallback below.
+    const missingCurrent = !getSectionById(sectionId)
+    const parentIdFromProps = Number(props.section?.parent_id || null)
+    if (missingCurrent && Number.isFinite(parentIdFromProps) && parentIdFromProps > 0) {
+      _pushSectionChain(list, parentIdFromProps)
+    } else {
+      _pushSectionChain(list, sectionId)
+    }
+
     // Fallback if the section is not present in cached tree (e.g., limited permissions).
     const hasCurrentSection = list.some((x) => x.key === `section:${Number(sectionId)}`)
     if (!hasCurrentSection) {
@@ -270,6 +339,7 @@ watch(
   flex-wrap: nowrap;
   overflow-x: auto;
   overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
   padding: 6px 12px;
   border-radius: 12px;
   background: rgba(22, 33, 89, 0.06);
