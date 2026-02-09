@@ -48,8 +48,18 @@
                     >
                       <span class="triangle triangle--nested" :class="{ 'triangle--open': isNestedOpen(child.id) }"></span>
                     </button>
-                    <button type="button" class="course-link course-link--section" @click="goToCourse(child)">
-                      {{ child.title }}
+                    <button type="button" class="course-link course-link--section" @click="goToCourse(child)" :title="child.title">
+                      <span class="item-icon item-icon--section" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <path
+                            d="M3 7.5c0-1.1.9-2 2-2h5l2 2h7c1.1 0 2 .9 2 2v8.5c0 1.1-.9 2-2 2H5c-1.1 0-2-.9-2-2V7.5Z"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linejoin="round"
+                          />
+                        </svg>
+                      </span>
+                      <span class="item-text">{{ child.title }}</span>
                     </button>
                   </div>
                   <div v-if="isNestedOpen(child.id) && (child.children || []).length" class="badge-list">
@@ -58,8 +68,31 @@
                         type="button"
                         :class="grand.type === 'course' ? 'badge' : 'course-link course-link--section'"
                         @click="goToCourse(grand)"
+                        :title="grand.title"
                       >
-                        {{ grand.title }}
+                        <span
+                          class="item-icon"
+                          :class="grand.type === 'course' ? 'item-icon--course' : 'item-icon--section'"
+                          aria-hidden="true"
+                        >
+                          <svg v-if="grand.type !== 'course'" viewBox="0 0 24 24" width="18" height="18" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path
+                              d="M3 7.5c0-1.1.9-2 2-2h5l2 2h7c1.1 0 2 .9 2 2v8.5c0 1.1-.9 2-2 2H5c-1.1 0-2-.9-2-2V7.5Z"
+                              stroke="currentColor"
+                              stroke-width="2"
+                              stroke-linejoin="round"
+                            />
+                          </svg>
+                          <svg v-else viewBox="0 0 24 24" width="18" height="18" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path
+                              d="M6 3h11a2 2 0 0 1 2 2v14.5a1.5 1.5 0 0 1-2.34 1.25L12 17.7l-4.66 3.05A1.5 1.5 0 0 1 5 19.5V5a2 2 0 0 1 1-2Z"
+                              stroke="currentColor"
+                              stroke-width="2"
+                              stroke-linejoin="round"
+                            />
+                          </svg>
+                        </span>
+                        <span class="item-text">{{ grand.title }}</span>
                       </button>
                       <button
                         v-if="isAuthorized && grand.type === 'course'"
@@ -88,8 +121,31 @@
                       type="button"
                       :class="child.type === 'course' ? 'badge' : 'course-link course-link--section'"
                       @click="goToCourse(child)"
+                      :title="child.title"
                     >
-                      {{ child.title }}
+                      <span
+                        class="item-icon"
+                        :class="child.type === 'course' ? 'item-icon--course' : 'item-icon--section'"
+                        aria-hidden="true"
+                      >
+                        <svg v-if="child.type !== 'course'" viewBox="0 0 24 24" width="18" height="18" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <path
+                            d="M3 7.5c0-1.1.9-2 2-2h5l2 2h7c1.1 0 2 .9 2 2v8.5c0 1.1-.9 2-2 2H5c-1.1 0-2-.9-2-2V7.5Z"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linejoin="round"
+                          />
+                        </svg>
+                        <svg v-else viewBox="0 0 24 24" width="18" height="18" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <path
+                            d="M6 3h11a2 2 0 0 1 2 2v14.5a1.5 1.5 0 0 1-2.34 1.25L12 17.7l-4.66 3.05A1.5 1.5 0 0 1 5 19.5V5a2 2 0 0 1 1-2Z"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linejoin="round"
+                          />
+                        </svg>
+                      </span>
+                      <span class="item-text">{{ child.title }}</span>
                     </button>
                     <button
                       v-if="isAuthorized && child.type === 'course'"
@@ -134,8 +190,18 @@
             <ul v-if="standaloneOpen" class="course-list">
               <li v-for="course in standalone" :key="course.id" class="course-item">
                 <div class="course-row">
-                  <button type="button" class="badge" @click="goToCourse(course)">
-                    {{ course.title }}
+                  <button type="button" class="badge" @click="goToCourse(course)" :title="course.title">
+                    <span class="item-icon item-icon--course" aria-hidden="true">
+                      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path
+                          d="M6 3h11a2 2 0 0 1 2 2v14.5a1.5 1.5 0 0 1-2.34 1.25L12 17.7l-4.66 3.05A1.5 1.5 0 0 1 5 19.5V5a2 2 0 0 1 1-2Z"
+                          stroke="currentColor"
+                          stroke-width="2"
+                          stroke-linejoin="round"
+                        />
+                      </svg>
+                    </span>
+                    <span class="item-text">{{ course.title }}</span>
                   </button>
                   <button
                     v-if="isAuthorized && course.type === 'course'"
@@ -644,6 +710,7 @@ onMounted(loadSidebar)
 .badge {
   display: inline-flex;
   align-items: center;
+  gap: 10px;
   padding: 9px 10px;
   background: var(--color-button-secondary);
   border-radius: 8px;
@@ -660,18 +727,44 @@ onMounted(loadSidebar)
 }
 
 .course-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
   font-size: 16px;
   font-weight: 400;
   line-height: 1.4;
   color: var(--color-text-primary);
   background: none;
+  border: none;
   padding: 6px 0;
   text-align: left;
   flex: 1 1 auto;
+  cursor: pointer;
+  min-width: 0;
 }
 
 .course-link--section {
   font-weight: 500;
+}
+
+.item-icon {
+  flex: 0 0 auto;
+  color: rgba(22, 33, 89, 0.70);
+}
+
+.item-icon--section {
+  color: rgba(37, 99, 235, 0.95);
+}
+
+.item-icon--course {
+  color: rgba(22, 33, 89, 0.80);
+}
+
+.item-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .course-link:hover,

@@ -143,6 +143,31 @@ export function getCourses() {
   return new Promise(resolve => setTimeout(() => resolve(mockData), 200));
 }
 
+export function browseCourses({ tab = 'mine', q = '', page = 1, page_size = 10 } = {}) {
+  const query = String(q || '').toLowerCase()
+  const flat = flattenCourses(mockData).filter(x => x?.type === 'course')
+  const list = flat.map(c => ({
+    id: c.id,
+    title: c.title,
+    description: c.description || '',
+    is_open: true,
+    section_title: null,
+    is_favorite: false,
+    role: tab === 'admin' ? 'teacher' : null,
+    can_admin: tab === 'admin',
+  }))
+
+  const filtered = query ? list.filter(c => String(c.title).toLowerCase().includes(query)) : list
+  const ps = Math.min(Math.max(Number(page_size) || 10, 1), 50)
+  const p = Math.max(Number(page) || 1, 1)
+  const total = filtered.length
+  const totalPages = Math.max(Math.ceil(total / ps), 1)
+  const start = (p - 1) * ps
+  const items = filtered.slice(start, start + ps)
+
+  return Promise.resolve({ items, page: p, page_size: ps, total_pages: totalPages, total })
+}
+
 const flattenCourses = (nodes = []) => {
   const result = []
   nodes.forEach(node => {

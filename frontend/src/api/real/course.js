@@ -60,3 +60,13 @@ export async function removeCourseParticipants(courseId, usernames = []) {
 export async function reorderCourseContests(courseId, contestIds = []) {
   return await apiPost(`backend/course/${courseId}/contests/reorder/`, { contest_ids: contestIds })
 }
+
+export async function browseCourses({ tab = 'mine', q = '', page = 1, page_size = 10 } = {}) {
+  const params = {
+    tab,
+    q,
+    page,
+    page_size,
+  }
+  return await apiGet('api/courses/browse/', params)
+}

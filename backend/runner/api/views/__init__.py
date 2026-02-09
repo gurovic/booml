@@ -17,6 +17,7 @@ from .courses import (
     CourseParticipantsUpdateView,
     CourseSelfEnrollView,
     CourseTreeView,
+    CourseBrowseView,
     SectionCreateView,
     SectionDeleteView,
 )
