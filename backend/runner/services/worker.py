@@ -51,7 +51,7 @@ def enqueue_submission_for_evaluation(submission_id: int):
 def evaluate_submission(submission_id: int):
     logger.info(f"[WORKER] Evaluating submission {submission_id}")
     try:
-        submission = Submission.objects.get(pk=submission_id)
+        submission = Submission.objects.select_related('problem').get(pk=submission_id)
 
         # --- Вызов чекера по метрике ---
         result = checker_service.check_submission(submission)
@@ -73,12 +73,15 @@ def evaluate_submission(submission_id: int):
         submission.save(update_fields=["status", "metrics"])
 
         # Broadcast update to WebSocket subscribers
-        broadcast_submission_update(
-            problem_id=submission.problem_id,
-            submission_id=submission.id,
-            status=submission.status,
-            metrics=submission.metrics,
-        )
+        if submission.problem_id:
+            broadcast_submission_update(
+                problem_id=submission.problem_id,
+                submission_id=submission.id,
+                status=submission.status,
+                metrics=submission.metrics,
+            )
+        else:
+            logger.warning(f"[WORKER] Submission {submission_id} has no problem_id, skipping WebSocket broadcast")
 
         logger.info(f"[WORKER] Submission {submission_id} evaluation finished: {submission.status}")
         return {"submission_id": submission_id, "status": submission.status}
@@ -95,10 +98,13 @@ def evaluate_submission(submission_id: int):
             submission.save(update_fields=["status", "metrics"])
             
             # Broadcast update to WebSocket subscribers
-            broadcast_submission_update(
-                problem_id=submission.problem_id,
-                submission_id=submission.id,
-                status=submission.status,
-                metrics=submission.metrics,
-            )
+            if submission.problem_id:
+                broadcast_submission_update(
+                    problem_id=submission.problem_id,
+                    submission_id=submission.id,
+                    status=submission.status,
+                    metrics=submission.metrics,
+                )
+            else:
+                logger.warning(f"[WORKER] Submission {submission_id} has no problem_id, skipping WebSocket broadcast")
         return {"submission_id": submission_id, "status": "error", "error": str(e)}
