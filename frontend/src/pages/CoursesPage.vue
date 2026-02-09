@@ -54,6 +54,7 @@
               class="search__clear"
               type="button"
               title="Очистить"
+              aria-label="Очистить поиск"
               @click="clearSearch"
             >
               ×
@@ -74,7 +75,15 @@
 
           <ul v-else class="course-list">
             <li v-for="c in items" :key="c.id" class="course-item">
-              <button type="button" class="course-card" @click="openCourse(c)">
+              <div
+                class="course-card"
+                role="link"
+                tabindex="0"
+                :aria-label="`Открыть курс ${c.title}`"
+                @click="openCourse(c)"
+                @keydown.enter.prevent="openCourse(c)"
+                @keydown.space.prevent="openCourse(c)"
+              >
                 <div class="course-card__main">
                   <div class="course-card__title">{{ c.title }}</div>
                   <div class="course-card__meta">
@@ -110,7 +119,7 @@
                     </svg>
                   </button>
                 </div>
-              </button>
+              </div>
             </li>
           </ul>
 
@@ -130,7 +139,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { courseApi, homeApi } from '@/api'
 import { useUserStore } from '@/stores/UserStore'
@@ -214,6 +223,11 @@ const clearSearch = () => {
   page.value = 1
   load()
 }
+
+onBeforeUnmount(() => {
+  if (_searchTimer) clearTimeout(_searchTimer)
+  _searchTimer = null
+})
 
 const toggleFavorite = async (course) => {
   if (!isAuthorized.value || !course?.id) return
@@ -361,6 +375,11 @@ onMounted(() => {
 
 .course-card:hover {
   filter: brightness(0.99);
+}
+
+.course-card:focus-visible {
+  outline: 2px solid rgba(22, 33, 89, 0.35);
+  outline-offset: 2px;
 }
 
 .course-card__main {

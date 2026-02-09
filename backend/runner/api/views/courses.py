@@ -296,23 +296,48 @@ class CourseBrowseView(APIView):
         paginator = Paginator(qs, page_size)
         page_obj = paginator.get_page(page)
 
+        page_courses = list(page_obj.object_list)
+        course_ids = [c.id for c in page_courses]
+        participant_role_by_course_id = {}
+        if course_ids:
+            participant_role_by_course_id = {
+                int(cid): role
+                for cid, role in CourseParticipant.objects.filter(
+                    user=user, course_id__in=course_ids
+                ).values_list("course_id", "role")
+            }
+
         items = []
         if tab == "admin":
             teacher_ids = set()
             if not is_admin:
-                teacher_ids = set(
-                    CourseParticipant.objects.filter(
-                        user=user, role=CourseParticipant.Role.TEACHER
-                    ).values_list("course_id", flat=True)
-                )
-            for course in page_obj.object_list:
+                teacher_ids = {
+                    int(cid)
+                    for cid, role in participant_role_by_course_id.items()
+                    if role == CourseParticipant.Role.TEACHER
+                }
+            for course in page_courses:
                 can_admin = bool(
                     is_admin or course.owner_id == user.id or course.id in teacher_ids
                 )
-                items.append(self._serialize_course(course, user=user, can_admin=can_admin))
+                items.append(
+                    self._serialize_course(
+                        course,
+                        user=user,
+                        can_admin=can_admin,
+                        participant_role=participant_role_by_course_id.get(course.id),
+                    )
+                )
         else:
-            for course in page_obj.object_list:
-                items.append(self._serialize_course(course, user=user, can_admin=False))
+            for course in page_courses:
+                items.append(
+                    self._serialize_course(
+                        course,
+                        user=user,
+                        can_admin=False,
+                        participant_role=participant_role_by_course_id.get(course.id),
+                    )
+                )
 
         return Response(
             {
@@ -325,22 +350,12 @@ class CourseBrowseView(APIView):
             status=200,
         )
 
-    def _serialize_course(self, course: Course, *, user, can_admin: bool) -> dict:
+    def _serialize_course(
+        self, course: Course, *, user, can_admin: bool, participant_role=None
+    ) -> dict:
         # Find current user's role if they are a participant (optional, for UI).
-        role = None
-        if course.owner_id == user.id:
-            role = "owner"
-        else:
-            participant = None
-            # Avoid prefetch; list sizes are small (page <= 50).
-            try:
-                participant = CourseParticipant.objects.filter(
-                    course=course, user=user
-                ).only("role", "is_owner").first()
-            except Exception:
-                participant = None
-            if participant:
-                role = participant.role
+        # Role is pre-fetched per page to avoid N+1 queries.
+        role = "owner" if course.owner_id == user.id else participant_role
 
         return {
             "id": course.id,
