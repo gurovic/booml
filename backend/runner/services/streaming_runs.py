@@ -102,6 +102,12 @@ def read_stream_output(run: StreamingRun, *, stdout_offset: int, stderr_offset: 
 
 
 def _execute_run(run: StreamingRun, code: str) -> None:
+    # Avoid a race where status becomes "finished" before stream files are removed.
+    # Some callers/tests treat "finished" as "all cleanup is done".
+    final_status = "finished"
+    final_error = None
+    result = None
+
     try:
         result = run_code_stream(
             run.session_id,
@@ -109,17 +115,18 @@ def _execute_run(run: StreamingRun, code: str) -> None:
             stdout_path=run.stdout_path,
             stderr_path=run.stderr_path,
         )
-        run.result = result
-        run.status = "finished"
     except SessionNotFoundError as exc:
-        run.status = "error"
-        run.error = str(exc)
+        final_status = "error"
+        final_error = str(exc)
     except Exception as exc:  # pragma: no cover - defensive
-        run.status = "error"
-        run.error = str(exc)
+        final_status = "error"
+        final_error = str(exc)
     finally:
+        run.result = result
+        run.error = final_error
         run.finished_at = time.time()
         _cleanup_run_files(run)
+        run.status = final_status
 
 
 def _read_chunk(path: Path, offset: int) -> Tuple[str, int]:
