@@ -7,7 +7,7 @@ from rest_framework.views import APIView
 
 from ...models import Course, CourseParticipant, FavoriteCourse, Section
 from ...services import add_users_to_course
-from ...services.section_service import ROOT_SECTION_TITLES
+from ...services.section_service import ROOT_SECTION_TITLES, is_root_section, root_section_order_key
 from ..serializers import (
     CourseCreateSerializer,
     CourseParticipantSummarySerializer,
@@ -18,7 +18,7 @@ from ..serializers import (
 )
 
 
-def _build_section_tree(sections, courses, favorite_positions=None):
+def _build_section_tree(sections, courses, favorite_positions=None, *, user=None, section_teacher_ids=None):
     sections_by_parent = {}
     for section in sections:
         sections_by_parent.setdefault(section.parent_id, []).append(section)
@@ -32,6 +32,9 @@ def _build_section_tree(sections, courses, favorite_positions=None):
 
     def sort_courses(items):
         return sorted(items, key=lambda item: item.title.lower())
+
+    section_teacher_ids = section_teacher_ids or set()
+    is_admin = bool(user and getattr(user, "is_authenticated", False) and (user.is_staff or user.is_superuser))
 
     def build(section):
         child_nodes = []
@@ -55,7 +58,20 @@ def _build_section_tree(sections, courses, favorite_positions=None):
                     "type": "course",
                 }
             )
-        is_root = section.parent_id is None and section.title in ROOT_SECTION_TITLES
+        is_root = bool(is_root_section(section))
+        can_manage = False
+        can_manage_teachers = False
+        if user and getattr(user, "is_authenticated", False):
+            if is_admin:
+                can_manage = True
+                can_manage_teachers = True
+            elif is_root and user.is_staff:
+                can_manage = True
+            elif section.owner_id == user.id:
+                can_manage = True
+                can_manage_teachers = True
+            elif section.id in section_teacher_ids:
+                can_manage = True
         return {
             "id": section.id,
             "title": section.title,
@@ -64,20 +80,14 @@ def _build_section_tree(sections, courses, favorite_positions=None):
             "owner_id": section.owner_id,
             "owner_username": section.owner.username if section.owner_id else None,
             "is_root": bool(is_root),
+            "can_manage": bool(can_manage),
+            "can_manage_teachers": bool(can_manage_teachers),
             "children": child_nodes,
             "type": "section",
         }
 
     root_sections = sections_by_parent.get(None, [])
-    root_map = {section.title: section for section in root_sections}
-    ordered_roots = []
-    for title in ROOT_SECTION_TITLES:
-        section = root_map.get(title)
-        if section:
-            ordered_roots.append(section)
-    for section in sort_sections([s for s in root_sections if s.title not in ROOT_SECTION_TITLES]):
-        ordered_roots.append(section)
-
+    ordered_roots = sorted(root_sections, key=root_section_order_key)
     return [build(section) for section in ordered_roots]
 
 
@@ -156,11 +166,20 @@ class CourseTreeView(APIView):
         sections = list(Section.objects.select_related("parent", "owner").all())
         courses_qs = Course.objects.select_related("section", "owner").all()
         is_admin = request.user.is_staff or request.user.is_superuser
+
+        section_teacher_ids = set()
+        if request.user.is_authenticated and not is_admin:
+            from ...models import SectionTeacher
+            section_teacher_ids = set(
+                SectionTeacher.objects.filter(user=request.user).values_list("section_id", flat=True)
+            )
+
         if not is_admin:
             courses_qs = courses_qs.filter(
                 Q(is_open=True)
                 | Q(owner=request.user)
                 | Q(section__owner=request.user)
+                | Q(section__section_teachers__user=request.user)
                 | Q(participants__user=request.user)
             ).distinct()
         courses = list(courses_qs)
@@ -177,7 +196,7 @@ class CourseTreeView(APIView):
             section_parent = {section.id: section.parent_id for section in sections}
             allowed_section_ids = {section.id for section in sections if section.parent_id is None}
             for section in sections:
-                if section.owner_id != request.user.id:
+                if section.owner_id != request.user.id and section.id not in section_teacher_ids:
                     continue
                 current_id = section.id
                 while current_id:
@@ -194,7 +213,13 @@ class CourseTreeView(APIView):
                     current_id = section_parent.get(current_id)
             sections = [section for section in sections if section.id in allowed_section_ids]
 
-        tree = _build_section_tree(sections, courses, favorite_positions=favorite_positions)
+        tree = _build_section_tree(
+            sections,
+            courses,
+            favorite_positions=favorite_positions,
+            user=request.user,
+            section_teacher_ids=section_teacher_ids,
+        )
         return Response(tree)
 
 

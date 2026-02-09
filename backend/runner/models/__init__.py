@@ -10,6 +10,6 @@ from .leaderboard import Leaderboard
 from .notebook import Notebook
 from .problem import Problem
 from .tag import Tag
-from .section import Section
+from .section import Section, SectionTeacher
 from .course import Course, CourseParticipant, FavoriteCourse
 from .site_update import SiteUpdate

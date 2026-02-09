@@ -11,13 +11,13 @@
                 <h2 class="section-title">{{ section.title }}</h2>
               </button>
               <button
-                v-if="isAuthorized"
+                v-if="canEditSection(section)"
                 type="button"
                 class="section-open-btn"
                 @click="goToCourse(section)"
-                title="Открыть страницу раздела"
+                title="Редактировать раздел"
               >
-                Открыть
+                Редактировать
               </button>
             </div>
 
@@ -225,10 +225,21 @@ const userStore = useUserStore()
 
 let user = userStore.getCurrentUser()
 let isAuthorized = computed(() => user.value != null)
+const isTeacher = computed(() => String(userStore.currentUser?.role || '') === 'teacher')
+
+const canEditSection = (s) => {
+  if (!isAuthorized.value) return false
+  if (!s) return false
+  // Prefer server-side permission flag when present.
+  if (typeof s.can_manage === 'boolean') return s.can_manage
+  if (s.is_root) return isTeacher.value
+  return Number(s.owner_id) === Number(userStore.currentUser?.id)
+}
 
 const hasChildren = item => Array.isArray(item?.children) && item.children.length > 0
-const sections = computed(() => courses.value.filter(hasChildren))
-const standalone = computed(() => courses.value.filter(item => !hasChildren(item)))
+// Root nodes from the API are sections; render them even if empty so teachers can add content.
+const sections = computed(() => courses.value.filter(item => item?.type === 'section'))
+const standalone = computed(() => courses.value.filter(item => item?.type !== 'section'))
 
 const orderedChildren = section => {
   const list = section.children || []
@@ -410,7 +421,8 @@ onMounted(loadSidebar)
   display: flex;
   align-items: center;
   gap: 10px;
-  width: 100%;
+  flex: 1 1 auto;
+  min-width: 0;
   background: none;
   padding: 6px 4px 10px;
   text-align: left;
@@ -425,6 +437,7 @@ onMounted(loadSidebar)
 }
 
 .section-open-btn {
+  flex: 0 0 auto;
   border: 1px solid var(--color-border-default);
   background: #fff;
   color: var(--color-text-primary);
@@ -449,6 +462,9 @@ onMounted(loadSidebar)
   font-size: 20px;
   font-weight: 600;
   line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .course-title {

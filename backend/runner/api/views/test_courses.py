@@ -94,6 +94,36 @@ class CourseCreateTests(TestCase):
         self.assertEqual(resp.status_code, 400)
         self.assertIn("section_id", resp.json())
 
+    def test_student_cannot_create_course_in_root_section(self):
+        User.objects.create_user(username="student_root", password="pass", is_staff=False)
+        self.client.login(username="student_root", password="pass")
+        resp = self.client.post(
+            self.url,
+            {"title": "Root Course", "section_id": self.root_section.id},
+        )
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("section_id", resp.json())
+
+
+class SectionCreateTests(TestCase):
+    def setUp(self):
+        self.root_section = Section.objects.get(title="Авторские", parent__isnull=True)
+        self.url = reverse("section-create")
+
+    def test_teacher_can_create_section_in_root(self):
+        User.objects.create_user(username="teacher_root", password="pass", is_staff=True)
+        self.client.login(username="teacher_root", password="pass")
+        resp = self.client.post(self.url, {"title": "T-Section", "parent_id": self.root_section.id})
+        self.assertEqual(resp.status_code, 201)
+        self.assertEqual(resp.json()["title"], "T-Section")
+
+    def test_student_cannot_create_section_in_root(self):
+        User.objects.create_user(username="student_sec", password="pass", is_staff=False)
+        self.client.login(username="student_sec", password="pass")
+        resp = self.client.post(self.url, {"title": "S-Section", "parent_id": self.root_section.id})
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("parent_id", resp.json())
+
 
 class CourseParticipantsTests(TestCase):
     def setUp(self):
