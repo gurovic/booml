@@ -194,8 +194,8 @@ class InteractiveRun:
             self.stdout_buffer.write(text)
             try:
                 self.stdout_buffer.flush()
-            except Exception:
-                pass
+            except Exception as exc:
+                logging.debug("Failed to flush stdout buffer in InteractiveRun: %s", exc)
 
     def _readline(self) -> str:
         with self._condition:
