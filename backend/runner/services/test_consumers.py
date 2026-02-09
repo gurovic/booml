@@ -34,3 +34,35 @@ def test_submission_consumer_receives_metric_event():
         await communicator.disconnect()
 
     asyncio.run(scenario())
+
+
+def test_problem_submissions_consumer_receives_update_event():
+    async def scenario():
+        communicator = WebsocketCommunicator(application, "/ws/problems/5/submissions/")
+        connected, _ = await communicator.connect()
+        assert connected
+
+        channel_layer = get_channel_layer()
+        assert channel_layer is not None
+
+        await channel_layer.group_send(
+            "problem_submissions_5",
+            {
+                "type": "submission.update",
+                "submission_id": 123,
+                "status": "accepted",
+                "metrics": {"accuracy": 0.95},
+            },
+        )
+
+        response = await communicator.receive_json_from(timeout=10)
+        assert response == {
+            "type": "submission_update",
+            "submission_id": 123,
+            "status": "accepted",
+            "metrics": {"accuracy": 0.95},
+        }
+
+        await communicator.disconnect()
+
+    asyncio.run(scenario())
