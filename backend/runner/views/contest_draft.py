@@ -27,7 +27,28 @@ def create_contest(request, course_id):
             status=403,
         )
 
-    form = ContestForm(request.POST, course=course)
+    # Frontend posts JSON; HTML form posts x-www-form-urlencoded.
+    # Support both, but prefer JSON when present.
+    data = None
+    content_type = (request.META.get("CONTENT_TYPE") or "").lower()
+    if "application/json" in content_type:
+        try:
+            payload = json.loads(request.body or "{}")
+        except json.JSONDecodeError:
+            return JsonResponse({"detail": "Invalid JSON payload"}, status=400)
+        if not isinstance(payload, dict):
+            return JsonResponse({"detail": "JSON payload must be an object"}, status=400)
+        data = payload
+    else:
+        data = request.POST
+
+    # The model has defaults for these; the form still treats them as required unless provided.
+    data = dict(data) if not hasattr(data, "copy") else data.copy()
+    data.setdefault("status", Contest.Status.GOING)
+    data.setdefault("scoring", Contest.Scoring.IOI)
+    data.setdefault("registration_type", Contest.Registration.OPEN)
+
+    form = ContestForm(data, course=course)
     if form.is_valid():
         contest = form.save(created_by=request.user, course=course)
         return JsonResponse(
@@ -80,6 +101,8 @@ def list_contests(request):
                 "description": contest.description,
                 "course": contest.course_id,
                 "course_title": contest.course.title if contest.course else None,
+                "created_by_id": contest.created_by_id,
+                "created_by_username": contest.created_by.username if contest.created_by_id else None,
                 "is_published": contest.is_published,
                 "access_type": contest.access_type,
                 "approval_status": contest.approval_status,
@@ -97,6 +120,24 @@ def list_contests(request):
         )
 
     return JsonResponse({"items": visible}, status=200)
+
+
+@login_required
+def delete_contest(request, contest_id):
+    if request.method not in {"POST", "DELETE"}:
+        return JsonResponse({"detail": "Method not allowed"}, status=405)
+
+    contest = get_object_or_404(
+        Contest.objects.select_related("course__section"),
+        pk=contest_id,
+    )
+
+    # Only the teacher who created the contest can delete it.
+    if contest.created_by_id != request.user.id:
+        return JsonResponse({"detail": "Only contest creator can delete this contest"}, status=403)
+
+    contest.delete()
+    return JsonResponse({"success": True, "deleted_id": contest_id}, status=200)
 
 def contest_detail(request, contest_id):
     if request.method != "GET":
@@ -154,6 +195,8 @@ def contest_detail(request, contest_id):
             "problems": problems,
             "leaderboards": leaderboards,
             "overall_leaderboard": overall_leaderboard,
+            "is_owner": is_owner,
+            "section_owner_id": contest.course.section.owner_id,
         },
         status=200,
     )

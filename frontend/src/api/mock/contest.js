@@ -131,3 +131,60 @@ export function getContestLeaderboard(contestId) {
     overall_leaderboard: data.overall_leaderboard || null,
   })
 }
+
+export async function createContest(courseId, contestData) {
+  // Mock contest creation
+  const newContestId = Date.now()
+  const newContest = {
+    id: newContestId,
+    title: contestData.title,
+    description: contestData.description,
+    course: courseId,
+    is_published: contestData.is_published || false,
+    is_rated: contestData.is_rated || false,
+    scoring: contestData.scoring || 'ioi',
+    problems_count: 0,
+  }
+  
+  // Add to mock data
+  const key = Number(courseId)
+  if (!mockContests[key]) {
+    mockContests[key] = []
+  }
+  mockContests[key].push(newContest)
+  
+  return Promise.resolve(newContest)
+}
+
+export async function addProblemToContest(contestId, problemId) {
+  // Mock adding problem to contest
+  return Promise.resolve({
+    contest: contestId,
+    problem: {
+      id: problemId,
+      title: `Problem ${problemId}`,
+    },
+    added: true,
+    problems_count: 1,
+  })
+}
+
+export async function deleteContest(contestId) {
+  const numericId = Number(contestId)
+  let deleted = false
+
+  for (const key of Object.keys(mockContests)) {
+    const list = mockContests[key] || []
+    const next = list.filter(item => Number(item.id) !== numericId)
+    if (next.length !== list.length) {
+      mockContests[key] = next
+      deleted = true
+    }
+  }
+
+  if (!deleted) {
+    return Promise.reject(new Error('Contest not found'))
+  }
+
+  return Promise.resolve({ success: true, deleted_id: numericId })
+}

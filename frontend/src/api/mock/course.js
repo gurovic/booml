@@ -123,5 +123,6 @@ export function getCourse(courseId) {
     id: found.id,
     title: found.title,
     description: found.description || '',
+    section_owner_id: 1, // Mock owner ID for testing
   })
 }
