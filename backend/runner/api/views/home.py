@@ -1,11 +1,21 @@
 from django.db import transaction
-from django.db.models import Max, Q
+from django.db.models import Exists, Max, OuterRef, Subquery
 from django.shortcuts import get_object_or_404
-from rest_framework import permissions, status
+from rest_framework import permissions
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from ...models import Course, FavoriteCourse, SiteUpdate, Submission
+from ...models import (
+    Contest,
+    ContestProblem,
+    Course,
+    CourseParticipant,
+    FavoriteCourse,
+    SiteUpdate,
+    Submission,
+)
+
+from ...views.submissions import _primary_metric  # keep scoring logic consistent across views
 
 
 def _course_is_visible_to_user(course: Course, user) -> bool:
@@ -52,6 +62,8 @@ class HomeSidebarView(APIView):
                 {"favorites": [], "recent_problems": [], "updates": []}, status=200
             )
 
+        is_admin = request.user.is_staff or request.user.is_superuser
+
         favorites_qs = (
             FavoriteCourse.objects.filter(user=request.user)
             .select_related("course")
@@ -60,22 +72,147 @@ class HomeSidebarView(APIView):
         favorites = _serialize_favorites(favorites_qs)
 
         # Recent problems for the current user, based on recent submissions.
+        latest_sub = (
+            Submission.objects.filter(
+                user_id=request.user.id,
+                problem_id=OuterRef("problem_id"),
+            )
+            .order_by("-submitted_at", "-id")
+        )
         recent = (
             Submission.objects.filter(user_id=request.user.id, problem__isnull=False)
             .values("problem_id", "problem__title")
-            .annotate(last_submitted_at=Max("submitted_at"))
+            .annotate(
+                last_submitted_at=Max("submitted_at"),
+                last_metrics=Subquery(latest_sub.values("metrics")[:1]),
+            )
             .order_by("-last_submitted_at")[:5]
         )
-        recent_problems = [
-            {
-                "problem_id": row["problem_id"],
-                "title": row["problem__title"],
-                "last_submitted_at": row["last_submitted_at"].isoformat()
-                if row["last_submitted_at"]
-                else None,
-            }
-            for row in recent
-        ]
+
+        # Best-effort: infer a contest/course context for each recent problem.
+        # Submissions are not linked to contests, so we pick a visible contest that contains the problem.
+        problem_ids = [row["problem_id"] for row in recent if row.get("problem_id")]
+        context_by_problem_id = {}
+        if problem_ids:
+            links = list(
+                ContestProblem.objects.filter(problem_id__in=problem_ids).values(
+                    "problem_id", "contest_id"
+                )
+            )
+            contest_ids = sorted({x["contest_id"] for x in links if x.get("contest_id")})
+            if contest_ids:
+                teacher_exists = Exists(
+                    CourseParticipant.objects.filter(
+                        course_id=OuterRef("course_id"),
+                        user_id=request.user.id,
+                        role=CourseParticipant.Role.TEACHER,
+                    )
+                )
+                member_exists = Exists(
+                    CourseParticipant.objects.filter(
+                        course_id=OuterRef("course_id"), user_id=request.user.id
+                    )
+                )
+                allowed_exists = Exists(
+                    Contest.allowed_participants.through.objects.filter(
+                        contest_id=OuterRef("pk"), user_id=request.user.id
+                    )
+                )
+
+                contests = list(
+                    Contest.objects.filter(id__in=contest_ids)
+                    .select_related("course", "course__section")
+                    .annotate(
+                        is_course_teacher=teacher_exists,
+                        is_course_member=member_exists,
+                        is_allowed=allowed_exists,
+                    )
+                )
+                contest_by_id = {c.id: c for c in contests}
+
+                def is_visible(contest):
+                    if is_admin:
+                        return True
+                    if contest.course and contest.course.owner_id == request.user.id:
+                        return True
+                    if getattr(contest, "is_course_teacher", False):
+                        return True
+                    if (
+                        not contest.is_published
+                        or contest.approval_status != Contest.ApprovalStatus.APPROVED
+                    ):
+                        return False
+                    if contest.access_type == Contest.AccessType.PRIVATE:
+                        return bool(getattr(contest, "is_allowed", False))
+                    if contest.access_type == Contest.AccessType.LINK:
+                        return bool(getattr(contest, "is_allowed", False))
+                    if contest.access_type == Contest.AccessType.PUBLIC and contest.course.is_open:
+                        return True
+                    return bool(getattr(contest, "is_course_member", False)) or (
+                        contest.course and contest.course.owner_id == request.user.id
+                    )
+
+                def rank(contest):
+                    if is_admin:
+                        return 100
+                    if contest.course and contest.course.owner_id == request.user.id:
+                        return 95
+                    if getattr(contest, "is_course_teacher", False):
+                        return 90
+                    if getattr(contest, "is_course_member", False):
+                        return 80
+                    if bool(getattr(contest, "is_allowed", False)):
+                        return 60
+                    if contest.access_type == Contest.AccessType.PUBLIC and contest.course.is_open:
+                        return 50
+                    return 0
+
+                by_problem = {}
+                for row in links:
+                    pid = row.get("problem_id")
+                    cid = row.get("contest_id")
+                    if pid and cid:
+                        by_problem.setdefault(pid, []).append(cid)
+
+                for pid, cids in by_problem.items():
+                    best = None
+                    best_key = None
+                    for cid in cids:
+                        c = contest_by_id.get(cid)
+                        if not c or not c.course:
+                            continue
+                        if not is_visible(c):
+                            continue
+                        key = (rank(c), c.created_at.timestamp() if c.created_at else 0, c.id)
+                        if best_key is None or key > best_key:
+                            best_key = key
+                            best = c
+                    if best:
+                        context_by_problem_id[pid] = {
+                            "contest_id": best.id,
+                            "contest_title": best.title,
+                            "course_id": best.course_id,
+                            "course_title": best.course.title if best.course_id else None,
+                        }
+
+        recent_problems = []
+        for row in recent:
+            pid = row["problem_id"]
+            ctx = context_by_problem_id.get(pid) or {}
+            recent_problems.append(
+                {
+                    "problem_id": pid,
+                    "title": row["problem__title"],
+                    "last_submitted_at": row["last_submitted_at"].isoformat()
+                    if row["last_submitted_at"]
+                    else None,
+                    "last_score": _primary_metric(row.get("last_metrics")),
+                    "contest_id": ctx.get("contest_id"),
+                    "contest_title": ctx.get("contest_title"),
+                    "course_id": ctx.get("course_id"),
+                    "course_title": ctx.get("course_title"),
+                }
+            )
 
         updates_qs = (
             SiteUpdate.objects.filter(is_published=True).order_by("-created_at")[:5]
@@ -228,4 +365,3 @@ class FavoriteCoursesReorderView(APIView):
             .order_by("position", "id")
         )
         return Response({"items": _serialize_favorites(updated)}, status=200)
-

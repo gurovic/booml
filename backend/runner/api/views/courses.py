@@ -1,5 +1,6 @@
 from django.db.models import Q
 from django.shortcuts import get_object_or_404
+from collections import deque
 from rest_framework import generics, permissions
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
@@ -233,6 +234,81 @@ class SectionCreateView(generics.CreateAPIView):
         section = serializer.save()
         data = SectionReadSerializer(section, context={"request": request}).data
         return Response(data, status=201)
+
+
+class SectionDeleteView(generics.GenericAPIView):
+    """
+    Delete a section subtree (non-root only). Allowed only for the section owner.
+
+    Deletes:
+    - the section
+    - all nested child sections
+    - all courses inside those sections (and everything cascading from courses: contests, etc.)
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+    lookup_url_kwarg = "section_id"
+
+    def post(self, request, *args, **kwargs):
+        section_id = self.kwargs.get(self.lookup_url_kwarg)
+        section = get_object_or_404(Section.objects.select_related("parent", "owner"), pk=section_id)
+
+        if is_root_section(section):
+            raise PermissionDenied("Root sections cannot be deleted")
+        if section.owner_id != request.user.id:
+            raise PermissionDenied("Only section owner can delete section")
+
+        from django.db import transaction
+
+        # Collect subtree ids (BFS) without N+1 queries.
+        # Fetch once and build parent -> children map in memory.
+        parent_rows = list(Section.objects.values_list("id", "parent_id"))
+        children_by_parent = {}
+        for sid, pid in parent_rows:
+            children_by_parent.setdefault(pid, []).append(sid)
+
+        to_delete_ids = []
+        queue = deque([section.id])
+        seen = set()
+        while queue:
+            current = queue.popleft()
+            if current in seen:
+                continue
+            seen.add(current)
+            to_delete_ids.append(current)
+            queue.extend(children_by_parent.get(current, []))
+
+        deleted_id = section.id
+        with transaction.atomic():
+            # Courses depend on Section via PROTECT, delete them first.
+            Course.objects.filter(section_id__in=to_delete_ids).delete()
+            # Delete sections bottom-up to satisfy on_delete=PROTECT on Section.parent.
+            nodes = list(
+                Section.objects.filter(id__in=to_delete_ids).values_list("id", "parent_id")
+            )
+            parent_by_id = {sid: pid for sid, pid in nodes}
+            child_count = {sid: 0 for sid, _ in nodes}
+            for sid, pid in nodes:
+                if pid in child_count:
+                    child_count[pid] += 1
+
+            remaining = set(child_count.keys())
+            while remaining:
+                leaves = [sid for sid in remaining if child_count.get(sid, 0) == 0]
+                if not leaves:
+                    # Defensive: shouldn't happen unless there is a cycle.
+                    raise RuntimeError("Section delete: cannot resolve leaf nodes (cycle?)")
+                Section.objects.filter(id__in=leaves).delete()
+                for sid in leaves:
+                    remaining.remove(sid)
+                    pid = parent_by_id.get(sid)
+                    if pid in remaining:
+                        child_count[pid] -= 1
+
+        return Response(
+            {"success": True, "deleted_id": deleted_id, "deleted_section_ids": to_delete_ids},
+            status=200,
+        )
 
 
 class CourseSelfEnrollView(generics.GenericAPIView):

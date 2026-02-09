@@ -4,8 +4,8 @@ const mockFavorites = [
 ]
 
 const mockRecentProblems = [
-  { problem_id: 1, title: 'A+B', last_submitted_at: new Date().toISOString() },
-  { problem_id: 2, title: 'Linear Regression', last_submitted_at: new Date(Date.now() - 3600_000).toISOString() },
+  { problem_id: 1, title: 'A+B', last_submitted_at: new Date().toISOString(), last_score: 1.0 },
+  { problem_id: 2, title: 'Linear Regression', last_submitted_at: new Date(Date.now() - 3600_000).toISOString(), last_score: 0.8732 },
 ]
 
 const mockUpdates = [
@@ -55,4 +55,3 @@ export async function reorderFavoriteCourses(courseIds = []) {
   mockFavorites.splice(0, mockFavorites.length, ...ordered)
   return Promise.resolve({ items: mockFavorites })
 }
-

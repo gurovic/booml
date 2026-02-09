@@ -18,6 +18,7 @@ from .courses import (
     CourseSelfEnrollView,
     CourseTreeView,
     SectionCreateView,
+    SectionDeleteView,
 )
 from .home import (
     HomeSidebarView,

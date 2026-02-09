@@ -6,8 +6,17 @@
         <div class="home__main">
           <div v-for="section in sections" :key="section.id" class="section-card">
             <div class="section-header-row">
-              <button type="button" class="section-header" @click="toggleSection(section.id)">
+              <button
+                type="button"
+                class="section-toggle"
+                :disabled="!(section.children || []).length"
+                @click="toggleSection(section.id)"
+                :aria-expanded="isSectionOpen(section.id)"
+                aria-label="Раскрыть/свернуть"
+              >
                 <span class="triangle" :class="{ 'triangle--open': isSectionOpen(section.id) }"></span>
+              </button>
+              <button type="button" class="section-title-btn" @click="goToCourse(section)">
                 <h2 class="section-title">{{ section.title }}</h2>
               </button>
               <button
@@ -28,15 +37,26 @@
                 class="course-item"
               >
                 <template v-if="hasChildren(child)">
-                  <button type="button" class="section-header section-header--inline" @click="toggleNested(child.id)">
-                    <span class="triangle triangle--nested" :class="{ 'triangle--open': isNestedOpen(child.id) }"></span>
-                    <h3 class="course-title course-title--section">{{ child.title }}</h3>
-                  </button>
+                  <div class="nested-header-row">
+                    <button
+                      type="button"
+                      class="section-toggle section-toggle--nested"
+                      :disabled="!(child.children || []).length"
+                      @click="toggleNested(child.id)"
+                      :aria-expanded="isNestedOpen(child.id)"
+                      aria-label="Раскрыть/свернуть"
+                    >
+                      <span class="triangle triangle--nested" :class="{ 'triangle--open': isNestedOpen(child.id) }"></span>
+                    </button>
+                    <button type="button" class="course-link course-link--section" @click="goToCourse(child)">
+                      {{ child.title }}
+                    </button>
+                  </div>
                   <div v-if="isNestedOpen(child.id) && (child.children || []).length" class="badge-list">
                     <div v-for="grand in child.children" :key="grand.id" class="badge-row">
                       <button
                         type="button"
-                        class="badge"
+                        :class="grand.type === 'course' ? 'badge' : 'course-link course-link--section'"
                         @click="goToCourse(grand)"
                       >
                         {{ grand.title }}
@@ -64,7 +84,11 @@
                 </template>
                 <template v-else>
                   <div class="course-row">
-                    <button type="button" class="course-link" @click="goToCourse(child)">
+                    <button
+                      type="button"
+                      :class="child.type === 'course' ? 'badge' : 'course-link course-link--section'"
+                      @click="goToCourse(child)"
+                    >
                       {{ child.title }}
                     </button>
                     <button
@@ -92,14 +116,25 @@
           </div>
 
           <div v-if="standalone.length && isAuthorized" class="section-card">
-            <button type="button" class="section-header" @click="standaloneOpen = !standaloneOpen">
-              <span class="triangle" :class="{ 'triangle--open': standaloneOpen }"></span>
-              <h2 class="section-title">Курсы без раздела</h2>
-            </button>
+            <div class="section-header-row">
+              <button
+                type="button"
+                class="section-toggle"
+                :disabled="!standalone.length"
+                @click="standaloneOpen = !standaloneOpen"
+                :aria-expanded="standaloneOpen"
+                aria-label="Раскрыть/свернуть"
+              >
+                <span class="triangle" :class="{ 'triangle--open': standaloneOpen }"></span>
+              </button>
+              <div class="section-title-btn section-title-btn--static">
+                <h2 class="section-title">Курсы без раздела</h2>
+              </div>
+            </div>
             <ul v-if="standaloneOpen" class="course-list">
               <li v-for="course in standalone" :key="course.id" class="course-item">
                 <div class="course-row">
-                  <button type="button" class="course-link" @click="goToCourse(course)">
+                  <button type="button" class="badge" @click="goToCourse(course)">
                     {{ course.title }}
                   </button>
                   <button
@@ -173,11 +208,16 @@
             <div v-else-if="recentProblems.length === 0" class="side-state">Пока нет посылок</div>
             <ul v-else class="recent-list">
               <li v-for="item in recentProblems" :key="item.problem_id" class="recent-item">
-                <button type="button" class="recent-link" @click="goToProblem(item.problem_id, item.title)">
+                <button type="button" class="recent-link" @click="goToProblem(item)">
                   {{ item.title }}
                 </button>
-                <div v-if="item.last_submitted_at" class="recent-time">
-                  {{ formatDate(item.last_submitted_at) }}
+                <div class="recent-meta">
+                  <div v-if="item.last_submitted_at" class="recent-time">
+                    {{ formatDate(item.last_submitted_at) }}
+                  </div>
+                  <div v-if="item.last_score != null" class="recent-score">
+                    Скор: {{ formatScore(item.last_score) }}
+                  </div>
                 </div>
               </li>
             </ul>
@@ -267,11 +307,40 @@ const goToCourse = (item) => {
   router.push({ name, params: { id: item.id }, query: { title: item.title } })
 }
 
-const goToProblem = (problemId, title) => {
-  router.push({ name: 'problem', params: { id: problemId }, query: { title } })
+const goToProblem = (itemOrId, title) => {
+  // goToProblem(item) OR goToProblem(id, title)
+  let problemId = itemOrId
+  let contestId = null
+  let courseTitle = null
+  let contestTitle = null
+
+  if (itemOrId && typeof itemOrId === 'object') {
+    problemId = itemOrId.problem_id
+    contestId = itemOrId.contest_id
+    courseTitle = itemOrId.course_title
+    contestTitle = itemOrId.contest_title
+    title = itemOrId.title
+  }
+
+  const query = {}
+  if (contestId != null) query.contest = contestId
+  // Optional hints for breadcrumbs fallbacks.
+  if (courseTitle) query.course_title = courseTitle
+  if (contestTitle) query.title = contestTitle
+  if (Object.keys(query).length === 0 && title) query.title = title
+
+  router.push({ name: 'problem', params: { id: problemId }, query })
 }
 
 const formatDate = (iso) => formatDateTimeMsk(iso)
+const formatScore = (v) => {
+  if (v == null) return ''
+  const n = Number(v)
+  if (!Number.isFinite(n)) return String(v)
+  // Keep it compact, but deterministic.
+  const s = n.toFixed(4).replace(/0+$/, '').replace(/\.$/, '')
+  return s
+}
 
 const isFavorite = (courseId) => {
   const cid = Number(courseId)
@@ -417,6 +486,7 @@ onMounted(loadSidebar)
   border: 1px solid #e5e9f1;
 }
 
+/* legacy class, kept for other inline sections if any */
 .section-header {
   display: flex;
   align-items: center;
@@ -434,6 +504,52 @@ onMounted(loadSidebar)
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+}
+
+.section-toggle {
+  flex: 0 0 auto;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--color-border-default);
+  background: #fff;
+  border-radius: 10px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.section-toggle:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.section-title-btn {
+  flex: 1 1 auto;
+  min-width: 0;
+  background: none;
+  border: none;
+  padding: 6px 4px 10px;
+  text-align: left;
+  cursor: pointer;
+  color: var(--color-text-title);
+}
+
+.section-title-btn--static {
+  cursor: default;
+}
+
+.nested-header-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.section-toggle--nested {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
 }
 
 .section-open-btn {
@@ -531,10 +647,16 @@ onMounted(loadSidebar)
   padding: 9px 10px;
   background: var(--color-button-secondary);
   border-radius: 8px;
+  border: 1px solid var(--color-border-default);
   font-size: 14px;
   font-weight: 500;
   color: var(--color-text-primary);
   white-space: nowrap;
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .course-link {
@@ -546,6 +668,10 @@ onMounted(loadSidebar)
   padding: 6px 0;
   text-align: left;
   flex: 1 1 auto;
+}
+
+.course-link--section {
+  font-weight: 500;
 }
 
 .course-link:hover,
@@ -573,9 +699,9 @@ onMounted(loadSidebar)
 }
 
 .star-btn--on {
-  color: #f59e0b;
-  border-color: rgba(245, 158, 11, 0.35);
-  background: rgba(245, 158, 11, 0.08);
+  color: #fbbf24;
+  border-color: rgba(251, 191, 36, 0.45);
+  background: rgba(251, 191, 36, 0.12);
 }
 
 .side-card__header {
@@ -707,8 +833,22 @@ onMounted(loadSidebar)
 .recent-time {
   font-size: 12px;
   color: var(--color-text-muted);
-  padding: 0 8px;
   white-space: nowrap;
+}
+
+.recent-meta {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 0 8px;
+}
+
+.recent-score {
+  font-size: 12px;
+  color: var(--color-text-primary);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
 .update-item {

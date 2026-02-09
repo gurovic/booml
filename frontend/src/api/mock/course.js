@@ -190,6 +190,10 @@ export function createSection(payload) {
   return Promise.resolve({ id, ...payload })
 }
 
+export function deleteSection(sectionId) {
+  return Promise.resolve({ success: true, deleted_id: Number(sectionId) })
+}
+
 export function updateCourse(courseId, data) {
   return Promise.resolve({ id: Number(courseId), ...data })
 }
