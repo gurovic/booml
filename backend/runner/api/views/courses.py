@@ -1,5 +1,6 @@
 from django.db.models import Q
 from django.shortcuts import get_object_or_404
+from collections import deque
 from rest_framework import generics, permissions
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
@@ -259,20 +260,23 @@ class SectionDeleteView(generics.GenericAPIView):
 
         from django.db import transaction
 
-        # Collect subtree ids (BFS). Sections tree is small; keep it simple.
+        # Collect subtree ids (BFS) without N+1 queries.
+        # Fetch once and build parent -> children map in memory.
+        parent_rows = list(Section.objects.values_list("id", "parent_id"))
+        children_by_parent = {}
+        for sid, pid in parent_rows:
+            children_by_parent.setdefault(pid, []).append(sid)
+
         to_delete_ids = []
-        queue = [section.id]
+        queue = deque([section.id])
         seen = set()
         while queue:
-            current = queue.pop(0)
+            current = queue.popleft()
             if current in seen:
                 continue
             seen.add(current)
             to_delete_ids.append(current)
-            children = list(
-                Section.objects.filter(parent_id=current).values_list("id", flat=True)
-            )
-            queue.extend(children)
+            queue.extend(children_by_parent.get(current, []))
 
         deleted_id = section.id
         with transaction.atomic():

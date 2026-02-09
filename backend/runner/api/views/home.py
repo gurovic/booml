@@ -15,40 +15,7 @@ from ...models import (
     Submission,
 )
 
-
-def _primary_metric(metrics):
-    """
-    Best-effort extraction of a primary numeric score from Submission.metrics.
-    Mirrors runner.views.submissions._primary_metric.
-    """
-    if metrics is None:
-        return None
-    if isinstance(metrics, (int, float)):
-        return float(metrics)
-    if isinstance(metrics, dict):
-        for key in ("metric", "score", "accuracy", "f1", "auc"):
-            if key in metrics:
-                try:
-                    return float(metrics[key])
-                except Exception:
-                    return metrics[key]
-        for v in metrics.values():
-            try:
-                return float(v)
-            except Exception:
-                continue
-        return None
-    if isinstance(metrics, (list, tuple)):
-        for v in metrics:
-            try:
-                return float(v)
-            except Exception:
-                continue
-        return None
-    try:
-        return float(metrics)
-    except Exception:
-        return None
+from ...views.submissions import _primary_metric  # keep scoring logic consistent across views
 
 
 def _course_is_visible_to_user(course: Course, user) -> bool:

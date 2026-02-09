@@ -116,6 +116,12 @@
           <p class="empty-state__text">В этом разделе пока нет курсов или подразделов</p>
         </div>
       </div>
+      <div v-else-if="loading" class="section-card">
+        <p>Загрузка...</p>
+      </div>
+      <div v-else class="section-card empty-state">
+        <p class="empty-state__text">Раздел не найден или доступ к нему запрещён</p>
+      </div>
 
       <!-- Create Course Dialog -->
       <div v-if="showCreateCourseDialog" class="dialog-overlay" @click="closeDialogs">
@@ -280,15 +286,12 @@ const toggleFavorite = async (course) => {
   if (!isAuthorized.value || !course || course.type !== 'course') return
   try {
     const cid = Number(course.id)
-    const res = isFavoriteCourse(course)
+    isFavoriteCourse(course)
       ? await homeApi.removeFavoriteCourse(cid)
       : await homeApi.addFavoriteCourse(cid)
     // Backend will reflect is_favorite in the tree; refresh to keep UI consistent.
-    if (res?.items) {
-      await load()
-    } else {
-      await load()
-    }
+    await load()
+    actionError.value = ''
   } catch (err) {
     console.error('Failed to toggle favorite', err)
     actionError.value = err?.message || 'Не удалось обновить избранное'

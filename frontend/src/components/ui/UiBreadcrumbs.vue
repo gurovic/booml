@@ -130,7 +130,14 @@ const refresh = async () => {
 
   if (name === 'course') {
     courseId = Number(props.course?.id || routeId.value)
-    sectionId = Number(props.course?.section || getCourseById(courseId)?.section_id || props.section?.id || null)
+    sectionId = Number(
+      props.course?.section ??
+        props.course?.section_id ??
+        props.course?.sectionId ??
+        getCourseById(courseId)?.section_id ??
+        props.section?.id ??
+        null
+    )
   }
 
   if (name === 'contest' || name === 'contest-leaderboard') {

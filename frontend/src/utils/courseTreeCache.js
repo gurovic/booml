@@ -4,6 +4,7 @@ let _loadPromise = null
 let _loadedAt = 0
 let _sectionsById = new Map()
 let _coursesById = new Map()
+let _userCacheKey = null
 
 function _toIntOrNull(v) {
   if (v == null || v === '') return null
@@ -62,6 +63,18 @@ export async function ensureCourseTreeLoaded({ force = false } = {}) {
   return _loadPromise
 }
 
+export function resetCourseTreeCache({ userCacheKey = null } = {}) {
+  _loadPromise = null
+  _loadedAt = 0
+  _sectionsById = new Map()
+  _coursesById = new Map()
+  _userCacheKey = userCacheKey
+}
+
+export function getCourseTreeCacheKey() {
+  return _userCacheKey
+}
+
 export function getCourseTreeLoadedAt() {
   return _loadedAt
 }
@@ -93,4 +106,3 @@ export function getSectionChain(sectionId, { maxDepth = 12 } = {}) {
   // Root -> leaf
   return chain.reverse()
 }
-
