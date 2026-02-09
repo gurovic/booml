@@ -3,6 +3,7 @@
     <UiHeader />
 
     <main class="contest-content">
+      <UiBreadcrumbs :contest="contest" />
       <section class="contest-panel">
         <div v-if="isLoading" class="state">Loading leaderboard...</div>
         <div v-else-if="error" class="state state--error">{{ error }}</div>
@@ -74,6 +75,7 @@ import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { contestApi } from '@/api'
 import UiHeader from '@/components/ui/UiHeader.vue'
+import UiBreadcrumbs from '@/components/ui/UiBreadcrumbs.vue'
 
 const route = useRoute()
 const contestId = computed(() => Number(route.params.id))

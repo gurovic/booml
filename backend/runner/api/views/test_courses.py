@@ -125,6 +125,69 @@ class SectionCreateTests(TestCase):
         self.assertIn("parent_id", resp.json())
 
 
+class SectionDeleteTests(TestCase):
+    def setUp(self):
+        self.owner = User.objects.create_user(username="sec_owner", password="pass", is_staff=True)
+        self.other_teacher = User.objects.create_user(username="sec_other", password="pass", is_staff=True)
+        self.student = User.objects.create_user(username="sec_student", password="pass", is_staff=False)
+        self.root_section = Section.objects.get(title="Авторские", parent__isnull=True)
+        self.section = create_section(
+            SectionCreateInput(
+                title="Deletable Section",
+                owner=self.owner,
+                parent=self.root_section,
+            )
+        )
+        self.url = reverse("section-delete", kwargs={"section_id": self.section.id})
+
+    def test_owner_can_delete_empty_section(self):
+        self.client.login(username="sec_owner", password="pass")
+        resp = self.client.post(self.url)
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(resp.json().get("success"))
+        self.assertFalse(Section.objects.filter(pk=self.section.id).exists())
+
+    def test_owner_can_delete_section_with_courses_and_children(self):
+        # Add a nested section and a course inside it, then delete the parent.
+        nested = create_section(
+            SectionCreateInput(
+                title="Nested",
+                owner=self.owner,
+                parent=self.section,
+            )
+        )
+        create_course(
+            CourseCreateInput(
+                title="Nested Course",
+                owner=self.owner,
+                is_open=True,
+                section=nested,
+            )
+        )
+        self.client.login(username="sec_owner", password="pass")
+        resp = self.client.post(self.url)
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(resp.json().get("success"))
+        self.assertFalse(Section.objects.filter(pk=self.section.id).exists())
+        self.assertFalse(Section.objects.filter(pk=nested.id).exists())
+
+    def test_non_owner_teacher_forbidden(self):
+        self.client.login(username="sec_other", password="pass")
+        resp = self.client.post(self.url)
+        self.assertEqual(resp.status_code, 403)
+
+    def test_student_forbidden(self):
+        self.client.login(username="sec_student", password="pass")
+        resp = self.client.post(self.url)
+        self.assertEqual(resp.status_code, 403)
+
+    def test_root_cannot_be_deleted(self):
+        url = reverse("section-delete", kwargs={"section_id": self.root_section.id})
+        self.client.login(username="sec_owner", password="pass")
+        resp = self.client.post(url)
+        self.assertEqual(resp.status_code, 403)
+
+
 class CourseParticipantsTests(TestCase):
     def setUp(self):
         self.teacher = User.objects.create_user(username="teacher", password="pass")

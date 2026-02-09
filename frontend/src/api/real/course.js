@@ -33,6 +33,10 @@ export async function createSection({ title, parent_id = null, description = '' 
   })
 }
 
+export async function deleteSection(sectionId) {
+  return await apiPost(`api/sections/${sectionId}/delete/`, {})
+}
+
 export async function updateCourse(courseId, data) {
   return await apiPost(`backend/course/${courseId}/update/`, data)
 }

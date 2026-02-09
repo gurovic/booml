@@ -3,12 +3,33 @@
     <UiHeader />
 
     <main class="contest-content">
+      <UiBreadcrumbs :course="course" />
       <section class="contest-panel">
         <div v-if="isLoading" class="state">Loading contests...</div>
         <div v-else-if="error" class="state state--error">{{ error }}</div>
         <template v-else>
           <div class="course-header">
-            <h1 class="course-title">{{ courseTitle }}</h1>
+            <div class="course-title-row">
+              <h1 class="course-title">Курс "{{ courseTitle }}"</h1>
+              <button
+                v-if="isAuthorized"
+                type="button"
+                class="star-btn"
+                :class="{ 'star-btn--on': isFavoriteCourse }"
+                :title="isFavoriteCourse ? 'Убрать из избранного' : 'Добавить в избранное'"
+                @click="toggleFavoriteCourse"
+              >
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path
+                    d="M12 17.27 18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21 12 17.27Z"
+                    stroke="currentColor"
+                    stroke-width="1.8"
+                    stroke-linejoin="round"
+                    :fill="isFavoriteCourse ? 'currentColor' : 'transparent'"
+                  />
+                </svg>
+              </button>
+            </div>
             <div class="course-header__actions">
               <button
                 v-if="canCreateContest"
@@ -204,9 +225,10 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { contestApi, courseApi } from '@/api'
+import { contestApi, courseApi, homeApi } from '@/api'
 import { useUserStore } from '@/stores/UserStore'
 import UiHeader from '@/components/ui/UiHeader.vue'
+import UiBreadcrumbs from '@/components/ui/UiBreadcrumbs.vue'
 import UiLinkList from '@/components/ui/UiLinkList.vue'
 
 const route = useRoute()
@@ -230,6 +252,7 @@ const showCourseSettings = ref(false)
 const courseIsOpen = ref(false)
 const newParticipantUsername = ref('')
 const newParticipantRole = ref('student')
+const favorites = ref([])
 
 const newContest = ref({
   title: '',
@@ -239,7 +262,41 @@ const newContest = ref({
   is_rated: false,
 })
 
-const courseTitle = computed(() => course.value?.title || queryTitle.value || 'Course')
+const courseTitle = computed(() => course.value?.title || queryTitle.value || '...')
+const isAuthorized = computed(() => !!userStore.currentUser)
+
+const isFavoriteCourse = computed(() => {
+  const cid = Number(courseId.value)
+  return favorites.value.some(x => Number(x.course_id) === cid)
+})
+
+const loadFavorites = async () => {
+  if (!isAuthorized.value) {
+    favorites.value = []
+    return
+  }
+  try {
+    const data = await homeApi.getHomeSidebar()
+    favorites.value = Array.isArray(data?.favorites) ? data.favorites : []
+  } catch (err) {
+    console.error('Failed to load favorites', err)
+  }
+}
+
+const toggleFavoriteCourse = async () => {
+  if (!isAuthorized.value) return
+  try {
+    const cid = Number(courseId.value)
+    const res = isFavoriteCourse.value
+      ? await homeApi.removeFavoriteCourse(cid)
+      : await homeApi.addFavoriteCourse(cid)
+    if (Array.isArray(res?.items)) favorites.value = res.items
+    else await loadFavorites()
+  } catch (err) {
+    console.error('Failed to toggle favorite', err)
+    error.value = err?.message || 'Не удалось обновить избранное'
+  }
+}
 
 const canCreateContest = computed(() => {
   if (!userStore.currentUser || !course.value) return false
@@ -282,6 +339,7 @@ const loadContests = async () => {
     contests.value = []
     error.value = 'Invalid course id.'
     course.value = null
+    favorites.value = []
     return
   }
 
@@ -295,6 +353,7 @@ const loadContests = async () => {
     course.value = courseData
     courseIsOpen.value = !!courseData?.is_open
     contests.value = contestData
+    await loadFavorites()
   } catch (err) {
     console.error('Failed to load contests.', err)
     error.value = err?.message || 'Failed to load contests.'
@@ -508,11 +567,42 @@ watch(courseId, () => {
   gap: 16px;
 }
 
+.course-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
 .course-title {
   font-size: 28px;
   font-weight: 600;
   margin: 0;
   color: var(--color-text-primary);
+}
+
+.star-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  border: 1px solid var(--color-border-default);
+  background: #fff;
+  color: #64748b;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+}
+
+.star-btn:hover {
+  opacity: 0.9;
+}
+
+.star-btn--on {
+  color: #fbbf24;
+  border-color: rgba(251, 191, 36, 0.45);
+  background: rgba(251, 191, 36, 0.12);
 }
 
 .create-contest-btn {

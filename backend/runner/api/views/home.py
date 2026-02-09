@@ -1,11 +1,46 @@
 from django.db import transaction
-from django.db.models import Max, Q
+from django.db.models import Max, OuterRef, Subquery
 from django.shortcuts import get_object_or_404
-from rest_framework import permissions, status
+from rest_framework import permissions
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from ...models import Course, FavoriteCourse, SiteUpdate, Submission
+
+
+def _primary_metric(metrics):
+    """
+    Best-effort extraction of a primary numeric score from Submission.metrics.
+    Mirrors runner.views.submissions._primary_metric.
+    """
+    if metrics is None:
+        return None
+    if isinstance(metrics, (int, float)):
+        return float(metrics)
+    if isinstance(metrics, dict):
+        for key in ("metric", "score", "accuracy", "f1", "auc"):
+            if key in metrics:
+                try:
+                    return float(metrics[key])
+                except Exception:
+                    return metrics[key]
+        for v in metrics.values():
+            try:
+                return float(v)
+            except Exception:
+                continue
+        return None
+    if isinstance(metrics, (list, tuple)):
+        for v in metrics:
+            try:
+                return float(v)
+            except Exception:
+                continue
+        return None
+    try:
+        return float(metrics)
+    except Exception:
+        return None
 
 
 def _course_is_visible_to_user(course: Course, user) -> bool:
@@ -60,10 +95,20 @@ class HomeSidebarView(APIView):
         favorites = _serialize_favorites(favorites_qs)
 
         # Recent problems for the current user, based on recent submissions.
+        latest_sub = (
+            Submission.objects.filter(
+                user_id=request.user.id,
+                problem_id=OuterRef("problem_id"),
+            )
+            .order_by("-submitted_at", "-id")
+        )
         recent = (
             Submission.objects.filter(user_id=request.user.id, problem__isnull=False)
             .values("problem_id", "problem__title")
-            .annotate(last_submitted_at=Max("submitted_at"))
+            .annotate(
+                last_submitted_at=Max("submitted_at"),
+                last_metrics=Subquery(latest_sub.values("metrics")[:1]),
+            )
             .order_by("-last_submitted_at")[:5]
         )
         recent_problems = [
@@ -73,6 +118,7 @@ class HomeSidebarView(APIView):
                 "last_submitted_at": row["last_submitted_at"].isoformat()
                 if row["last_submitted_at"]
                 else None,
+                "last_score": _primary_metric(row.get("last_metrics")),
             }
             for row in recent
         ]
@@ -228,4 +274,3 @@ class FavoriteCoursesReorderView(APIView):
             .order_by("position", "id")
         )
         return Response({"items": _serialize_favorites(updated)}, status=200)
-

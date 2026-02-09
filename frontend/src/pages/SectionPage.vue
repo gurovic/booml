@@ -2,20 +2,40 @@
   <div class="page">
     <UiHeader />
     <div class="page__content">
+      <UiBreadcrumbs :section="section" />
       <div v-if="section" class="section-card">
         <div class="section-header-block">
-          <h1 class="section-title">{{ section.title }}</h1>
+          <h1 class="section-title">Раздел "{{ section.title }}"</h1>
           <p v-if="section.description" class="section-description">{{ section.description }}</p>
         </div>
 
-        <div v-if="canCreateInSection" class="section-actions">
-          <button class="button button--primary" type="button" @click="showCreateCourseDialog = true">
+        <div v-if="canCreateInSection || canDeleteSection" class="section-actions">
+          <button
+            v-if="canCreateInSection"
+            class="button button--primary"
+            type="button"
+            @click="showCreateCourseDialog = true"
+          >
             Создать курс
           </button>
-          <button class="button button--secondary" type="button" @click="showCreateSectionDialog = true">
+          <button
+            v-if="canCreateInSection"
+            class="button button--secondary"
+            type="button"
+            @click="showCreateSectionDialog = true"
+          >
             Создать раздел
           </button>
+          <button
+            v-if="canDeleteSection"
+            class="button button--danger"
+            type="button"
+            @click="deleteThisSection"
+          >
+            Удалить раздел
+          </button>
         </div>
+        <div v-if="actionError" class="form-error">{{ actionError }}</div>
 
         <div v-if="hasChildren" class="section-content">
           <ul class="course-list">
@@ -35,21 +55,59 @@
                   <h2 class="course-title course-title--section">{{ child.title }}</h2>
                 </button>
                 <div v-if="isNestedOpen(child.id) && (child.children || []).length" class="badge-list">
-                  <button
-                    v-for="grand in child.children"
-                    :key="grand.id"
-                    type="button"
-                    class="badge"
-                    @click="navigateTo(grand)"
-                  >
-                    {{ grand.title }}
-                  </button>
+                  <div v-for="grand in child.children" :key="grand.id" class="badge-row">
+                    <button
+                      type="button"
+                      class="badge"
+                      @click="navigateTo(grand)"
+                    >
+                      {{ grand.title }}
+                    </button>
+                    <button
+                      v-if="isAuthorized && grand.type === 'course'"
+                      type="button"
+                      class="star-btn"
+                      :class="{ 'star-btn--on': isFavoriteCourse(grand) }"
+                      :title="isFavoriteCourse(grand) ? 'Убрать из избранного' : 'Добавить в избранное'"
+                      @click.stop.prevent="toggleFavorite(grand)"
+                    >
+                      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path
+                          d="M12 17.27 18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21 12 17.27Z"
+                          stroke="currentColor"
+                          stroke-width="1.8"
+                          stroke-linejoin="round"
+                          :fill="isFavoriteCourse(grand) ? 'currentColor' : 'transparent'"
+                        />
+                      </svg>
+                    </button>
+                  </div>
                 </div>
               </template>
               <template v-else>
-                <button type="button" class="course-link" @click="navigateTo(child)">
-                  {{ child.title }}
-                </button>
+                <div class="course-row">
+                  <button type="button" class="course-link" @click="navigateTo(child)">
+                    {{ child.title }}
+                  </button>
+                  <button
+                    v-if="isAuthorized && child.type === 'course'"
+                    type="button"
+                    class="star-btn"
+                    :class="{ 'star-btn--on': isFavoriteCourse(child) }"
+                    :title="isFavoriteCourse(child) ? 'Убрать из избранного' : 'Добавить в избранное'"
+                    @click.stop.prevent="toggleFavorite(child)"
+                  >
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path
+                        d="M12 17.27 18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21 12 17.27Z"
+                        stroke="currentColor"
+                        stroke-width="1.8"
+                        stroke-linejoin="round"
+                        :fill="isFavoriteCourse(child) ? 'currentColor' : 'transparent'"
+                      />
+                    </svg>
+                  </button>
+                </div>
               </template>
             </li>
           </ul>
@@ -144,10 +202,6 @@
       <div v-else-if="loading" class="section-card">
         <p>Загрузка...</p>
       </div>
-
-      <div v-else class="section-card">
-        <p>Раздел не найден</p>
-      </div>
     </div>
   </div>
 </template>
@@ -155,8 +209,9 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { courseApi } from '@/api'
+import { courseApi, homeApi } from '@/api'
 import UiHeader from '@/components/ui/UiHeader.vue'
+import UiBreadcrumbs from '@/components/ui/UiBreadcrumbs.vue'
 import { useUserStore } from '@/stores/UserStore'
 
 const route = useRoute()
@@ -173,6 +228,7 @@ const showCreateCourseDialog = ref(false)
 const showCreateSectionDialog = ref(false)
 const isCreating = ref(false)
 const createError = ref('')
+const actionError = ref('')
 
 const newCourse = ref({
   title: '',
@@ -202,6 +258,11 @@ const orderedChildren = computed(() => {
 
 const isAuthorized = computed(() => !!userStore.currentUser)
 const isTeacher = computed(() => String(userStore.currentUser?.role || '') === 'teacher')
+const canDeleteSection = computed(() => {
+  if (!isAuthorized.value || !section.value) return false
+  if (section.value.is_root) return false
+  return Number(section.value.owner_id) === Number(userStore.currentUser.id)
+})
 
 const canCreateInSection = computed(() => {
   if (!isAuthorized.value || !section.value) return false
@@ -209,6 +270,30 @@ const canCreateInSection = computed(() => {
   if (section.value.is_root) return isTeacher.value
   return Number(section.value.owner_id) === Number(userStore.currentUser.id)
 })
+
+const isFavoriteCourse = (c) => {
+  if (!c || c.type !== 'course') return false
+  return !!c.is_favorite
+}
+
+const toggleFavorite = async (course) => {
+  if (!isAuthorized.value || !course || course.type !== 'course') return
+  try {
+    const cid = Number(course.id)
+    const res = isFavoriteCourse(course)
+      ? await homeApi.removeFavoriteCourse(cid)
+      : await homeApi.addFavoriteCourse(cid)
+    // Backend will reflect is_favorite in the tree; refresh to keep UI consistent.
+    if (res?.items) {
+      await load()
+    } else {
+      await load()
+    }
+  } catch (err) {
+    console.error('Failed to toggle favorite', err)
+    actionError.value = err?.message || 'Не удалось обновить избранное'
+  }
+}
 
 const isNestedOpen = nestedId => !!openNested.value[String(nestedId)]
 const toggleNested = nestedId => {
@@ -254,9 +339,22 @@ const closeDialogs = () => {
   showCreateCourseDialog.value = false
   showCreateSectionDialog.value = false
   createError.value = ''
+  actionError.value = ''
   isCreating.value = false
   newCourse.value = { title: '', description: '', is_open: false }
   newSection.value = { title: '', description: '' }
+}
+
+const deleteThisSection = async () => {
+  if (!canDeleteSection.value) return
+  if (!confirm('Удалить раздел? Будут удалены все курсы и подразделы внутри.')) return
+  try {
+    await courseApi.deleteSection(Number(section.value.id))
+    router.push({ name: 'home' })
+  } catch (err) {
+    console.error('Не удалось удалить раздел', err)
+    actionError.value = err?.message || 'Не удалось удалить раздел'
+  }
 }
 
 const createCourse = async () => {
@@ -356,6 +454,16 @@ onMounted(load)
   gap: 10px;
   flex-wrap: wrap;
   padding: 0 4px 16px;
+}
+
+.button--danger {
+  background: #fff;
+  border: 1px solid #e23b3b;
+  color: #e23b3b;
+}
+
+.button--danger:hover {
+  opacity: 0.9;
 }
 
 /* Dialog styles (mirrors CoursePage/ContestPage patterns) */
@@ -561,6 +669,20 @@ onMounted(load)
   color: inherit;
 }
 
+.course-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+}
+
+.badge-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+}
+
 .badge-list {
   display: flex;
   flex-direction: column;
@@ -590,6 +712,30 @@ onMounted(load)
   background: none;
   padding: 6px 0;
   text-align: left;
+}
+
+.star-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  border: 1px solid var(--color-border-default);
+  background: #fff;
+  color: #64748b;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+}
+
+.star-btn:hover {
+  opacity: 0.9;
+}
+
+.star-btn--on {
+  color: #fbbf24;
+  border-color: rgba(251, 191, 36, 0.45);
+  background: rgba(251, 191, 36, 0.12);
 }
 
 .course-link:hover,

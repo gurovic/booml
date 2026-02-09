@@ -1,5 +1,8 @@
 <template>
   <UiHeader />
+  <div class="container">
+    <UiBreadcrumbs :problem="problem" />
+  </div>
   <div class="problem">
     <div class="container">
       <div v-if="problem != null" class="problem__inner">
@@ -131,6 +134,7 @@ import { useUserStore } from '@/stores/UserStore'
 import MarkdownIt from 'markdown-it'
 import mkKatex from 'markdown-it-katex'
 import UiHeader from '@/components/ui/UiHeader.vue'
+import UiBreadcrumbs from '@/components/ui/UiBreadcrumbs.vue'
 
 const md = new MarkdownIt({
   html: false,

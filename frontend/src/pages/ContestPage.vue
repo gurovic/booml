@@ -3,6 +3,7 @@
     <UiHeader />
 
     <main class="contest-content">
+      <UiBreadcrumbs :contest="contest" />
       <section class="contest-panel">
         <div v-if="isLoading" class="state">Loading contest...</div>
         <div v-else-if="error" class="state state--error">{{ error }}</div>
@@ -185,6 +186,7 @@ import { contestApi } from '@/api'
 import { getPolygonProblems } from '@/api/polygon'
 import { useUserStore } from '@/stores/UserStore'
 import UiHeader from '@/components/ui/UiHeader.vue'
+import UiBreadcrumbs from '@/components/ui/UiBreadcrumbs.vue'
 import UiLinkList from '@/components/ui/UiLinkList.vue'
 
 const route = useRoute()
@@ -225,7 +227,7 @@ const problemItems = computed(() => {
     .map(problem => ({
       id: problem.id,
       text: problem.title || `Problem ${problem.id}`,
-      route: { name: 'problem', params: { id: problem.id }},
+      route: { name: 'problem', params: { id: problem.id }, query: { contest: contestId.value } },
     }))
 })
 
