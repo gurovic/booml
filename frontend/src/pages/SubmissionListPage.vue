@@ -163,11 +163,15 @@ const handleSubmissionUpdate = (data) => {
     const oldSubmission = submissions.value[index]
     console.log(`[WebSocket] Old submission state:`, oldSubmission)
     
-    submissions.value[index] = {
+    // Create updated submission object
+    const updatedSubmission = {
       ...submissions.value[index],
       status,
       metrics
     }
+    
+    // Use splice to ensure Vue reactivity
+    submissions.value.splice(index, 1, updatedSubmission)
     
     console.log(`[WebSocket] Updated submission state:`, submissions.value[index])
   } else if (currentPage.value === 1) {
