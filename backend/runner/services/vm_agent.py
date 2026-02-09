@@ -10,6 +10,7 @@ import sys
 import time
 import traceback
 import uuid
+import threading
 from abc import ABC, abstractmethod
 from contextlib import contextmanager, redirect_stderr, redirect_stdout
 from pathlib import Path
@@ -20,6 +21,7 @@ import logging
 from .vm_models import VirtualMachine
 
 _AGENT_CACHE: Dict[str, VmAgent] = {}
+_INTERACTIVE_RUNS: Dict[str, "InteractiveRun"] = {}
 logger = logging.getLogger(__name__)
 
 
@@ -102,6 +104,277 @@ class _StreamingBuffer(io.TextIOBase):
             logger.debug("Failed to close streaming buffer %s: %s", self._path, exc)
         finally:
             super().close()
+
+
+class _InteractiveStdin(io.TextIOBase):
+    def __init__(self, run: "InteractiveRun") -> None:
+        self._run = run
+
+    @property
+    def closed(self) -> bool:  # type: ignore[override]
+        return self._run.stdin_closed
+
+    def readline(self, size: int = -1) -> str:  # type: ignore[override]
+        line = self._run._readline()
+        if size is not None and size >= 0:
+            return line[:size]
+        return line
+
+    def read(self, size: int = -1) -> str:  # type: ignore[override]
+        raise RuntimeError("sys.stdin.read() is not supported in notebooks")
+
+    def __iter__(self):
+        return self
+
+    def __next__(self) -> str:
+        raise RuntimeError("iterating over sys.stdin is not supported in notebooks")
+
+
+def _fileinput_blocked(*_args, **_kwargs):
+    raise RuntimeError("fileinput.input() is not supported in notebooks")
+
+
+class InteractiveRun:
+    def __init__(
+        self,
+        *,
+        run_id: str,
+        code: str,
+        session,
+        stdout_buffer: io.StringIO | _StreamingBuffer,
+        stderr_buffer: io.StringIO | _StreamingBuffer,
+    ) -> None:
+        self.run_id = run_id
+        self.code = code
+        self.session = session
+        self.stdout_buffer = stdout_buffer
+        self.stderr_buffer = stderr_buffer
+        self.error: str | None = None
+        self.outputs: list[dict[str, object]] = []
+        self.artifacts: list[dict[str, str]] = []
+        self.prompt: str | None = None
+        self.status: str = "running"
+        self._input_buffer: list[str] = []
+        self._stdin_eof = False
+        self._stdin_closed = False
+        self._status_seq = 0
+        self._condition = threading.Condition()
+        self._thread = threading.Thread(target=self._execute, daemon=True)
+
+    @property
+    def stdin_closed(self) -> bool:
+        return self._stdin_closed
+
+    def start(self) -> None:
+        _INTERACTIVE_RUNS[self.run_id] = self
+        self._thread.start()
+
+    def _set_status(self, status: str, *, prompt: str | None = None) -> None:
+        with self._condition:
+            self.status = status
+            self.prompt = prompt
+            self._status_seq += 1
+            self._condition.notify_all()
+
+    @property
+    def status_seq(self) -> int:
+        with self._condition:
+            return self._status_seq
+
+    def wait_for_status(self, since_seq: int | None = None) -> str:
+        with self._condition:
+            expected_seq = self._status_seq if since_seq is None else since_seq
+            while True:
+                if self.status in {"input_required", "success", "error"} and self._status_seq != expected_seq:
+                    return self.status
+                self._condition.wait()
+
+    def _write_stdout(self, text: str) -> None:
+        if text:
+            self.stdout_buffer.write(text)
+            try:
+                self.stdout_buffer.flush()
+            except Exception:
+                pass
+
+    def _readline(self) -> str:
+        with self._condition:
+            if not self._input_buffer and not self._stdin_eof and self.status != "input_required":
+                self._set_status("input_required", prompt="")
+            while not self._input_buffer and not self._stdin_eof:
+                self._condition.wait()
+            if self._stdin_eof:
+                self._stdin_closed = True
+                return ""
+            value = self._input_buffer.pop(0)
+            self._set_status("running", prompt=None)
+            return f"{value}\n"
+
+    def _input(self, prompt: str | None = None) -> str:
+        prompt_text = "" if prompt is None else str(prompt)
+        if prompt_text:
+            self._write_stdout(prompt_text)
+        self._set_status("input_required", prompt=prompt_text)
+        self.wait_for_input()
+        line = sys.stdin.readline()
+        self._set_status("running", prompt=None)
+        return line.rstrip("\n")
+
+    def wait_for_input(self) -> None:
+        with self._condition:
+            while not self._input_buffer and not self._stdin_eof:
+                self._condition.wait()
+
+    def provide_input(self, text: str | None, *, stdin_eof: bool = False) -> int:
+        value = "" if text is None else str(text)
+        with self._condition:
+            if stdin_eof:
+                self._stdin_eof = True
+                self._stdin_closed = True
+            else:
+                self._input_buffer.append(value)
+                self._write_stdout(f"{value}\n")
+            self._condition.notify_all()
+            return self._status_seq
+
+    def _execute(self) -> None:
+        namespace = self.session.namespace
+
+        def push_output(item: dict[str, object]) -> None:
+            if item:
+                self.outputs.append(item)
+
+        def register_artifact(item: dict[str, object]) -> None:
+            path = item.get("path")
+            if not path:
+                return
+            name = item.get("name") or path
+            self.artifacts.append({"name": str(name), "path": str(path)})
+
+        def display(*values: object) -> None:
+            if not values:
+                return
+            for value in values:
+                item = _convert_display_value(value, session=self.session)
+                if item:
+                    push_output(item)
+                    register_artifact(item)
+
+        namespace.setdefault("display", display)
+        original_stdin = sys.stdin
+        original_input = None
+        original_fileinput = None
+        try:
+            try:
+                import fileinput
+            except Exception:
+                fileinput = None
+            else:
+                original_fileinput = fileinput.input
+                fileinput.input = _fileinput_blocked
+
+            sys.stdin = _InteractiveStdin(self)
+            original_input = namespace.get("__builtins__", {}).get("input")
+            if isinstance(namespace.get("__builtins__"), dict):
+                namespace["__builtins__"]["input"] = self._input
+
+            with _workspace_cwd(self.session.workdir), redirect_stdout(self.stdout_buffer), redirect_stderr(self.stderr_buffer):
+                try:
+                    _configure_pandas_display(namespace)
+                    _configure_matplotlib_defaults(namespace)
+                    _configure_plotly_defaults(namespace, display)
+                    code = _handle_shell_commands(self.code, self.session.workdir, self.stdout_buffer, self.stderr_buffer, self.session.python_exec)
+                    if code.strip():
+                        _execute_with_optional_displayhook(code, namespace, display)
+                except Exception:
+                    self.error = traceback.format_exc()
+                else:
+                    for item in _capture_matplotlib_figures(self.session):
+                        push_output(item)
+                        register_artifact(item)
+        finally:
+            sys.stdin = original_stdin
+            if isinstance(namespace.get("__builtins__"), dict):
+                if original_input is None:
+                    namespace["__builtins__"].pop("input", None)
+                else:
+                    namespace["__builtins__"]["input"] = original_input
+            if original_fileinput is not None:
+                try:
+                    import fileinput
+                except Exception:
+                    pass
+                else:
+                    fileinput.input = original_fileinput
+            for buffer in (self.stdout_buffer, self.stderr_buffer):
+                if isinstance(buffer, _StreamingBuffer):
+                    buffer.close()
+
+        if self.error:
+            self._set_status("error", prompt=None)
+        else:
+            self._set_status("success", prompt=None)
+        _remove_interactive_run(self.run_id)
+
+    def to_payload(self) -> Dict[str, object]:
+        return {
+            "status": self.status,
+            "prompt": self.prompt,
+            "run_id": self.run_id,
+            "stdout": self.stdout_buffer.getvalue(),
+            "stderr": self.stderr_buffer.getvalue(),
+            "error": self.error,
+            "variables": _snapshot_variables(self.session.namespace),
+            "outputs": self.outputs,
+            "artifacts": self.artifacts,
+        }
+
+
+def _get_interactive_run(run_id: str) -> InteractiveRun | None:
+    return _INTERACTIVE_RUNS.get(run_id)
+
+
+def _remove_interactive_run(run_id: str) -> None:
+    _INTERACTIVE_RUNS.pop(run_id, None)
+
+
+def get_interactive_run(run_id: str) -> InteractiveRun | None:
+    return _get_interactive_run(run_id)
+
+
+def start_interactive_run(
+    *,
+    session,
+    code: str,
+    stdout_path: Path | None = None,
+    stderr_path: Path | None = None,
+    run_id: str | None = None,
+) -> InteractiveRun:
+    if stdout_path is not None:
+        stdout_buffer: io.StringIO | _StreamingBuffer = _StreamingBuffer(stdout_path)
+    else:
+        stdout_buffer = io.StringIO()
+    if stderr_path is not None:
+        stderr_buffer: io.StringIO | _StreamingBuffer = _StreamingBuffer(stderr_path)
+    else:
+        stderr_buffer = io.StringIO()
+    run = InteractiveRun(
+        run_id=run_id or uuid.uuid4().hex,
+        code=code,
+        session=session,
+        stdout_buffer=stdout_buffer,
+        stderr_buffer=stderr_buffer,
+    )
+    run.start()
+    return run
+
+
+def provide_interactive_input(run_id: str, text: str | None, *, stdin_eof: bool = False) -> InteractiveRun | None:
+    run = _get_interactive_run(run_id)
+    if run is None:
+        return None
+    run.provide_input(text, stdin_eof=stdin_eof)
+    return run
 
 
 class LocalVmAgent(VmAgent):
@@ -190,37 +463,56 @@ class FilesystemVmAgent(VmAgent):
         self.results_dir = vm.workspace_path / ".vm_agent" / "results"
 
     def exec_code(self, code: str) -> Dict[str, object]:
-        command_id = uuid.uuid4().hex
-        payload = {"code": code}
-        tmp_path = self.commands_dir / f"{command_id}.json.tmp"
-        final_path = self.commands_dir / f"{command_id}.json"
-        self.commands_dir.mkdir(parents=True, exist_ok=True)
-        self.results_dir.mkdir(parents=True, exist_ok=True)
-        tmp_path.write_text(json.dumps(payload), encoding="utf-8")
-        tmp_path.rename(final_path)
-
-        result_path = self.results_dir / f"{command_id}.json"
-        deadline = time.monotonic() + self.timeout
-        while time.monotonic() < deadline:
-            if result_path.exists():
-                try:
-                    data = json.loads(result_path.read_text(encoding="utf-8"))
-                    result_path.unlink(missing_ok=True)
-                    return data
-                except json.JSONDecodeError:
-                    pass
-            time.sleep(0.05)
-        raise RuntimeError("VM agent timed out waiting for execution result")
+        return self._send_payload({"code": code})
 
     def exec_code_stream(self, code: str, *, stdout_path: Path, stderr_path: Path) -> Dict[str, object]:
-        command_id = uuid.uuid4().hex
-        payload = {
+        return self._send_payload(
+            {
+                "code": code,
+                "stream": {
+                    "stdout": _relative_stream_path(self.vm.workspace_path, stdout_path),
+                    "stderr": _relative_stream_path(self.vm.workspace_path, stderr_path),
+                },
+            }
+        )
+
+    def exec_interactive_start(
+        self,
+        code: str,
+        *,
+        run_id: str,
+        stdout_path: Path | None = None,
+        stderr_path: Path | None = None,
+    ) -> Dict[str, object]:
+        payload: Dict[str, object] = {
+            "action": "interactive_start",
             "code": code,
-            "stream": {
-                "stdout": _relative_stream_path(self.vm.workspace_path, stdout_path),
-                "stderr": _relative_stream_path(self.vm.workspace_path, stderr_path),
-            },
+            "run_id": run_id,
         }
+        if stdout_path or stderr_path:
+            payload["stream"] = {
+                "stdout": _relative_stream_path(self.vm.workspace_path, stdout_path) if stdout_path else None,
+                "stderr": _relative_stream_path(self.vm.workspace_path, stderr_path) if stderr_path else None,
+            }
+        return self._send_payload(payload)
+
+    def exec_interactive_input(
+        self,
+        run_id: str,
+        text: str | None,
+        *,
+        stdin_eof: bool = False,
+    ) -> Dict[str, object]:
+        payload: Dict[str, object] = {
+            "action": "interactive_input",
+            "run_id": run_id,
+            "input": "" if text is None else str(text),
+            "stdin_eof": bool(stdin_eof),
+        }
+        return self._send_payload(payload)
+
+    def _send_payload(self, payload: Dict[str, object]) -> Dict[str, object]:
+        command_id = uuid.uuid4().hex
         tmp_path = self.commands_dir / f"{command_id}.json.tmp"
         final_path = self.commands_dir / f"{command_id}.json"
         self.commands_dir.mkdir(parents=True, exist_ok=True)
@@ -275,6 +567,7 @@ def dispose_vm_agent(session_id: str) -> None:
 def reset_vm_agents() -> None:
     for session_id in list(_AGENT_CACHE.keys()):
         dispose_vm_agent(session_id)
+    _INTERACTIVE_RUNS.clear()
 
 
 def _snapshot_variables(namespace: Dict[str, object]) -> Dict[str, str]:
@@ -605,4 +898,11 @@ def _workspace_cwd(path: Path):
         os.chdir(original)
 
 
-__all__ = ["get_vm_agent", "dispose_vm_agent", "reset_vm_agents"]
+__all__ = [
+    "get_vm_agent",
+    "dispose_vm_agent",
+    "reset_vm_agents",
+    "start_interactive_run",
+    "provide_interactive_input",
+    "get_interactive_run",
+]

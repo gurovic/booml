@@ -9,6 +9,7 @@ import subprocess
 import time
 import traceback
 import uuid
+import threading
 from contextlib import redirect_stdout, redirect_stderr
 from pathlib import Path
 
@@ -18,6 +19,8 @@ RESULTS_DIR = Path(os.environ.get("BOOML_AGENT_RESULTS", "/workspace/.vm_agent/r
 LOG_FILE = Path(os.environ.get("BOOML_AGENT_LOG", "/workspace/.vm_agent/agent.log"))
 STATUS_FILE = Path(os.environ.get("BOOML_AGENT_STATUS", "/workspace/.vm_agent/status.json"))
 POLL_INTERVAL = float(os.environ.get("BOOML_AGENT_POLL_INTERVAL", "0.05"))
+
+_INTERACTIVE_RUNS = {}
 
 
 class StreamingBuffer(io.TextIOBase):
@@ -51,6 +54,223 @@ class StreamingBuffer(io.TextIOBase):
             self._file.close()
         finally:
             super().close()
+
+
+class InteractiveStdin(io.TextIOBase):
+    def __init__(self, run):
+        self._run = run
+
+    @property
+    def closed(self):  # type: ignore[override]
+        return self._run.stdin_closed
+
+    def readline(self, size: int = -1):  # type: ignore[override]
+        line = self._run._readline()
+        if size is not None and size >= 0:
+            return line[:size]
+        return line
+
+    def read(self, size: int = -1):  # type: ignore[override]
+        raise RuntimeError("sys.stdin.read() is not supported in notebooks")
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        raise RuntimeError("iterating over sys.stdin is not supported in notebooks")
+
+
+def fileinput_blocked(*_args, **_kwargs):
+    raise RuntimeError("fileinput.input() is not supported in notebooks")
+
+
+class InteractiveRun:
+    def __init__(self, *, run_id: str, code: str, namespace, workspace: Path, stdout_buffer, stderr_buffer):
+        self.run_id = run_id
+        self.code = code
+        self.namespace = namespace
+        self.workspace = workspace
+        self.stdout_buffer = stdout_buffer
+        self.stderr_buffer = stderr_buffer
+        self.error = None
+        self.outputs = []
+        self.artifacts = []
+        self.prompt = None
+        self.status = "running"
+        self._input_buffer = []
+        self._stdin_eof = False
+        self._stdin_closed = False
+        self._status_seq = 0
+        self._condition = threading.Condition()
+        self._thread = threading.Thread(target=self._execute, daemon=True)
+
+    @property
+    def stdin_closed(self):
+        return self._stdin_closed
+
+    @property
+    def status_seq(self):
+        with self._condition:
+            return self._status_seq
+
+    def start(self):
+        _INTERACTIVE_RUNS[self.run_id] = self
+        self._thread.start()
+
+    def _set_status(self, status: str, prompt: str | None = None) -> None:
+        with self._condition:
+            self.status = status
+            self.prompt = prompt
+            self._status_seq += 1
+            self._condition.notify_all()
+
+    def wait_for_status(self, since_seq: int | None = None) -> str:
+        with self._condition:
+            expected_seq = self._status_seq if since_seq is None else since_seq
+            while True:
+                if self.status in {"input_required", "success", "error"} and self._status_seq != expected_seq:
+                    return self.status
+                self._condition.wait()
+
+    def _write_stdout(self, text: str) -> None:
+        if text:
+            self.stdout_buffer.write(text)
+            try:
+                self.stdout_buffer.flush()
+            except Exception:
+                pass
+
+    def _readline(self) -> str:
+        with self._condition:
+            if not self._input_buffer and not self._stdin_eof and self.status != "input_required":
+                self._set_status("input_required", prompt="")
+            while not self._input_buffer and not self._stdin_eof:
+                self._condition.wait()
+            if self._stdin_eof:
+                self._stdin_closed = True
+                return ""
+            value = self._input_buffer.pop(0)
+            self._set_status("running", prompt=None)
+            return f"{value}\n"
+
+    def wait_for_input(self) -> None:
+        with self._condition:
+            while not self._input_buffer and not self._stdin_eof:
+                self._condition.wait()
+
+    def _input(self, prompt: str | None = None) -> str:
+        prompt_text = "" if prompt is None else str(prompt)
+        if prompt_text:
+            self._write_stdout(prompt_text)
+        self._set_status("input_required", prompt=prompt_text)
+        self.wait_for_input()
+        line = sys.stdin.readline()
+        self._set_status("running", prompt=None)
+        return line.rstrip("\n")
+
+    def provide_input(self, text: str | None, *, stdin_eof: bool = False) -> int:
+        value = "" if text is None else str(text)
+        with self._condition:
+            if stdin_eof:
+                self._stdin_eof = True
+                self._stdin_closed = True
+            else:
+                self._input_buffer.append(value)
+                self._write_stdout(f"{value}\n")
+            self._condition.notify_all()
+            return self._status_seq
+
+    def _execute(self) -> None:
+        def push_output(item: dict) -> None:
+            if item:
+                self.outputs.append(item)
+
+        def register_artifact(item: dict) -> None:
+            path = item.get("path")
+            if not path:
+                return
+            name = item.get("name") or path
+            self.artifacts.append({"name": str(name), "path": str(path)})
+
+        def display(*values):
+            if not values:
+                return
+            for value in values:
+                item = convert_display_value(value, self.workspace)
+                if item:
+                    push_output(item)
+                    register_artifact(item)
+
+        self.namespace.setdefault("display", display)
+        original_stdin = sys.stdin
+        original_input = None
+        original_fileinput = None
+        try:
+            try:
+                import fileinput
+            except Exception:
+                fileinput = None
+            else:
+                original_fileinput = fileinput.input
+                fileinput.input = fileinput_blocked
+
+            sys.stdin = InteractiveStdin(self)
+            builtins_dict = self.namespace.get("__builtins__")
+            if isinstance(builtins_dict, dict):
+                original_input = builtins_dict.get("input")
+                builtins_dict["input"] = self._input
+
+            with redirect_stdout(self.stdout_buffer), redirect_stderr(self.stderr_buffer):
+                try:
+                    configure_plotly_defaults(self.namespace, display)
+                    configure_matplotlib_defaults(self.namespace)
+                    configure_pandas_display(self.namespace)
+                    code = handle_shell_commands(self.code, self.workspace, self.stdout_buffer, self.stderr_buffer)
+                    if code.strip():
+                        execute_with_optional_displayhook(code, self.namespace, display)
+                except Exception:
+                    self.error = traceback.format_exc()
+                else:
+                    for item in capture_matplotlib_figures(self.workspace):
+                        push_output(item)
+                        register_artifact(item)
+        finally:
+            sys.stdin = original_stdin
+            builtins_dict = self.namespace.get("__builtins__")
+            if isinstance(builtins_dict, dict):
+                if original_input is None:
+                    builtins_dict.pop("input", None)
+                else:
+                    builtins_dict["input"] = original_input
+            if original_fileinput is not None:
+                try:
+                    import fileinput
+                except Exception:
+                    pass
+                else:
+                    fileinput.input = original_fileinput
+            for buffer in (self.stdout_buffer, self.stderr_buffer):
+                if isinstance(buffer, StreamingBuffer):
+                    buffer.close()
+
+        if self.error:
+            self._set_status("error", prompt=None)
+        else:
+            self._set_status("success", prompt=None)
+        _INTERACTIVE_RUNS.pop(self.run_id, None)
+
+    def to_payload(self) -> dict:
+        return {
+            "status": self.status,
+            "prompt": self.prompt,
+            "run_id": self.run_id,
+            "stdout": self.stdout_buffer.getvalue(),
+            "stderr": self.stderr_buffer.getvalue(),
+            "error": self.error,
+            "variables": snapshot_namespace(self.namespace),
+            "outputs": self.outputs,
+            "artifacts": self.artifacts,
+        }
 
 
 def open_stream_buffer(workspace: Path, raw_path: str | None):
@@ -301,9 +521,19 @@ def process_command(command_path: Path, namespace, workspace: Path) -> None:
         command_path.unlink(missing_ok=True)
         return
 
+    action = payload.get("action") or "run"
     code = payload.get("code", "")
     stream = payload.get("stream") or {}
-    result = execute_code(code, namespace, workspace, stream=stream)
+    if action == "interactive_start":
+        run_id = payload.get("run_id") or None
+        result = start_interactive(code, namespace, workspace, stream=stream, run_id=run_id)
+    elif action == "interactive_input":
+        run_id = payload.get("run_id") or ""
+        text = payload.get("input")
+        stdin_eof = bool(payload.get("stdin_eof"))
+        result = provide_interactive_input(run_id, text, stdin_eof=stdin_eof)
+    else:
+        result = execute_code(code, namespace, workspace, stream=stream)
     result_path = RESULTS_DIR / command_path.name
     tmp_path = result_path.with_suffix(".tmp")
     tmp_path.write_text(json.dumps(result), encoding="utf-8")
@@ -376,6 +606,49 @@ def execute_code(code: str, namespace, workspace: Path, *, stream: dict | None =
         "outputs": outputs,
         "artifacts": artifacts,
     }
+
+
+def start_interactive(code: str, namespace, workspace: Path, *, stream: dict | None = None, run_id: str | None = None) -> dict:
+    stdout_buffer = io.StringIO()
+    stderr_buffer = io.StringIO()
+    if stream:
+        stdout_stream = open_stream_buffer(workspace, stream.get("stdout"))
+        stderr_stream = open_stream_buffer(workspace, stream.get("stderr"))
+        if stdout_stream:
+            stdout_buffer = stdout_stream
+        if stderr_stream:
+            stderr_buffer = stderr_stream
+    run = InteractiveRun(
+        run_id=run_id or uuid.uuid4().hex,
+        code=code,
+        namespace=namespace,
+        workspace=workspace,
+        stdout_buffer=stdout_buffer,
+        stderr_buffer=stderr_buffer,
+    )
+    run.start()
+    run.wait_for_status()
+    return run.to_payload()
+
+
+def provide_interactive_input(run_id: str, text: str | None, *, stdin_eof: bool = False) -> dict:
+    run = _INTERACTIVE_RUNS.get(run_id)
+    if run is None:
+        return {
+            "status": "error",
+            "prompt": None,
+            "run_id": run_id,
+            "stdout": "",
+            "stderr": "",
+            "error": "Interactive run not found",
+            "variables": {},
+            "outputs": [],
+            "artifacts": [],
+        }
+    seq = run.status_seq
+    run.provide_input(text, stdin_eof=stdin_eof)
+    run.wait_for_status(since_seq=seq)
+    return run.to_payload()
 
 
 def configure_pandas_display(namespace) -> None:

@@ -171,6 +171,24 @@
             background: rgba(0, 0, 0, 0.05);
         }
 
+        .stdin-inline {
+            display: inline-block;
+            vertical-align: baseline;
+        }
+
+        input.stdin-inline {
+            font: inherit;
+            color: inherit;
+            background: transparent;
+            border: none;
+            outline: none;
+            padding: 0;
+            margin: 0;
+            min-width: 8ch;
+            width: 12ch;
+            max-width: 60ch;
+        }
+
         .dataframe-toolbar {
             display: flex;
             align-items: center;
@@ -376,8 +394,7 @@
     {% csrf_token %}
 
     {% url "run-cell" as run_cell_url %}
-    {% url "run-cell-stream-start" as run_cell_stream_start_url %}
-    {% url "run-cell-stream-status" as run_cell_stream_status_url %}
+    {% url "run-cell-input" as run_cell_input_url %}
     {% url "notebook-session-create" as session_create_url %}
     {% url "session-reset" as session_reset_url %}
     {% url "session-files" as session_files_url %}
@@ -391,8 +408,7 @@
             notebookId: {{ notebook.id }},  // ✅ Число — кавычки не нужны
             csrfToken: '{{ csrf_token|escapejs }}',  // ✅ Обязательно экранируем!
             runCellUrl: '{{ run_cell_url|escapejs }}',
-            runCellStreamStartUrl: '{{ run_cell_stream_start_url|escapejs }}',
-            runCellStreamStatusUrl: '{{ run_cell_stream_status_url|escapejs }}',
+            runCellInputUrl: '{{ run_cell_input_url|escapejs }}',
             sessionCreateUrl: '{{ session_create_url|escapejs }}',
             sessionResetUrl: '{{ session_reset_url|escapejs }}',
             sessionFilesUrl: '{{ session_files_url|escapejs }}',
