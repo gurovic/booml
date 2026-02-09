@@ -75,7 +75,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute } from 'vue-router'
 import { getProblemSubmissions } from '@/api/submission'
 import { getProblem } from '@/api/problem'
@@ -94,6 +94,72 @@ const error = ref(null)
 const currentPage = ref(1)
 const totalPages = ref(1)
 const totalCount = ref(0)
+
+// WebSocket connection
+let ws = null
+
+const connectWebSocket = () => {
+  // Determine WebSocket URL based on current location
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+  const host = window.location.host
+  const wsUrl = `${protocol}//${host}/ws/problems/${problemId}/submissions/`
+  
+  try {
+    ws = new WebSocket(wsUrl)
+    
+    ws.onopen = () => {
+      console.log('WebSocket connected for problem submissions')
+    }
+    
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data)
+        if (data.type === 'submission_update') {
+          handleSubmissionUpdate(data)
+        }
+      } catch (err) {
+        console.error('Failed to parse WebSocket message:', err)
+      }
+    }
+    
+    ws.onerror = (err) => {
+      console.error('WebSocket error:', err)
+    }
+    
+    ws.onclose = () => {
+      console.log('WebSocket disconnected')
+    }
+  } catch (err) {
+    console.error('Failed to establish WebSocket connection:', err)
+  }
+}
+
+const disconnectWebSocket = () => {
+  if (ws) {
+    ws.close()
+    ws = null
+  }
+}
+
+const handleSubmissionUpdate = (data) => {
+  const { submission_id, status, metrics } = data
+  
+  // Find the submission in our current list
+  const index = submissions.value.findIndex(s => s.id === submission_id)
+  
+  if (index !== -1) {
+    // Update existing submission
+    submissions.value[index] = {
+      ...submissions.value[index],
+      status,
+      metrics
+    }
+  } else if (currentPage.value === 1) {
+    // If we're on the first page and this is a new submission, refresh the list
+    // to get the new submission at the top
+    fetchSubmissions(1)
+  }
+}
 
 const fetchSubmissions = async (page = 1) => {
   loading.value = true
@@ -195,7 +261,15 @@ onMounted(async () => {
   }
   
   // Fetch submissions
-  fetchSubmissions(1)
+  await fetchSubmissions(1)
+  
+  // Connect to WebSocket for real-time updates
+  connectWebSocket()
+})
+
+onBeforeUnmount(() => {
+  // Disconnect WebSocket when component is unmounted
+  disconnectWebSocket()
 })
 </script>
 

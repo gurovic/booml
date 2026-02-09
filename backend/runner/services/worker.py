@@ -6,6 +6,7 @@ from redis.exceptions import ConnectionError as RedisConnectionError
 from runner.celery import app as celery_app
 from runner.models.submission import Submission
 from runner.services import checker as checker_service
+from runner.services.websocket_notifications import broadcast_submission_update
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +72,14 @@ def evaluate_submission(submission_id: int):
         submission.metrics = metrics_payload
         submission.save(update_fields=["status", "metrics"])
 
+        # Broadcast update to WebSocket subscribers
+        broadcast_submission_update(
+            problem_id=submission.problem_id,
+            submission_id=submission.id,
+            status=submission.status,
+            metrics=submission.metrics,
+        )
+
         logger.info(f"[WORKER] Submission {submission_id} evaluation finished: {submission.status}")
         return {"submission_id": submission_id, "status": submission.status}
 
@@ -84,4 +93,12 @@ def evaluate_submission(submission_id: int):
             submission.status = Submission.STATUS_FAILED
             submission.metrics = {"error": str(e)}
             submission.save(update_fields=["status", "metrics"])
+            
+            # Broadcast update to WebSocket subscribers
+            broadcast_submission_update(
+                problem_id=submission.problem_id,
+                submission_id=submission.id,
+                status=submission.status,
+                metrics=submission.metrics,
+            )
         return {"submission_id": submission_id, "status": "error", "error": str(e)}
