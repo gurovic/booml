@@ -8,6 +8,12 @@
         :key="item.key || item.id || item.text"
         class="menu-list__item"
       >
+        <UiIdPill
+          v-if="item.idPill != null"
+          class="menu-list__id"
+          :id="item.idPill"
+          title="ID задачи"
+        />
         <router-link :to="item.route" class="menu-list__link">
           {{ item.text }}
         </router-link>
@@ -20,8 +26,11 @@
 </template>
 
 <script>
+import UiIdPill from './UiIdPill.vue'
+
 export default {
   name: "MenuList",
+  components: { UiIdPill },
   props: {
     title: {
       type: String,
@@ -59,6 +68,11 @@ export default {
   border-radius: 8px;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
   transition: filter 0.2s ease, transform 0.12s ease;
+}
+
+.menu-list__id {
+  margin-left: 10px;
+  flex: 0 0 auto;
 }
 
 .menu-list__item:hover {

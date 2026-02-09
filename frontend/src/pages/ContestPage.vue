@@ -131,7 +131,10 @@
                 @change="toggleSelected(problem.id, $event.target.checked)"
               />
               <div class="problem-item__info">
-                <div class="problem-item__title">{{ problem.title }}</div>
+                <div class="problem-item__title">
+                  <UiIdPill class="problem-item__id" :id="problem.id" title="ID задачи" />
+                  <span class="problem-item__title-text">{{ problem.title }}</span>
+                </div>
                 <div class="problem-item__meta">
                   <span v-if="problem.author_username" class="problem-item__author">
                     Автор: {{ problem.author_username }}
@@ -188,6 +191,7 @@ import { useUserStore } from '@/stores/UserStore'
 import UiHeader from '@/components/ui/UiHeader.vue'
 import UiBreadcrumbs from '@/components/ui/UiBreadcrumbs.vue'
 import UiLinkList from '@/components/ui/UiLinkList.vue'
+import UiIdPill from '@/components/ui/UiIdPill.vue'
 
 const route = useRoute()
 const userStore = useUserStore()
@@ -226,6 +230,7 @@ const problemItems = computed(() => {
     .filter(problem => problem?.id != null)
     .map(problem => ({
       id: problem.id,
+      idPill: problem.id,
       text: problem.title || `Problem ${problem.id}`,
       route: { name: 'problem', params: { id: problem.id }, query: { contest: contestId.value } },
     }))
@@ -678,10 +683,25 @@ watch(showAddProblemDialog, (newValue) => {
 }
 
 .problem-item__title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
   font-size: 16px;
-  font-weight: 500;
+  font-weight: 700;
   color: var(--color-text-primary, #000);
   margin-bottom: 4px;
+}
+
+.problem-item__id {
+  flex: 0 0 auto;
+}
+
+.problem-item__title-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .problem-item__meta {
