@@ -17,9 +17,13 @@
               <li
                 class="problem__file"
                 v-for="file in availableFiles"
-                :key="file.name"
+                :key="file.key"
               >
-                <a class="problem__file-href button button--secondary" :href="file.url" :download="file.name">{{ file.name }}</a>
+                <a
+                  class="problem__file-href button button--secondary"
+                  :href="file.url"
+                  :download="file.downloadName"
+                >{{ file.downloadName }}</a>
             </li>
             </ul>
           </li>
@@ -77,9 +81,13 @@
               <li
                 class="problem__file"
                 v-for="file in availableFiles"
-                :key="file.name"
+                :key="file.key"
               >
-                <a class="problem__file-href button button--secondary" :href="file.url" :download="file.name">{{ file.name }}</a>
+                <a
+                  class="problem__file-href button button--secondary"
+                  :href="file.url"
+                  :download="file.downloadName"
+                >{{ file.downloadName }}</a>
             </li>
             </ul>
           </li>
@@ -169,7 +177,11 @@ const availableFiles = computed(() => {
   if (!problem.value || !problem.value.files) return []
   return Object.entries(problem.value.files)
     .filter(([, url]) => url)
-    .map(([name, url]) => ({ name, url }))
+    .map(([key, url]) => {
+      const k = String(key || '')
+      const downloadName = k.toLowerCase().endsWith('.csv') ? k : `${k}.csv`
+      return { key: k, url, downloadName }
+    })
 })
 
 const roundMetric = (value) => {
