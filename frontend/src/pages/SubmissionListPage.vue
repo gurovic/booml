@@ -95,8 +95,8 @@ const currentPage = ref(1)
 const totalPages = ref(1)
 const totalCount = ref(0)
 
-// WebSocket connection
-let ws = null
+// WebSocket connection - using ref for proper reactivity
+const ws = ref(null)
 
 const connectWebSocket = () => {
   // Determine WebSocket URL based on current location
@@ -105,13 +105,13 @@ const connectWebSocket = () => {
   const wsUrl = `${protocol}//${host}/ws/problems/${problemId}/submissions/`
   
   try {
-    ws = new WebSocket(wsUrl)
+    ws.value = new WebSocket(wsUrl)
     
-    ws.onopen = () => {
+    ws.value.onopen = () => {
       console.log('WebSocket connected for problem submissions')
     }
     
-    ws.onmessage = (event) => {
+    ws.value.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data)
         if (data.type === 'submission_update') {
@@ -122,11 +122,11 @@ const connectWebSocket = () => {
       }
     }
     
-    ws.onerror = (err) => {
+    ws.value.onerror = (err) => {
       console.error('WebSocket error:', err)
     }
     
-    ws.onclose = () => {
+    ws.value.onclose = () => {
       console.log('WebSocket disconnected')
     }
   } catch (err) {
@@ -135,9 +135,9 @@ const connectWebSocket = () => {
 }
 
 const disconnectWebSocket = () => {
-  if (ws) {
-    ws.close()
-    ws = null
+  if (ws.value) {
+    ws.value.close()
+    ws.value = null
   }
 }
 

@@ -3,6 +3,23 @@ from __future__ import annotations
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 
 
+def _parse_id(value):
+    """Parse an ID from various input types (int, str, etc.)."""
+    if isinstance(value, int):
+        return value
+
+    if isinstance(value, str):
+        trimmed = value.strip()
+        if trimmed.lstrip("-").isdigit():
+            return int(trimmed)
+
+    text_value = str(value).strip()
+    if text_value.lstrip("-").isdigit():
+        return int(text_value)
+
+    return None
+
+
 class SubmissionMetricConsumer(AsyncJsonWebsocketConsumer):
     """Streams metric updates for a single submission to connected clients."""
 
@@ -20,7 +37,7 @@ class SubmissionMetricConsumer(AsyncJsonWebsocketConsumer):
             await self.close(code=4404)
             return
 
-        parsed_submission_id = self._parse_submission_id(raw_submission_id)
+        parsed_submission_id = _parse_id(raw_submission_id)
         if parsed_submission_id is None:
             await self.close(code=4400)
             return
@@ -49,22 +66,6 @@ class SubmissionMetricConsumer(AsyncJsonWebsocketConsumer):
             }
         )
 
-    @staticmethod
-    def _parse_submission_id(value):
-        if isinstance(value, int):
-            return value
-
-        if isinstance(value, str):
-            trimmed = value.strip()
-            if trimmed.lstrip("-").isdigit():
-                return int(trimmed)
-
-        text_value = str(value).strip()
-        if text_value.lstrip("-").isdigit():
-            return int(text_value)
-
-        return None
-
 
 class ProblemSubmissionsConsumer(AsyncJsonWebsocketConsumer):
     """Streams submission status updates for all submissions of a problem to connected clients."""
@@ -83,7 +84,7 @@ class ProblemSubmissionsConsumer(AsyncJsonWebsocketConsumer):
             await self.close(code=4404)
             return
 
-        parsed_problem_id = self._parse_id(raw_problem_id)
+        parsed_problem_id = _parse_id(raw_problem_id)
         if parsed_problem_id is None:
             await self.close(code=4400)
             return
@@ -113,19 +114,3 @@ class ProblemSubmissionsConsumer(AsyncJsonWebsocketConsumer):
                 "metrics": event.get("metrics"),
             }
         )
-
-    @staticmethod
-    def _parse_id(value):
-        if isinstance(value, int):
-            return value
-
-        if isinstance(value, str):
-            trimmed = value.strip()
-            if trimmed.lstrip("-").isdigit():
-                return int(trimmed)
-
-        text_value = str(value).strip()
-        if text_value.lstrip("-").isdigit():
-            return int(text_value)
-
-        return None
