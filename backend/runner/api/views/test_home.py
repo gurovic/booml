@@ -3,7 +3,7 @@ from django.test import TestCase
 from django.urls import reverse
 import json
 
-from runner.models import Course, FavoriteCourse, Section, SiteUpdate
+from runner.models import FavoriteCourse, Section, SiteUpdate
 from runner.services.course_service import CourseCreateInput, create_course
 from runner.services.section_service import SectionCreateInput, create_section
 
