@@ -14,6 +14,7 @@ import PolygonPage from '@/pages/PolygonPage.vue'
 import PolygonProblemEditPage from '@/pages/PolygonProblemEditPage.vue'
 import SubmissionListPage from '@/pages/SubmissionListPage.vue'
 import NotebookPage from '@/pages/NotebookPage.vue'
+import MonitoringDashboard from '@/components/MonitoringDashboard.vue'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -87,6 +88,11 @@ const router = createRouter({
       path: '/notebook/:id',
       name: 'notebook',
       component: NotebookPage,
+    },
+    {
+      path: '/monitoring',
+      name: 'monitoring',
+      component: MonitoringDashboard,
     }
   ],
 })
