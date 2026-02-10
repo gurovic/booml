@@ -10,7 +10,11 @@
           <h3>CPU</h3>
           <div class="metric-value">{{ Math.round(systemMetrics.cpu?.percent) }}%</div>
           <div class="metric-chart">
-            <canvas ref="cpuChart"></canvas>
+            <Line
+              :data="cpuChartData"
+              :options="chartOptions"
+              class="chart-canvas"
+            />
           </div>
         </div>
 
@@ -18,7 +22,11 @@
           <h3>Память</h3>
           <div class="metric-value">{{ Math.round(systemMetrics.memory?.percent) }}%</div>
           <div class="metric-chart">
-            <canvas ref="memoryChart"></canvas>
+            <Line
+              :data="memoryChartData"
+              :options="chartOptions"
+              class="chart-canvas"
+            />
           </div>
         </div>
 
@@ -26,7 +34,11 @@
           <h3>Диск</h3>
           <div class="metric-value">{{ Math.round(systemMetrics.disk?.percent) }}%</div>
           <div class="metric-chart">
-            <canvas ref="diskChart"></canvas>
+            <Line
+              :data="diskChartData"
+              :options="chartOptions"
+              class="chart-canvas"
+            />
           </div>
         </div>
 
@@ -163,11 +175,36 @@ import axios from 'axios';
 import { ref, onMounted, onUnmounted, nextTick } from 'vue';
 import { useUserStore } from '@/stores/UserStore';
 import UiHeader from '@/components/ui/UiHeader.vue';
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Title,
+  Tooltip,
+  Legend,
+  Filler
+} from 'chart.js';
+import { Line } from 'vue-chartjs';
+
+// Регистрация компонентов Chart.js
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Title,
+  Tooltip,
+  Legend,
+  Filler
+);
 
 export default {
   name: 'MonitoringDashboard',
   components: {
-    UiHeader
+    UiHeader,
+    Line
   },
   setup() {
     const userStore = useUserStore();
@@ -187,10 +224,6 @@ export default {
       return token ? { Authorization: `Bearer ${token}` } : {};
     };
     
-    // Chart references
-    const cpuChart = ref(null);
-    const memoryChart = ref(null);
-    const diskChart = ref(null);
     
     // Fetch system metrics
     const fetchSystemMetrics = async () => {
@@ -228,13 +261,126 @@ export default {
       }
     };
     
+    // Fetch historical metrics for charts
+    const fetchHistoricalMetrics = async () => {
+      try {
+        const headers = getAuthHeaders();
+        const response = await axios.get('/api/monitoring/historical-metrics/', { headers });
+        
+        
+        // Обновляем данные для графиков, создавая новые объекты для реактивности
+        // Проверяем, что количество меток и данных совпадает
+        const timestamps = response.data.timestamps || [];
+        const cpuHistory = response.data.cpu_history || [];
+        const memoryHistory = response.data.memory_history || [];
+        const diskHistory = response.data.disk_history || [];
+        
+        // Убедимся, что длина массивов совпадает
+        const minLength = Math.min(timestamps.length, cpuHistory.length, memoryHistory.length, diskHistory.length);
+        
+        const newCpuData = {
+          labels: timestamps.slice(0, minLength),
+          datasets: [
+            {
+              label: 'Загрузка CPU (%)',
+              data: cpuHistory.slice(0, minLength),
+              borderColor: '#36A2EB',
+              backgroundColor: 'rgba(54, 162, 235, 0.1)',
+              tension: 0.4,
+              fill: true
+            }
+          ]
+        };
+        
+        const newMemoryData = {
+          labels: timestamps.slice(0, minLength),
+          datasets: [
+            {
+              label: 'Использование памяти (%)',
+              data: memoryHistory.slice(0, minLength),
+              borderColor: '#FF6384',
+              backgroundColor: 'rgba(255, 99, 132, 0.1)',
+              tension: 0.4,
+              fill: true
+            }
+          ]
+        };
+        
+        const newDiskData = {
+          labels: timestamps.slice(0, minLength),
+          datasets: [
+            {
+              label: 'Использование диска (%)',
+              data: diskHistory.slice(0, minLength),
+              borderColor: '#FFCE56',
+              backgroundColor: 'rgba(255, 206, 86, 0.1)',
+              tension: 0.4,
+              fill: true
+            }
+          ]
+        };
+        
+        // Присваиваем новые объекты для обеспечения реактивности
+        cpuChartData.value = newCpuData;
+        memoryChartData.value = newMemoryData;
+        diskChartData.value = newDiskData;
+      } catch (error) {
+        console.error('Error fetching historical metrics:', error);
+        
+        // Устанавливаем минимальные данные для отображения пустого графика
+        const defaultLabels = ['1 мин', '5 мин', '10 мин', '15 мин', '20 мин', '25 мин', '30 мин'];
+        cpuChartData.value = {
+          labels: defaultLabels,
+          datasets: [
+            {
+              label: 'Загрузка CPU (%)',
+              data: [],
+              borderColor: '#36A2EB',
+              backgroundColor: 'rgba(54, 162, 235, 0.1)',
+              tension: 0.4,
+              fill: true
+            }
+          ]
+        };
+        
+        memoryChartData.value = {
+          labels: defaultLabels,
+          datasets: [
+            {
+              label: 'Использование памяти (%)',
+              data: [],
+              borderColor: '#FF6384',
+              backgroundColor: 'rgba(255, 99, 132, 0.1)',
+              tension: 0.4,
+              fill: true
+            }
+          ]
+        };
+        
+        diskChartData.value = {
+          labels: defaultLabels,
+          datasets: [
+            {
+              label: 'Использование диска (%)',
+              data: [],
+              borderColor: '#FFCE56',
+              backgroundColor: 'rgba(255, 206, 86, 0.1)',
+              tension: 0.4,
+              fill: true
+            }
+          ]
+        };
+      }
+    };
+
     // Initialize data
     const initializeData = async () => {
       // Убираем проверку доступа, так как теперь она разрешена для всех авторизованных пользователей
       await Promise.all([
         fetchSystemMetrics(),
         fetchTaskStats(),
-        fetchHistoricalStats()
+        fetchHistoricalStats(),
+        fetchHistoricalMetrics()
       ]);
 
       // Update charts after data is loaded
@@ -251,6 +397,7 @@ export default {
           fetchSystemMetrics();
           fetchTaskStats();
           fetchHistoricalStats();
+          fetchHistoricalMetrics();
         }
       }, 30000);
       
@@ -260,15 +407,85 @@ export default {
       });
     });
     
+
+    // Данные для графиков
+    const cpuChartData = ref({
+      labels: [],
+      datasets: [
+        {
+          label: 'Загрузка CPU (%)',
+          data: [],
+          borderColor: '#36A2EB',
+          backgroundColor: 'rgba(54, 162, 235, 0.1)',
+          tension: 0.4,
+          fill: true
+        }
+      ]
+    });
+
+    const memoryChartData = ref({
+      labels: [],
+      datasets: [
+        {
+          label: 'Использование памяти (%)',
+          data: [],
+          borderColor: '#FF6384',
+          backgroundColor: 'rgba(255, 99, 132, 0.1)',
+          tension: 0.4,
+          fill: true
+        }
+      ]
+    });
+
+    const diskChartData = ref({
+      labels: [],
+      datasets: [
+        {
+          label: 'Использование диска (%)',
+          data: [],
+          borderColor: '#FFCE56',
+          backgroundColor: 'rgba(255, 206, 86, 0.1)',
+          tension: 0.4,
+          fill: true
+        }
+      ]
+    });
+
+    // Опции для графиков
+    const chartOptions = ref({
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          position: 'top',
+        },
+        title: {
+          display: false,
+        }
+      },
+      scales: {
+        y: {
+          beginAtZero: true,
+          max: 100,
+          ticks: {
+            callback: function(value) {
+              return value + '%';
+            }
+          }
+        }
+      }
+    });
+
     return {
       systemMetrics,
       taskStats,
       historicalStats,
       activeTab,
       hasAccess,
-      cpuChart,
-      memoryChart,
-      diskChart
+      cpuChartData,
+      memoryChartData,
+      diskChartData,
+      chartOptions
     };
   }
 };
@@ -308,10 +525,15 @@ export default {
 }
 
 .metric-chart {
-  height: 100px;
+  height: 150px;
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.chart-canvas {
+  width: 100%;
+  height: 100%;
 }
 
 .metric-details {

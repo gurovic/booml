@@ -4,10 +4,12 @@ from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
 from django.views import View
 from datetime import datetime, timedelta
+import random
 from runner.models.submission import Submission
 from django.contrib.auth.mixins import UserPassesTestMixin
 import json
 from .serializers import SystemMetricsSerializer, TaskStatisticsSerializer, HistoricalStatisticsSerializer
+from .models import SystemMetric
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.utils.decorators import method_decorator
 from rest_framework.permissions import IsAuthenticated
@@ -101,6 +103,31 @@ class SystemMetricsView(APIView):
             except:
                 # Если ничего не работает, возвращаем нулевые значения
                 disk_total = disk_used = disk_free = disk_percent = 0
+
+        # Сохраняем метрики в базу данных
+        try:
+            # Проверяем, существует ли таблица, перед тем как записывать
+            from django.db import connection
+            table_exists = False
+            
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT EXISTS(SELECT 1 FROM information_schema.tables WHERE table_name = %s)",
+                    ['system_metrics']
+                )
+                table_exists = cursor.fetchone()[0]
+            
+            # Если таблица существует, сохраняем данные
+            if table_exists:
+                SystemMetric.objects.create(
+                    cpu_percent=cpu_percent,
+                    memory_percent=memory_percent,
+                    disk_percent=disk_percent
+                )
+        except Exception as e:
+            # Если таблица не существует или другая ошибка, продолжаем работу
+            # без сохранения в базу данных
+            pass
 
         # Format the data
         metrics = {
@@ -258,3 +285,48 @@ class HistoricalStatisticsView(APIView):
             return Response(serializer.validated_data)
         else:
             return Response({'error': serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class HistoricalMetricsView(APIView):
+    """
+    View to provide historical system metrics for charts
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        try:
+            # Пропускаем проверку существования таблицы, так как она существует
+            
+            # Получаем последние 50 записей из базы данных
+            metrics = SystemMetric.objects.all().order_by('-timestamp')[:50]
+            
+            # Преобразуем данные для графиков
+            timestamps = []
+            cpu_history = []
+            memory_history = []
+            disk_history = []
+            
+            for metric in metrics:
+                timestamps.append(metric.timestamp.strftime('%H:%M:%S'))  # Форматируем время с секундами для уникальности
+                cpu_history.append(round(metric.cpu_percent))
+                memory_history.append(round(metric.memory_percent))
+                disk_history.append(round(metric.disk_percent))
+
+            # Формируем ответ
+            historical_metrics = {
+                'timestamps': timestamps,
+                'cpu_history': cpu_history,
+                'memory_history': memory_history,
+                'disk_history': disk_history,
+            }
+
+        except Exception as e:
+            # В случае ошибки возвращаем пустые данные
+            historical_metrics = {
+                'timestamps': [],
+                'cpu_history': [],
+                'memory_history': [],
+                'disk_history': [],
+            }
+
+        return Response(historical_metrics)
