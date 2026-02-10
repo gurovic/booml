@@ -10,10 +10,11 @@ import json
 from .serializers import SystemMetricsSerializer, TaskStatisticsSerializer, HistoricalStatisticsSerializer
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.utils.decorators import method_decorator
-from rest_framework.permissions import IsAdminUser
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
+
 
 
 def is_admin(user):
@@ -24,14 +25,83 @@ class SystemMetricsView(APIView):
     """
     View to provide system metrics like CPU, memory, disk usage
     """
-    permission_classes = [IsAdminUser]
+    permission_classes = [IsAuthenticated]
     
     def get(self, request):
         # Get system metrics
-        cpu_percent = psutil.cpu_percent(interval=1)
-        memory_info = psutil.virtual_memory()
-        disk_usage = psutil.disk_usage('/')
+        # В Docker-контейнере psutil может возвращать информацию только о контейнере
+        # Для получения информации о хост-системе используем специальные методы
         
+        # CPU использование
+        try:
+            # Попробуем получить информацию о CPU из смонтированной директории
+            cpu_percent = round(psutil.cpu_percent(interval=1))  # Округляем до целого числа
+        except:
+            cpu_percent = 0
+
+        # Память
+        memory_total = memory_available = memory_percent = memory_used = 0
+        try:
+            # Сначала пробуем получить информацию из смонтированной директории /host/proc
+            import os
+            if os.path.exists('/host/proc/meminfo'):
+                with open('/host/proc/meminfo', 'r') as f:
+                    meminfo = f.read()
+                    for line in meminfo.split('\n'):
+                        parts = line.split()
+                        if line.startswith('MemTotal:') and len(parts) >= 2:
+                            try:
+                                memory_total = int(parts[1]) * 1024  # Convert to bytes
+                            except ValueError:
+                                pass  # Skip if conversion fails
+                        elif line.startswith('MemAvailable:') and len(parts) >= 2:
+                            try:
+                                memory_available = int(parts[1]) * 1024  # Convert to bytes
+                            except ValueError:
+                                pass  # Skip if conversion fails
+                    if memory_total > 0 and memory_available >= 0:
+                        memory_used = memory_total - memory_available
+                        memory_percent = round((memory_used / memory_total) * 100)  # Целое число без десятичных знаков
+            else:
+                # Если смонтированной директории нет, используем стандартный psutil
+                memory_info = psutil.virtual_memory()
+                memory_total = memory_info.total
+                memory_available = memory_info.available
+                memory_percent = memory_info.percent
+                memory_used = memory_info.used
+        except Exception:
+            # Если ничего не работает, используем стандартный psutil
+            try:
+                memory_info = psutil.virtual_memory()
+                memory_total = memory_info.total
+                memory_available = memory_info.available
+                memory_percent = memory_info.percent
+                memory_used = memory_info.used
+            except:
+                memory_total = memory_available = memory_percent = memory_used = 0
+
+        # Диск - используем информацию о директории приложения
+        disk_total = disk_used = disk_free = disk_percent = 0
+        try:
+            # Используем директорию проекта для получения информации о диске
+            project_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+            disk_usage = psutil.disk_usage(project_dir)
+            disk_total = disk_usage.total
+            disk_used = disk_usage.used
+            disk_free = disk_usage.free
+            disk_percent = round((disk_used / disk_total) * 100) if disk_total > 0 else 0  # Округляем до целого числа
+        except:
+            # Если не удалось получить информацию о диске проекта, используем корень файловой системы
+            try:
+                disk_usage = psutil.disk_usage('/')
+                disk_total = disk_usage.total
+                disk_used = disk_usage.used
+                disk_free = disk_usage.free
+                disk_percent = round((disk_used / disk_total) * 100) if disk_total > 0 else 0  # Округляем до целого числа
+            except:
+                # Если ничего не работает, возвращаем нулевые значения
+                disk_total = disk_used = disk_free = disk_percent = 0
+
         # Format the data
         metrics = {
             'timestamp': datetime.now().isoformat(),
@@ -39,16 +109,16 @@ class SystemMetricsView(APIView):
                 'percent': cpu_percent
             },
             'memory': {
-                'total': memory_info.total,
-                'available': memory_info.available,
-                'percent': memory_info.percent,
-                'used': memory_info.used
+                'total': memory_total,
+                'available': memory_available,
+                'percent': memory_percent,
+                'used': memory_used
             },
             'disk': {
-                'total': disk_usage.total,
-                'used': disk_usage.used,
-                'free': disk_usage.free,
-                'percent': (disk_usage.used / disk_usage.total) * 100
+                'total': disk_total,
+                'used': disk_used,
+                'free': disk_free,
+                'percent': disk_percent
             }
         }
         
@@ -63,7 +133,7 @@ class TaskStatisticsView(APIView):
     """
     View to provide task statistics
     """
-    permission_classes = [IsAdminUser]
+    permission_classes = [IsAuthenticated]
     
     def get(self, request):
         # Get submission statistics
@@ -92,7 +162,7 @@ class HistoricalStatisticsView(APIView):
     """
     View to provide historical statistics
     """
-    permission_classes = [IsAdminUser]
+    permission_classes = [IsAuthenticated]
     
     def get(self, request):
         # Calculate statistics for different periods

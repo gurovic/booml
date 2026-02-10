@@ -21,6 +21,14 @@
           >
             Полигон
           </button>
+          <button
+            v-if="isAuthorized"
+            type="button"
+            class="header__nav-link"
+            @click="handleMonitoringClick"
+          >
+            Мониторинг
+          </button>
         </nav>
 
         <button
@@ -71,6 +79,12 @@ const handlePolygonClick = () => {
 const handleCoursesClick = () => {
   if (router.currentRoute.value.path !== '/courses') {
     router.push('/courses')
+  }
+}
+
+const handleMonitoringClick = () => {
+  if (router.currentRoute.value.path !== '/monitoring') {
+    router.push('/monitoring')
   }
 }
 </script>

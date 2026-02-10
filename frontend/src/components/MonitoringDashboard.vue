@@ -1,37 +1,35 @@
 <template>
-  <div class="dashboard-container">
-    <div v-if="!hasAccess">
-      <h1>Доступ запрещен</h1>
-      <p>У вас нет прав для просмотра этой страницы. Только администраторы могут просматривать мониторинг системы.</p>
-    </div>
-    <div v-else>
+  <div>
+    <UiHeader />
+    <div class="dashboard-container">
       <h1>Мониторинг системы</h1>
       
       <!-- System Metrics Cards -->
       <div class="metrics-grid">
         <div class="metric-card">
           <h3>CPU</h3>
-          <div class="metric-value">{{ systemMetrics.cpu?.percent }}%</div>
+          <div class="metric-value">{{ Math.round(systemMetrics.cpu?.percent) }}%</div>
           <div class="metric-chart">
             <canvas ref="cpuChart"></canvas>
           </div>
         </div>
-        
+
         <div class="metric-card">
           <h3>Память</h3>
-          <div class="metric-value">{{ systemMetrics.memory?.percent }}%</div>
+          <div class="metric-value">{{ Math.round(systemMetrics.memory?.percent) }}%</div>
           <div class="metric-chart">
             <canvas ref="memoryChart"></canvas>
           </div>
         </div>
-        
+
         <div class="metric-card">
           <h3>Диск</h3>
-          <div class="metric-value">{{ systemMetrics.disk?.percent }}%</div>
+          <div class="metric-value">{{ Math.round(systemMetrics.disk?.percent) }}%</div>
           <div class="metric-chart">
             <canvas ref="diskChart"></canvas>
           </div>
         </div>
+
       </div>
       
       <!-- Task Statistics -->
@@ -162,11 +160,15 @@
 
 <script>
 import axios from 'axios';
-import { ref, onMounted, onUnmounted, nextTick, computed } from 'vue';
+import { ref, onMounted, onUnmounted, nextTick } from 'vue';
 import { useUserStore } from '@/stores/UserStore';
+import UiHeader from '@/components/ui/UiHeader.vue';
 
 export default {
   name: 'MonitoringDashboard',
+  components: {
+    UiHeader
+  },
   setup() {
     const userStore = useUserStore();
     const systemMetrics = ref({});
@@ -177,12 +179,7 @@ export default {
       monthly: {}
     });
     const activeTab = ref('daily');
-    const hasAccess = ref(false);
-    
-    // Check if user is staff
-    const checkAccess = () => {
-      hasAccess.value = userStore.currentUser && userStore.currentUser.role === 'admin';
-    };
+    const hasAccess = ref(true); // Всегда true, так как теперь доступ разрешен всем авторизованным пользователям
     
     // Get auth headers
     const getAuthHeaders = () => {
@@ -203,12 +200,10 @@ export default {
         systemMetrics.value = response.data;
       } catch (error) {
         console.error('Error fetching system metrics:', error);
-        if (error.response && (error.response.status === 403 || error.response.status === 401)) {
-          hasAccess.value = false;
-        }
+        // Не изменяем hasAccess, так как доступ теперь разрешен всем авторизованным пользователям
       }
     };
-    
+
     // Fetch task statistics
     const fetchTaskStats = async () => {
       try {
@@ -217,12 +212,10 @@ export default {
         taskStats.value = response.data;
       } catch (error) {
         console.error('Error fetching task statistics:', error);
-        if (error.response && (error.response.status === 403 || error.response.status === 401)) {
-          hasAccess.value = false;
-        }
+        // Не изменяем hasAccess, так как доступ теперь разрешен всем авторизованным пользователям
       }
     };
-    
+
     // Fetch historical statistics
     const fetchHistoricalStats = async () => {
       try {
@@ -231,26 +224,19 @@ export default {
         historicalStats.value = response.data;
       } catch (error) {
         console.error('Error fetching historical statistics:', error);
-        if (error.response && (error.response.status === 403 || error.response.status === 401)) {
-          hasAccess.value = false;
-        }
+        // Не изменяем hasAccess, так как доступ теперь разрешен всем авторизованным пользователям
       }
     };
     
     // Initialize data
     const initializeData = async () => {
-      checkAccess();
-      
-      if (!hasAccess.value) {
-        return;
-      }
-      
+      // Убираем проверку доступа, так как теперь она разрешена для всех авторизованных пользователей
       await Promise.all([
         fetchSystemMetrics(),
         fetchTaskStats(),
         fetchHistoricalStats()
       ]);
-      
+
       // Update charts after data is loaded
       await nextTick();
       // Note: Chart initialization would happen here if we had chart libraries
@@ -326,6 +312,13 @@ export default {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.metric-details {
+  margin-top: 10px;
+  text-align: left;
+  font-size: 0.9em;
+  color: #666;
 }
 
 .task-stats-container, .historical-data-container {

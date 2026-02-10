@@ -4,8 +4,8 @@ from rest_framework import serializers
 class SystemMetricsSerializer(serializers.Serializer):
     timestamp = serializers.DateTimeField()
     cpu = serializers.DictField(child=serializers.FloatField())
-    memory = serializers.DictField(child=serializers.IntegerField())
-    disk = serializers.DictField(child=serializers.IntegerField())
+    memory = serializers.DictField(child=serializers.FloatField())  # Изменили на FloatField, так как percent может быть float
+    disk = serializers.DictField(child=serializers.FloatField())   # Изменили на FloatField для согласованности
 
 
 class TaskStatisticsSerializer(serializers.Serializer):
