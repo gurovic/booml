@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebSocket Test - Submission Updates</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            border-radius: 8px;
+            padding: 30px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            border-bottom: 3px solid #9480C9;
+            padding-bottom: 10px;
+        }
+        .controls {
+            margin: 20px 0;
+        }
+        input, button {
+            padding: 10px;
+            font-size: 14px;
+            margin: 5px;
+        }
+        button {
+            background: #9480C9;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #7d6aaf;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+        }
+        .status.connected {
+            background: #d4edda;
+            color: #155724;
+        }
+        .status.disconnected {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        .status.connecting {
+            background: #fff3cd;
+            color: #856404;
+        }
+        #log {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+            padding: 15px;
+            height: 400px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+        }
+        .log-entry {
+            margin: 5px 0;
+            padding: 5px;
+            border-left: 3px solid #ccc;
+            padding-left: 10px;
+        }
+        .log-entry.info {
+            border-left-color: #17a2b8;
+        }
+        .log-entry.success {
+            border-left-color: #28a745;
+        }
+        .log-entry.error {
+            border-left-color: #dc3545;
+        }
+        .log-entry.message {
+            border-left-color: #9480C9;
+            background: #f0ebff;
+        }
+        .timestamp {
+            color: #6c757d;
+            font-size: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>WebSocket Test - Submission Updates</h1>
+        
+        <div class="controls">
+            <label>
+                Problem ID:
+                <input type="number" id="problemId" value="1" min="1">
+            </label>
+            <br>
+            <label>
+                WebSocket URL:
+                <input type="text" id="wsUrl" size="50" value="ws://localhost:8100/ws/problems/1/submissions/">
+            </label>
+            <br>
+            <button id="connectBtn" onclick="connect()">Connect</button>
+            <button id="disconnectBtn" onclick="disconnect()" disabled>Disconnect</button>
+            <button onclick="clearLog()">Clear Log</button>
+        </div>
+        
+        <div id="status" class="status disconnected">
+            Status: Disconnected
+        </div>
+        
+        <h3>Message Log</h3>
+        <div id="log"></div>
+    </div>
+
+    <script>
+        let ws = null;
+        const logEl = document.getElementById('log');
+        const statusEl = document.getElementById('status');
+        const connectBtn = document.getElementById('connectBtn');
+        const disconnectBtn = document.getElementById('disconnectBtn');
+        const problemIdInput = document.getElementById('problemId');
+        const wsUrlInput = document.getElementById('wsUrl');
+
+        function updateStatus(status, className) {
+            statusEl.textContent = 'Status: ' + status;
+            statusEl.className = 'status ' + className;
+        }
+
+        function log(message, type) {
+            type = type || 'info';
+            const entry = document.createElement('div');
+            entry.className = 'log-entry ' + type;
+            const timestamp = new Date().toLocaleTimeString('ru-RU');
+            entry.innerHTML = '<span class="timestamp">[' + timestamp + ']</span> ' + message;
+            logEl.appendChild(entry);
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+
+        function clearLog() {
+            logEl.innerHTML = '';
+            log('Log cleared', 'info');
+        }
+
+        function updateWsUrl() {
+            const problemId = problemIdInput.value;
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const host = window.location.hostname || 'localhost';
+            const port = '8100';
+            wsUrlInput.value = protocol + '//' + host + ':' + port + '/ws/problems/' + problemId + '/submissions/';
+        }
+
+        problemIdInput.addEventListener('input', updateWsUrl);
+
+        function connect() {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                log('Already connected', 'error');
+                return;
+            }
+
+            const url = wsUrlInput.value;
+            log('Attempting to connect to: ' + url, 'info');
+            updateStatus('Connecting...', 'connecting');
+
+            try {
+                ws = new WebSocket(url);
+
+                ws.onopen = function() {
+                    log('✅ WebSocket connected successfully!', 'success');
+                    updateStatus('Connected', 'connected');
+                    connectBtn.disabled = true;
+                    disconnectBtn.disabled = false;
+                };
+
+                ws.onmessage = function(event) {
+                    log('📨 Message received: ' + event.data, 'message');
+                    try {
+                        const data = JSON.parse(event.data);
+                        log('📦 Parsed data: ' + JSON.stringify(data, null, 2), 'message');
+                        
+                        if (data.type === 'submission_update') {
+                            log('🔄 Submission Update: ID=' + data.submission_id + ', Status=' + data.status + ', Metrics=' + JSON.stringify(data.metrics), 'success');
+                        }
+                    } catch (err) {
+                        log('⚠️ Failed to parse message: ' + err.message, 'error');
+                    }
+                };
+
+                ws.onerror = function(error) {
+                    log('❌ WebSocket error occurred', 'error');
+                    console.error('WebSocket error:', error);
+                };
+
+                ws.onclose = function(event) {
+                    log('🔌 WebSocket closed (code: ' + event.code + ', reason: ' + (event.reason || 'none') + ')', 'info');
+                    updateStatus('Disconnected', 'disconnected');
+                    connectBtn.disabled = false;
+                    disconnectBtn.disabled = true;
+                    ws = null;
+                };
+            } catch (err) {
+                log('❌ Failed to create WebSocket: ' + err.message, 'error');
+                updateStatus('Connection failed', 'disconnected');
+            }
+        }
+
+        function disconnect() {
+            if (ws) {
+                log('Disconnecting...', 'info');
+                ws.close();
+            } else {
+                log('Not connected', 'error');
+            }
+        }
+
+        log('WebSocket test page loaded. Configure the URL and click Connect.', 'info');
+        log('Make sure the backend is running on port 8100', 'info');
+        updateWsUrl();
+    </script>
+</body>
+</html>

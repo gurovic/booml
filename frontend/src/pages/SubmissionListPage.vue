@@ -75,7 +75,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute } from 'vue-router'
 import { getProblemSubmissions } from '@/api/submission'
 import { getProblem } from '@/api/problem'
@@ -94,6 +94,95 @@ const error = ref(null)
 const currentPage = ref(1)
 const totalPages = ref(1)
 const totalCount = ref(0)
+
+// WebSocket connection - using ref for proper reactivity
+const ws = ref(null)
+
+const connectWebSocket = () => {
+  // Determine WebSocket URL based on current location
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+  const host = window.location.host
+  const wsUrl = `${protocol}//${host}/ws/problems/${problemId}/submissions/`
+  
+  console.log(`[WebSocket] Attempting to connect to: ${wsUrl}`)
+  
+  try {
+    ws.value = new WebSocket(wsUrl)
+    
+    ws.value.onopen = () => {
+      console.log('[WebSocket] Connected successfully for problem submissions')
+    }
+    
+    ws.value.onmessage = (event) => {
+      console.log('[WebSocket] Message received:', event.data)
+      try {
+        const data = JSON.parse(event.data)
+        console.log('[WebSocket] Parsed message:', data)
+        if (data.type === 'submission_update') {
+          console.log('[WebSocket] Handling submission_update:', data)
+          handleSubmissionUpdate(data)
+        } else {
+          console.log('[WebSocket] Unknown message type:', data.type)
+        }
+      } catch (err) {
+        console.error('[WebSocket] Failed to parse message:', err, 'Raw data:', event.data)
+      }
+    }
+    
+    ws.value.onerror = (err) => {
+      console.error('[WebSocket] Error occurred:', err)
+    }
+    
+    ws.value.onclose = () => {
+      console.log('[WebSocket] Connection closed')
+    }
+  } catch (err) {
+    console.error('[WebSocket] Failed to establish connection:', err)
+  }
+}
+
+const disconnectWebSocket = () => {
+  if (ws.value) {
+    ws.value.close()
+    ws.value = null
+  }
+}
+
+const handleSubmissionUpdate = (data) => {
+  const { submission_id, status, metrics } = data
+  
+  console.log(`[WebSocket] Updating submission ${submission_id}: status=${status}, metrics=`, metrics)
+  
+  // Find the submission in our current list
+  const index = submissions.value.findIndex(s => s.id === submission_id)
+  
+  console.log(`[WebSocket] Found submission at index: ${index}, current list length: ${submissions.value.length}`)
+  
+  if (index !== -1) {
+    // Update existing submission
+    const oldSubmission = submissions.value[index]
+    console.log(`[WebSocket] Old submission state:`, oldSubmission)
+    
+    // Create updated submission object
+    const updatedSubmission = {
+      ...submissions.value[index],
+      status,
+      metrics
+    }
+    
+    // Use splice to ensure Vue reactivity
+    submissions.value.splice(index, 1, updatedSubmission)
+    
+    console.log(`[WebSocket] Updated submission state:`, submissions.value[index])
+  } else if (currentPage.value === 1) {
+    console.log('[WebSocket] Submission not in list and on page 1, refreshing list')
+    // If we're on the first page and this is a new submission, refresh the list
+    // to get the new submission at the top
+    fetchSubmissions(1)
+  } else {
+    console.log(`[WebSocket] Submission ${submission_id} not found in current page`)
+  }
+}
 
 const fetchSubmissions = async (page = 1) => {
   loading.value = true
@@ -195,7 +284,15 @@ onMounted(async () => {
   }
   
   // Fetch submissions
-  fetchSubmissions(1)
+  await fetchSubmissions(1)
+  
+  // Connect to WebSocket for real-time updates
+  connectWebSocket()
+})
+
+onBeforeUnmount(() => {
+  // Disconnect WebSocket when component is unmounted
+  disconnectWebSocket()
 })
 </script>
 
