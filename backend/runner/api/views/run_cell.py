@@ -7,7 +7,7 @@ from django.urls import reverse
 
 from ...services.runtime import SessionNotFoundError, run_code, provide_input
 from ..serializers import CellRunInputSerializer, CellRunSerializer
-from .sessions import ensure_notebook_access
+from .sessions import build_notebook_session_id, ensure_notebook_access
 
 
 class RunCellView(APIView):
@@ -22,7 +22,7 @@ class RunCellView(APIView):
 
         ensure_notebook_access(request.user, cell.notebook)
 
-        session_id = serializer.validated_data["session_id"]
+        session_id = build_notebook_session_id(cell.notebook_id)
         try:
             result = run_code(session_id, cell.content or "")
         except SessionNotFoundError:
@@ -66,7 +66,7 @@ class RunCellInputView(APIView):
 
         ensure_notebook_access(request.user, cell.notebook)
 
-        session_id = serializer.validated_data["session_id"]
+        session_id = build_notebook_session_id(cell.notebook_id)
         run_id = serializer.validated_data["run_id"]
         text = serializer.validated_data.get("input")
         stdin_eof = bool(serializer.validated_data.get("stdin_eof"))

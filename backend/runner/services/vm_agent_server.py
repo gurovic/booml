@@ -155,8 +155,16 @@ class InteractiveRun:
 
     def wait_for_input(self) -> None:
         with self._condition:
+            timeout_s = float(os.environ.get("RUNTIME_STDIN_TIMEOUT_SECONDS", "600"))
+            deadline = time.monotonic() + max(0.0, timeout_s)
             while not self._input_buffer and not self._stdin_eof:
-                self._condition.wait()
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    self._stdin_eof = True
+                    self._stdin_closed = True
+                    self._condition.notify_all()
+                    return
+                self._condition.wait(timeout=remaining)
 
     def _input(self, prompt: str | None = None) -> str:
         prompt_text = "" if prompt is None else str(prompt)
@@ -179,6 +187,12 @@ class InteractiveRun:
                 self._write_stdout(f"{value}\n")
             self._condition.notify_all()
             return self._status_seq
+
+    def abort_input(self) -> None:
+        with self._condition:
+            self._stdin_eof = True
+            self._stdin_closed = True
+            self._condition.notify_all()
 
     def _execute(self) -> None:
         def push_output(item: dict) -> None:

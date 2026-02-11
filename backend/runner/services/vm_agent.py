@@ -222,8 +222,16 @@ class InteractiveRun:
 
     def wait_for_input(self) -> None:
         with self._condition:
+            timeout_s = float(os.environ.get("RUNTIME_STDIN_TIMEOUT_SECONDS", "600"))
+            deadline = time.monotonic() + max(0.0, timeout_s)
             while not self._input_buffer and not self._stdin_eof:
-                self._condition.wait()
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    self._stdin_eof = True
+                    self._stdin_closed = True
+                    self._condition.notify_all()
+                    return
+                self._condition.wait(timeout=remaining)
 
     def provide_input(self, text: str | None, *, stdin_eof: bool = False) -> int:
         value = "" if text is None else str(text)
@@ -236,6 +244,12 @@ class InteractiveRun:
                 self._write_stdout(f"{value}\n")
             self._condition.notify_all()
             return self._status_seq
+
+    def abort_input(self) -> None:
+        with self._condition:
+            self._stdin_eof = True
+            self._stdin_closed = True
+            self._condition.notify_all()
 
     def _execute(self) -> None:
         namespace = self.session.namespace
@@ -565,6 +579,8 @@ def dispose_vm_agent(session_id: str) -> None:
 
 
 def reset_vm_agents() -> None:
+    for run in list(_INTERACTIVE_RUNS.values()):
+        run.abort_input()
     for session_id in list(_AGENT_CACHE.keys()):
         dispose_vm_agent(session_id)
     _INTERACTIVE_RUNS.clear()
