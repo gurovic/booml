@@ -42,26 +42,59 @@
                 v-if="canManageCourse"
                 class="button button--secondary"
                 type="button"
-                @click="showCourseSettings = !showCourseSettings"
+                @click="openSettingsDialog"
               >
                 Настройки курса
               </button>
             </div>
           </div>
-
-          <section v-if="canManageCourse && showCourseSettings" class="course-settings">
-            <div class="course-settings__row">
-              <label class="form-checkbox">
-                <input type="checkbox" v-model="courseIsOpen" @change="saveCourseSettings" />
-                <span>Курс открыт для всех (open)</span>
-              </label>
-              <button class="button button--secondary" type="button" @click="deleteThisCourse">
-                Удалить курс
+          
+          <UiLinkList
+            class="course-contests-list"
+            title="Контесты"
+            :items="contestItems"
+            :reorderable="canReorderContests"
+            @reorder="onReorderContest"
+          >
+            <template #action="{ item }">
+              <button
+                v-if="canDeleteContestItem(item)"
+                class="contest-delete-btn"
+                type="button"
+                title="Удалить контест"
+                data-hover-only="true"
+                @click.stop.prevent="deleteContest(item)"
+              >
+                Удалить
               </button>
-            </div>
+            </template>
+          </UiLinkList>
+          <p v-if="!contestItems.length" class="note">В этом курсе пока нет контестов.</p>
+        </template>
+      </section>
+    </main>
 
-            <div class="participants">
-              <h3 class="participants__title">Участники</h3>
+    <!-- Course Settings Dialog -->
+    <div v-if="canManageCourse && showSettingsDialog" class="dialog-overlay dialog-overlay--settings" @click="closeSettingsDialog">
+      <div class="dialog dialog--settings" @click.stop>
+        <div class="dialog__header">
+          <h2 class="dialog__title">Настройки курса</h2>
+          <button class="dialog__close" @click="closeSettingsDialog">×</button>
+        </div>
+        <div class="dialog__body">
+          <div class="settings-modal">
+              <h3 class="settings-section__title">Доступ</h3>
+              <label class="form-checkbox settings-checkbox">
+                <input type="checkbox" v-model="courseIsOpen" @change="saveCourseSettings" />
+                <span class="settings-checkbox__label">Курс открыт для всех</span>
+              </label>
+              <p class="settings-hint">
+                Если включено, курс виден всем пользователям.
+              </p>
+            <div class="settings-divider"></div>
+              <div class="settings-section__head">
+                <h3 class="settings-section__title">Участники</h3>
+              </div>
               <div v-if="!participants.length" class="note">Нет участников</div>
               <ul v-else class="participants__list">
                 <li v-for="p in participants" :key="p.username" class="participants__item">
@@ -92,7 +125,7 @@
                 </li>
               </ul>
 
-              <div class="participants__add">
+              <div class="participants__add settings-participants-add">
                 <input
                   v-model="newParticipantUsername"
                   type="text"
@@ -108,33 +141,18 @@
                   Добавить
                 </button>
               </div>
-            </div>
-          </section>
-          
-          <UiLinkList
-            class="course-contests-list"
-            title="Контесты"
-            :items="contestItems"
-            :reorderable="canReorderContests"
-            @reorder="onReorderContest"
-          >
-            <template #action="{ item }">
-              <button
-                v-if="canDeleteContestItem(item)"
-                class="contest-delete-btn"
-                type="button"
-                title="Удалить контест"
-                data-hover-only="true"
-                @click.stop.prevent="deleteContest(item)"
-              >
-                Удалить
+
+
+          </div>
+        </div>
+        <div class="dialog__footer">
+           <button class="button button--danger" type="button" @click="deleteThisCourse">
+                Удалить курс
               </button>
-            </template>
-          </UiLinkList>
-          <p v-if="!contestItems.length" class="note">В этом курсе пока нет контестов.</p>
-        </template>
-      </section>
-    </main>
+          <button class="button button--primary" @click="closeSettingsDialog">Закрыть</button>
+        </div>
+      </div>
+    </div>
 
     <!-- Create Contest Dialog -->
     <div v-if="showCreateDialog" class="dialog-overlay" @click="closeCreateDialog">
@@ -233,7 +251,7 @@ const error = ref('')
 const showCreateDialog = ref(false)
 const isCreating = ref(false)
 const createError = ref('')
-const showCourseSettings = ref(false)
+const showSettingsDialog = ref(false)
 const courseIsOpen = ref(false)
 const newParticipantUsername = ref('')
 const newParticipantRole = ref('student')
@@ -353,6 +371,14 @@ const loadContests = async () => {
   } finally {
     isLoading.value = false
   }
+}
+
+const openSettingsDialog = () => {
+  showSettingsDialog.value = true
+}
+
+const closeSettingsDialog = () => {
+  showSettingsDialog.value = false
 }
 
 const closeCreateDialog = () => {
@@ -600,6 +626,81 @@ watch(courseId, () => {
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+.dialog-overlay--settings {
+  background: radial-gradient(1000px 600px at 50% 0%, rgba(15, 23, 42, 0.55), rgba(0, 0, 0, 0.6));
+  backdrop-filter: blur(6px);
+}
+
+.dialog--settings {
+  max-width: 720px;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(255, 255, 255, 0.92));
+}
+
+.dialog--settings .dialog__header {
+  position: sticky;
+  top: 0;
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(10px);
+  border-bottom-color: rgba(15, 23, 42, 0.10);
+}
+
+.dialog--settings .dialog__footer {
+  position: sticky;
+  bottom: 0;
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(10px);
+  border-top-color: rgba(15, 23, 42, 0.10);
+  justify-content: space-between;
+}
+
+.settings-modal {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.settings-section__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.settings-section__title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: rgba(15, 23, 42, 0.92);
+}
+
+.settings-checkbox {
+  margin: 2px 0 6px;
+}
+
+.settings-checkbox__label {
+  font-weight: 600;
+}
+
+.settings-hint {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: rgba(15, 23, 42, 0.62);
+}
+
+.settings-divider {
+  height: 1px;
+  background: rgba(15, 23, 42, 0.08);
+  border-radius: 999px;
+  margin: 10px 0;
+}
+
+.settings-participants-add {
+  margin-top: 3px;
 }
 
 .course-settings__row {
@@ -864,6 +965,7 @@ watch(courseId, () => {
   color: var(--color-text-primary, #000);
   background: var(--color-bg-default, #fff);
   transition: border-color 0.2s ease;
+  height: 100%;
 }
 
 .form-input:focus,

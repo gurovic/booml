@@ -342,7 +342,7 @@ watch(
   -webkit-overflow-scrolling: touch;
   padding: 6px 12px;
   border-radius: 12px;
-  background: rgba(22, 33, 89, 0.06);
+  background: var(--color-button-secondary);
   border: 1px solid rgba(22, 33, 89, 0.10);
 }
 
