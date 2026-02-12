@@ -238,6 +238,7 @@ watch(contestId, () => {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  margin-top: 16px;
 }
 
 .leaderboard-card {
@@ -284,37 +285,64 @@ watch(contestId, () => {
 }
 
 .leaderboard-table {
-  width: max-content;
+  width: 100%;
   min-width: 100%;
   border-collapse: separate;
-  border-spacing: 8px 10px;
+  border-spacing: 0;
+  font-size: 16px;
 }
 
 .leaderboard-cell {
-  height: 50px;
-  padding: 0 12px;
-  box-sizing: border-box;
-  border-radius: 5px;
-  background: #E4DAFF;
-  color: #27346A;
-  text-align: center;
-  font-size: 14px;
+  padding: 15px 20px;
   vertical-align: middle;
   white-space: nowrap;
+  color: #333333;
 }
 
 .leaderboard-cell--head {
-  background: #9480C9;
-  color: #FFFFFF;
-  font-weight: 400;
+  color: #ffffff;
+  font-weight: 500;
+  text-align: left;
+}
+
+.leaderboard-table thead tr {
+  background-color: #9480C9;
+}
+
+.leaderboard-table thead tr th:first-child {
   border-top-left-radius: 20px;
+}
+
+.leaderboard-table thead tr th:last-child {
   border-top-right-radius: 20px;
-  border-bottom-left-radius: 5px;
-  border-bottom-right-radius: 5px;
+}
+
+.leaderboard-table tbody tr {
+  background-color: #E4DAFF;
+  transition: opacity 0.2s ease;
+}
+
+.leaderboard-table tbody tr:nth-child(even) {
+  background-color: #EDE6FF;
+}
+
+.leaderboard-table tbody tr:hover {
+  opacity: 0.9;
+}
+
+.leaderboard-table tbody tr + tr {
+  border-top: 2px solid var(--color-bg-default);
+}
+
+.leaderboard-table tbody tr:last-child td:first-child {
+  border-bottom-left-radius: 20px;
+}
+
+.leaderboard-table tbody tr:last-child td:last-child {
+  border-bottom-right-radius: 20px;
 }
 
 .leaderboard-cell--name {
-  text-align: left;
   min-width: 200px;
   max-width: 260px;
 }
@@ -370,14 +398,9 @@ watch(contestId, () => {
 }
 
 @media (max-width: 640px) {
-  .leaderboard-table {
-    border-spacing: 6px 8px;
-  }
-
   .leaderboard-cell {
-    height: 44px;
-    padding: 0 8px;
-    font-size: 13px;
+    padding: 12px 14px;
+    font-size: 14px;
   }
 
   .leaderboard-cell__title {

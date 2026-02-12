@@ -112,6 +112,7 @@
           </section>
           
           <UiLinkList
+            class="course-contests-list"
             title="Контесты"
             :items="contestItems"
           >
@@ -562,16 +563,15 @@ watch(courseId, () => {
 }
 
 .contest-panel {
+  margin-top: 16px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
 }
 
 .course-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 16px;
   gap: 16px;
 }
 
@@ -640,6 +640,10 @@ watch(courseId, () => {
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
+}
+
+:deep(.course-contests-list > h2) {
+  display: none;
 }
 
 .participants__title {

@@ -22,7 +22,7 @@
               <button
                 v-if="canEditSection(section)"
                 type="button"
-                class="section-open-btn"
+                class="button button--primary"
                 @click="goToCourse(section)"
                 title="Редактировать раздел"
               >
@@ -246,7 +246,6 @@
           <div class="section-card side-card">
             <div class="side-card__header">
               <h3 class="side-card__title">Избранные курсы</h3>
-              <div class="side-card__meta">до 5</div>
             </div>
             <div v-if="sidebarLoading" class="side-state">Загрузка...</div>
             <div v-else-if="favorites.length === 0" class="side-state">Пока пусто</div>
@@ -268,7 +267,6 @@
           <div class="section-card side-card">
             <div class="side-card__header">
               <h3 class="side-card__title">Недавние задачи</h3>
-              <div class="side-card__meta">топ 5</div>
             </div>
             <div v-if="sidebarLoading" class="side-state">Загрузка...</div>
             <div v-else-if="recentProblems.length === 0" class="side-state">Пока нет посылок</div>
@@ -549,7 +547,7 @@ onMounted(loadSidebar)
 .section-card {
   background: #fff;
   border-radius: 12px;
-  padding: 14px 14px 16px;
+  padding: 10px;
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
   border: 1px solid #e5e9f1;
 }
@@ -671,11 +669,10 @@ onMounted(loadSidebar)
 .triangle--nested { border-left-width: 6px; border-top-width: 4px; border-bottom-width: 4px; }
 
 .course-list {
-  margin-left: 12px;
-  padding-left: 10px;
   display: flex;
   flex-direction: column;
   gap: 10px;
+  margin-top:8px;
 }
 
 .course-item {
@@ -805,8 +802,6 @@ onMounted(loadSidebar)
   justify-content: space-between;
   gap: 12px;
   margin-bottom: 10px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid #e5e9f1;
 }
 
 .side-card__title {
@@ -820,7 +815,10 @@ onMounted(loadSidebar)
   color: var(--color-text-muted);
   white-space: nowrap;
 }
-
+.side-card {
+  padding:20px;
+  border-radius: 20px;
+}
 .side-state {
   color: var(--color-text-muted);
   font-size: 14px;
@@ -846,7 +844,7 @@ onMounted(loadSidebar)
   padding: 8px 10px;
   border-radius: 12px;
   border: 1px solid #e5e9f1;
-  background: rgba(245, 247, 255, 0.55);
+  background: var(--color-button-secondary);
 }
 
 .fav-link {
@@ -866,7 +864,7 @@ onMounted(loadSidebar)
 }
 
 .fav-link:hover {
-  background: rgba(59, 130, 246, 0.08);
+  background: var(--color-button-secondary-hover);
 }
 
 .fav-actions {
@@ -904,7 +902,7 @@ onMounted(loadSidebar)
   padding: 10px 10px;
   border-radius: 12px;
   border: 1px solid #e5e9f1;
-  background: rgba(245, 247, 255, 0.55);
+  background: var(--color-button-secondary);
 }
 
 .recent-link {
@@ -934,7 +932,7 @@ onMounted(loadSidebar)
 }
 
 .recent-link:hover {
-  background: rgba(59, 130, 246, 0.08);
+  background: var(--color-button-secondary-hover);
 }
 
 .recent-time {

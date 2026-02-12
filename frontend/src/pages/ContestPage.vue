@@ -9,7 +9,7 @@
         <div v-else-if="error" class="state state--error">{{ error }}</div>
         <template v-else-if="contest">
           <div class="contest-header">
-            <h2 class="contest-title">{{ contestTitle }}</h2>
+            <h1 class="contest-title">{{ contestTitle }}</h1>
             <div class="contest-actions">
               <button
                 v-if="canManageContest"
@@ -30,6 +30,7 @@
             {{ contest.description }}
           </div>
           <UiLinkList
+            class="contest-problems-list"
             :title="problemsTitle"
             :items="problemItems"
           >
@@ -427,7 +428,6 @@ watch(showAddProblemDialog, (newValue) => {
 .contest-panel {
   display: flex;
   flex-direction: column;
-  gap: 12px;
 }
 
 .state {
@@ -460,10 +460,12 @@ watch(showAddProblemDialog, (newValue) => {
   justify-content: space-between;
   gap: 12px;
   flex-wrap: wrap;
-  padding: 4px 4px 0;
+  padding: 16px 4px 0;
 }
 
 .contest-title {
+  font-size: 28px;
+  font-weight: 600;
   margin: 0;
 }
 
@@ -489,6 +491,10 @@ watch(showAddProblemDialog, (newValue) => {
   font-size: 15px;
   line-height: 1.5;
   margin-bottom: 12px;
+}
+
+:deep(.contest-problems-list > h2) {
+  display: none;
 }
 
 /* Dialog styles */
