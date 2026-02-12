@@ -901,7 +901,7 @@ onMounted(loadSidebar)
   white-space: nowrap;
 }
 .side-card {
-  padding:20px;
+  padding: 20px;
   border-radius: 20px;
 }
 .side-state {
