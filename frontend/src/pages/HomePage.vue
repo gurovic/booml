@@ -894,12 +894,6 @@ onMounted(loadSidebar)
   font-size: 16px;
   font-weight: 700;
 }
-
-.side-card__meta {
-  font-size: 12px;
-  color: var(--color-text-muted);
-  white-space: nowrap;
-}
 .side-card {
   padding: 20px;
   border-radius: 20px;
