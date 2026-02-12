@@ -549,7 +549,7 @@ const onFavoriteDrop = async (targetIdx) => {
   const f = Number(from)
   const pos = dragOverFavoritePos.value
 
-  let to = target
+  let to
   if (pos === 'before') {
     to = f < target ? target - 1 : target
   } else {
