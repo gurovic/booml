@@ -128,7 +128,7 @@ export default {
       const target = Number(targetIdx)
       const f = Number(from)
 
-      let to = target
+      let to
       if (pos === 'before') {
         to = f < target ? target - 1 : target
       } else {
