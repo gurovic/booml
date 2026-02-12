@@ -113,7 +113,7 @@ const handleCoursesClick = () => {
   height: 72px;
   margin-left: 24px;
   object-fit: contain;
-  margin-right:5px
+  margin-right: 5px
 }
 
 .header__title:hover {
