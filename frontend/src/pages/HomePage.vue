@@ -757,7 +757,7 @@ onMounted(loadSidebar)
   display: flex;
   flex-direction: column;
   gap: 10px;
-  margin-top:8px;
+  margin-top: 8px;
 }
 
 .course-item {
