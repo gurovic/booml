@@ -3,7 +3,8 @@
     <div class="container">
       <div class="header__inner">
         <button type="button" class="header__title" @click="handleHomeClick">
-          Booml
+          <img :src="logo" alt="Booml logo" class="header__logo" />
+          <span class="header__title-text">BOOML</span>
         </button>
 
         <nav v-if="isAuthorized" class="header__nav">
@@ -38,6 +39,7 @@
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/UserStore'
+import logo from '@/assets/logo.png'
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -94,14 +96,24 @@ const handleCoursesClick = () => {
 
 .header__title {
   font-family: 'Dela Gothic One', sans-serif;
-  font-size: 20px;
+  font-size: 40px;
   line-height: 1;
   color: #ffffff;
   text-decoration: none;
+  display: inline-flex;
+  align-items: center;
   background: none;
   border: none;
   padding: 0;
   cursor: pointer;
+}
+
+.header__logo {
+  width: 72px;
+  height: 72px;
+  margin-left: 24px;
+  object-fit: contain;
+  margin-right: 5px
 }
 
 .header__title:hover {
