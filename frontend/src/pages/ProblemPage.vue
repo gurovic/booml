@@ -8,8 +8,8 @@
       <div v-if="problem != null" class="problem__inner">
         <div class="problem__content">
           <h1 class="problem__name">
-            <UiIdPill v-if="problem?.id" class="problem__id" :id="problem.id" title="ID задачи" />
             <span class="problem__title-text">{{ problem.title }}</span>
+            <UiIdPill v-if="problem?.id" class="problem__id" :id="problem.id" title="ID задачи" />
           </h1>
           <div class="problem__text" v-html="problem.rendered_statement"></div>
         </div>
@@ -320,20 +320,17 @@ const handleCreateNotebook = async () => {
 
   padding-left: 16px;
   border-left: 6px solid var(--color-primary);
-  display: flex;
-  align-items: baseline;
-  gap: 12px;
-  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .problem__id {
-  flex: 0 0 auto;
+  margin-left: 12px;
+  vertical-align: middle;
+  white-space: nowrap;
 }
 
 .problem__title-text {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  display: inline;
 }
 
 .problem__text {
