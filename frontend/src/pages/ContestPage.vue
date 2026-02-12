@@ -42,6 +42,7 @@
                   class="problem-order-btn problem-order-btn--danger"
                   type="button"
                   title="Удалить из контеста"
+                  data-hover-only="true"
                   @click.stop.prevent="removeProblem(item)"
                 >
                   ✕

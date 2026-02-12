@@ -124,6 +124,7 @@
                 class="contest-delete-btn"
                 type="button"
                 title="Удалить контест"
+                data-hover-only="true"
                 @click.stop.prevent="deleteContest(item)"
               >
                 Удалить
@@ -676,6 +677,17 @@ watch(courseId, () => {
 .participants__btn--danger {
   border-color: var(--color-border-danger);
   color: var(--color-text-danger);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .participants__btn--danger {
+    display: none;
+  }
+
+  .participants__item:hover .participants__btn--danger,
+  .participants__item:focus-within .participants__btn--danger {
+    display: inline-flex;
+  }
 }
 
 .participants__add {

@@ -581,7 +581,7 @@ onMounted(load)
 .menu-list {
   width: 100%;
   border-radius: 12px;
-  padding: 0;
+  padding: 0 16px;
   color: var(--color-text-primary);
 }
 
@@ -801,7 +801,6 @@ onMounted(load)
   width: 100%;
   padding: 10px 12px;
   border-radius: 8px;
-  border: 1px solid rgba(224, 227, 240, 0.45);
   background: var(--color-button-secondary);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
 }

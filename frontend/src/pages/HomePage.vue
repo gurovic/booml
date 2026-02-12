@@ -1026,6 +1026,17 @@ onMounted(loadSidebar)
   color: rgb(185, 28, 28);
 }
 
+@media (hover: hover) and (pointer: fine) {
+  .fav-btn--danger {
+    display: none;
+  }
+
+  .fav-item:hover .fav-btn--danger,
+  .fav-item:focus-within .fav-btn--danger {
+    display: inline-flex;
+  }
+}
+
 .recent-item {
   display: flex;
   flex-direction: column;

@@ -235,6 +235,19 @@ export default {
   transform: translateY(-1px);
 }
 
+/* Hide destructive actions until the user intentionally hovers the row (desktop).
+   On touch devices (no hover), keep them visible. */
+@media (hover: hover) and (pointer: fine) {
+  .menu-list__item :deep([data-hover-only="true"]) {
+    display: none;
+  }
+
+  .menu-list__item:hover :deep([data-hover-only="true"]),
+  .menu-list__item:focus-within :deep([data-hover-only="true"]) {
+    display: inline-flex;
+  }
+}
+
 .menu-list__item:active {
   transform: translateY(0);
 }
