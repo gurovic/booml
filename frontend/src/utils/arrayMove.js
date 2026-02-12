@@ -6,7 +6,7 @@ export function arrayMove(list, fromIndex, toIndex) {
   const to = Number(toIndex)
 
   if (!Number.isInteger(from) || !Number.isInteger(to)) return arr
-  if (from < 0 || from >= arr.length) return arr
+  if (from < 0 || from >= arr.length || to < 0) return arr
 
   const clampedTo = Math.max(0, Math.min(to, arr.length - 1))
   if (from === clampedTo) return arr
