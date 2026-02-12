@@ -250,13 +250,32 @@
             <div v-if="sidebarLoading" class="side-state">Загрузка...</div>
             <div v-else-if="favorites.length === 0" class="side-state">Пока пусто</div>
             <ul v-else class="fav-list">
-              <li v-for="(fav, idx) in favorites" :key="fav.course_id" class="fav-item">
+              <li
+                v-for="(fav, idx) in favorites"
+                :key="fav.course_id"
+                class="fav-item"
+                :class="favoriteDragClass(idx)"
+                @dragover.prevent="onFavoriteDragOver(idx, $event)"
+                @drop.prevent="onFavoriteDrop(idx)"
+                @dragleave="onFavoriteDragLeave(idx)"
+              >
+                <button
+                  v-if="favorites.length > 1"
+                  class="fav-btn fav-btn--drag"
+                  type="button"
+                  title="Перетащить"
+                  aria-label="Перетащить"
+                  draggable="true"
+                  @click.stop.prevent
+                  @dragstart="onFavoriteDragStart(idx, $event)"
+                  @dragend="onFavoriteDragEnd"
+                >
+                  <span class="material-symbols-rounded" aria-hidden="true">drag_indicator</span>
+                </button>
                 <button type="button" class="fav-link" @click="goToCourse({ id: fav.course_id, title: fav.title, type: 'course' })">
                   {{ fav.title }}
                 </button>
                 <div class="fav-actions">
-                  <button class="fav-btn" type="button" title="Вверх" :disabled="idx === 0" @click="moveFavorite(idx, -1)">↑</button>
-                  <button class="fav-btn" type="button" title="Вниз" :disabled="idx === favorites.length - 1" @click="moveFavorite(idx, 1)">↓</button>
                   <button class="fav-btn fav-btn--danger" type="button" title="Удалить" @click="removeFavorite(fav.course_id)">✕</button>
                 </div>
               </li>
@@ -316,6 +335,7 @@ import UiHeader from '@/components/ui/UiHeader.vue'
 import UiIdPill from '@/components/ui/UiIdPill.vue'
 import { useUserStore } from '@/stores/UserStore'
 import { formatDateTimeMsk } from '@/utils/datetime'
+import { arrayMove } from '@/utils/arrayMove'
 
 const courses = ref([])
 const openSections = ref({})
@@ -326,6 +346,9 @@ const favorites = ref([])
 const recentProblems = ref([])
 const updates = ref([])
 const favoriteError = ref('')
+const draggingFavoriteIdx = ref(null)
+const dragOverFavoriteIdx = ref(null)
+const dragOverFavoritePos = ref('before') // 'before' | 'after'
 const router = useRouter()
 const userStore = useUserStore()
 
@@ -472,23 +495,85 @@ const removeFavorite = async (courseId) => {
   }
 }
 
-const moveFavorite = async (idx, delta) => {
-  const list = [...favorites.value]
-  const next = idx + delta
-  if (idx < 0 || next < 0 || idx >= list.length || next >= list.length) return
+const favoriteDragClass = (idx) => {
+  if (favorites.value.length <= 1) return {}
+  return {
+    'fav-item--dragging': draggingFavoriteIdx.value === idx,
+    'fav-item--drag-over-before': dragOverFavoriteIdx.value === idx && dragOverFavoritePos.value === 'before',
+    'fav-item--drag-over-after': dragOverFavoriteIdx.value === idx && dragOverFavoritePos.value === 'after',
+  }
+}
 
-  const tmp = list[idx]
-  list[idx] = list[next]
-  list[next] = tmp
-  favorites.value = list
+const onFavoriteDragStart = (idx, e) => {
+  if (favorites.value.length <= 1) return
+  draggingFavoriteIdx.value = idx
+  dragOverFavoriteIdx.value = idx
+  dragOverFavoritePos.value = 'before'
+  try {
+    e.dataTransfer.effectAllowed = 'move'
+    e.dataTransfer.setData('text/plain', String(idx))
+  } catch (_) {
+    // ignore
+  }
+}
+
+const onFavoriteDragEnd = () => {
+  draggingFavoriteIdx.value = null
+  dragOverFavoriteIdx.value = null
+  dragOverFavoritePos.value = 'before'
+}
+
+const onFavoriteDragOver = (idx, e) => {
+  if (favorites.value.length <= 1) return
+  if (draggingFavoriteIdx.value == null) return
+  dragOverFavoriteIdx.value = idx
+
+  const rect = e.currentTarget?.getBoundingClientRect?.()
+  if (!rect) return
+  const mid = rect.top + rect.height / 2
+  dragOverFavoritePos.value = e.clientY > mid ? 'after' : 'before'
+}
+
+const onFavoriteDragLeave = (idx) => {
+  if (dragOverFavoriteIdx.value === idx) dragOverFavoriteIdx.value = null
+}
+
+const onFavoriteDrop = async (targetIdx) => {
+  const from = draggingFavoriteIdx.value
+  if (from == null) return
+
+  const list = Array.isArray(favorites.value) ? [...favorites.value] : []
+  if (!list.length) return onFavoriteDragEnd()
+
+  const target = Number(targetIdx)
+  const f = Number(from)
+  const pos = dragOverFavoritePos.value
+
+  let to = target
+  if (pos === 'before') {
+    to = f < target ? target - 1 : target
+  } else {
+    to = f < target ? target : target + 1
+  }
+  const max = list.length - 1
+  to = Math.max(0, Math.min(to, max))
+
+  if (!Number.isInteger(f) || !Number.isInteger(to) || f === to) return onFavoriteDragEnd()
+
+  const prev = favorites.value
+  const next = arrayMove(list, f, to)
+  favorites.value = next
 
   try {
-    const res = await homeApi.reorderFavoriteCourses(list.map(x => x.course_id))
-    favorites.value = Array.isArray(res?.items) ? res.items : list
+    const res = await homeApi.reorderFavoriteCourses(next.map(x => x.course_id))
+    favorites.value = Array.isArray(res?.items) ? res.items : next
   } catch (err) {
     console.error('Failed to reorder favorites', err)
+    favorites.value = prev
     favoriteError.value = _friendlyFavoriteError(err)
     await loadSidebar()
+  } finally {
+    onFavoriteDragEnd()
   }
 }
 
@@ -845,6 +930,30 @@ onMounted(loadSidebar)
   border-radius: 12px;
   border: 1px solid #e5e9f1;
   background: var(--color-button-secondary);
+  position: relative;
+}
+
+.fav-item--dragging {
+  opacity: 0.65;
+}
+
+.fav-item--drag-over-before::before,
+.fav-item--drag-over-after::after {
+  content: '';
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  height: 2px;
+  background: var(--color-primary, #2f6fed);
+  border-radius: 2px;
+}
+
+.fav-item--drag-over-before::before {
+  top: -2px;
+}
+
+.fav-item--drag-over-after::after {
+  bottom: -2px;
 }
 
 .fav-link {
@@ -881,6 +990,28 @@ onMounted(loadSidebar)
   border-radius: 10px;
   cursor: pointer;
   font-size: 13px;
+  line-height: 1;
+}
+
+.fav-btn--drag {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: grab;
+  border-radius: 9px;
+  margin-right: 2px;
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.fav-btn--drag:active {
+  cursor: grabbing;
+}
+
+.fav-btn--drag :deep(.material-symbols-rounded) {
+  font-size: 18px;
   line-height: 1;
 }
 

@@ -33,6 +33,8 @@
             class="contest-problems-list"
             :title="problemsTitle"
             :items="problemItems"
+            :reorderable="canReorderProblems"
+            @reorder="onReorderProblem"
           >
             <template #action="{ item }">
               <div v-if="canManageContest" class="problem-order-actions">
@@ -43,24 +45,6 @@
                   @click.stop.prevent="removeProblem(item)"
                 >
                   ✕
-                </button>
-                <button
-                  class="problem-order-btn"
-                  type="button"
-                  title="Вверх"
-                  :disabled="isFirstProblem(item)"
-                  @click.stop.prevent="moveProblem(item, -1)"
-                >
-                  ↑
-                </button>
-                <button
-                  class="problem-order-btn"
-                  type="button"
-                  title="Вниз"
-                  :disabled="isLastProblem(item)"
-                  @click.stop.prevent="moveProblem(item, 1)"
-                >
-                  ↓
                 </button>
               </div>
             </template>
@@ -193,6 +177,7 @@ import UiHeader from '@/components/ui/UiHeader.vue'
 import UiBreadcrumbs from '@/components/ui/UiBreadcrumbs.vue'
 import UiLinkList from '@/components/ui/UiLinkList.vue'
 import UiIdPill from '@/components/ui/UiIdPill.vue'
+import { arrayMove } from '@/utils/arrayMove'
 
 const route = useRoute()
 const userStore = useUserStore()
@@ -223,6 +208,11 @@ const problemsTitle = computed(() => (contest.value ? 'Задачи' : contestTi
 const canManageContest = computed(() => {
   if (!userStore.currentUser || !contest.value) return false
   return !!contest.value.can_manage
+})
+
+const canReorderProblems = computed(() => {
+  const list = Array.isArray(contest.value?.problems) ? contest.value.problems : []
+  return canManageContest.value && list.length > 1
 })
 
 const problemItems = computed(() => {
@@ -350,31 +340,15 @@ const addProblemsToContest = async () => {
   }
 }
 
-const _problemIndex = (problemId) => {
-  const list = Array.isArray(contest.value?.problems) ? contest.value.problems : []
-  return list.findIndex(p => Number(p?.id) === Number(problemId))
-}
-
-const isFirstProblem = (item) => _problemIndex(item?.id) <= 0
-const isLastProblem = (item) => {
-  const list = Array.isArray(contest.value?.problems) ? contest.value.problems : []
-  const idx = _problemIndex(item?.id)
-  return idx < 0 || idx >= list.length - 1
-}
-
-const moveProblem = async (item, delta) => {
+const onReorderProblem = async ({ from, to }) => {
   const list = Array.isArray(contest.value?.problems) ? [...contest.value.problems] : []
-  const idx = list.findIndex(p => Number(p?.id) === Number(item?.id))
-  const next = idx + delta
-  if (idx < 0 || next < 0 || next >= list.length) return
+  if (!list.length) return
 
-  const tmp = list[idx]
-  list[idx] = list[next]
-  list[next] = tmp
-  contest.value = { ...contest.value, problems: list }
+  const next = arrayMove(list, from, to)
+  contest.value = { ...contest.value, problems: next }
 
   try {
-    await contestApi.reorderContestProblems(contestId.value, list.map(p => p.id))
+    await contestApi.reorderContestProblems(contestId.value, next.map(p => p.id))
   } catch (err) {
     console.error('Failed to reorder problems:', err)
     error.value = err?.message || 'Не удалось поменять порядок задач'

@@ -115,28 +115,10 @@
             class="course-contests-list"
             title="Контесты"
             :items="contestItems"
+            :reorderable="canReorderContests"
+            @reorder="onReorderContest"
           >
             <template #action="{ item }">
-              <div v-if="canReorderContests" class="contest-order-actions">
-                <button
-                  class="contest-order-btn"
-                  type="button"
-                  title="Вверх"
-                  :disabled="isFirstContest(item)"
-                  @click.stop.prevent="moveContest(item, -1)"
-                >
-                  ↑
-                </button>
-                <button
-                  class="contest-order-btn"
-                  type="button"
-                  title="Вниз"
-                  :disabled="isLastContest(item)"
-                  @click.stop.prevent="moveContest(item, 1)"
-                >
-                  ↓
-                </button>
-              </div>
               <button
                 v-if="canDeleteContestItem(item)"
                 class="contest-delete-btn"
@@ -231,6 +213,7 @@ import { useUserStore } from '@/stores/UserStore'
 import UiHeader from '@/components/ui/UiHeader.vue'
 import UiBreadcrumbs from '@/components/ui/UiBreadcrumbs.vue'
 import UiLinkList from '@/components/ui/UiLinkList.vue'
+import { arrayMove } from '@/utils/arrayMove'
 
 const route = useRoute()
 const router = useRouter()
@@ -428,31 +411,15 @@ const canDeleteContestItem = (item) => {
   return Number(item?.created_by_id) === Number(me)
 }
 
-const _contestIndex = (contestId) => {
-  const list = Array.isArray(contests.value) ? contests.value : []
-  return list.findIndex(c => Number(c?.id) === Number(contestId))
-}
-
-const isFirstContest = (item) => _contestIndex(item?.id) <= 0
-const isLastContest = (item) => {
-  const list = Array.isArray(contests.value) ? contests.value : []
-  const idx = _contestIndex(item?.id)
-  return idx < 0 || idx >= list.length - 1
-}
-
-const moveContest = async (item, delta) => {
+const onReorderContest = async ({ from, to }) => {
   const list = Array.isArray(contests.value) ? [...contests.value] : []
-  const idx = list.findIndex(c => Number(c?.id) === Number(item?.id))
-  const next = idx + delta
-  if (idx < 0 || next < 0 || next >= list.length) return
+  if (!list.length) return
 
-  const tmp = list[idx]
-  list[idx] = list[next]
-  list[next] = tmp
-  contests.value = list
+  const next = arrayMove(list, from, to)
+  contests.value = next
 
   try {
-    await courseApi.reorderCourseContests(courseId.value, list.map(c => c.id))
+    await courseApi.reorderCourseContests(courseId.value, next.map(c => c.id))
   } catch (err) {
     console.error('Failed to reorder contests:', err)
     error.value = err?.message || 'Не удалось поменять порядок контестов'
