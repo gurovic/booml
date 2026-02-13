@@ -1,96 +1,162 @@
 <template>
-  <div class="page">
+  <div class="contest-page">
     <UiHeader />
-    <div class="page__content">
+
+    <main class="contest-content">
       <UiBreadcrumbs :section="section" />
-      <div v-if="section" class="section-card">
-        <div class="section-header-block">
-          <h1 class="section-title">Раздел "{{ section.title }}"</h1>
-          <p v-if="section.description" class="section-description">{{ section.description }}</p>
-        </div>
 
-        <div v-if="canCreateInSection || canDeleteSection" class="section-actions">
-          <button
-            v-if="canCreateInSection"
-            class="button button--primary"
-            type="button"
-            @click="showCreateCourseDialog = true"
-          >
-            Создать курс
-          </button>
-          <button
-            v-if="canCreateInSection"
-            class="button button--secondary"
-            type="button"
-            @click="showCreateSectionDialog = true"
-          >
-            Создать раздел
-          </button>
-          <button
-            v-if="canDeleteSection"
-            class="button button--danger"
-            type="button"
-            @click="deleteThisSection"
-          >
-            Удалить раздел
-          </button>
-        </div>
-        <div v-if="actionError" class="form-error">{{ actionError }}</div>
+      <section class="contest-panel">
+        <div v-if="loading" class="state">Загрузка...</div>
+        <div v-else-if="error" class="state state--error">{{ error }}</div>
 
-        <div v-if="hasChildren" class="section-content">
-          <ul class="course-list">
-            <li
-              v-for="child in orderedChildren"
-              :key="child.id"
-              class="course-item"
-            >
-              <template v-if="hasChildrenItems(child)">
-                <div class="nested-header-row">
-                  <button
-                    type="button"
-                    class="section-toggle section-toggle--nested"
-                    :disabled="!(child.children || []).length"
-                    @click="toggleNested(child.id)"
-                    :aria-expanded="isNestedOpen(child.id)"
-                    aria-label="Раскрыть/свернуть"
-                  >
-                    <span class="triangle triangle--nested" :class="{ 'triangle--open': isNestedOpen(child.id) }"></span>
-                  </button>
-                  <button
-                    type="button"
-                    class="row-link row-link--section"
-                    @click="navigateTo(child)"
-                    :title="child.title"
-                  >
-                    <span class="row-icon row-icon--section" aria-hidden="true">
-                      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path
-                          d="M3 7.5c0-1.1.9-2 2-2h5l2 2h7c1.1 0 2 .9 2 2v8.5c0 1.1-.9 2-2 2H5c-1.1 0-2-.9-2-2V7.5Z"
-                          stroke="currentColor"
-                          stroke-width="2"
-                          stroke-linejoin="round"
-                        />
-                      </svg>
-                    </span>
-                    <span class="row-text">{{ child.title }}</span>
-                  </button>
-                </div>
-                <div v-if="isNestedOpen(child.id) && (child.children || []).length" class="badge-list">
-                  <div v-for="grand in child.children" :key="grand.id" class="badge-row">
+        <template v-else-if="section">
+          <div class="course-header">
+            <div class="course-title-row">
+              <h1 class="course-title">Раздел "{{ sectionTitle }}"</h1>
+            </div>
+
+            <div v-if="canCreateInSection || canDeleteSection" class="course-header__actions">
+              <button
+                v-if="canCreateInSection"
+                class="button button--primary"
+                type="button"
+                @click="showCreateCourseDialog = true"
+              >
+                Создать курс
+              </button>
+              <button
+                v-if="canCreateInSection"
+                class="button button--secondary"
+                type="button"
+                @click="showCreateSectionDialog = true"
+              >
+                Создать раздел
+              </button>
+              <button
+                v-if="canDeleteSection"
+                class="button button--danger"
+                type="button"
+                @click="deleteThisSection"
+              >
+                Удалить раздел
+              </button>
+            </div>
+          </div>
+
+          <div v-if="section.description" class="contest-description">
+            {{ section.description }}
+          </div>
+          <div v-if="actionError" class="state state--error">{{ actionError }}</div>
+
+          <div v-if="hasChildren" class="menu-list">
+            <ul class="course-list">
+              <li
+                v-for="child in orderedChildren"
+                :key="child.id"
+                class="course-item"
+              >
+                <template v-if="hasChildrenItems(child)">
+                  <div class="nested-header-row">
                     <button
                       type="button"
-                      class="badge"
-                      @click="navigateTo(grand)"
+                      class="section-toggle section-toggle--nested"
+                      :disabled="!(child.children || []).length"
+                      @click="toggleNested(child.id)"
+                      :aria-expanded="isNestedOpen(child.id)"
+                      aria-label="Раскрыть/свернуть"
                     >
-                      {{ grand.title }}
+                      <span class="triangle triangle--nested" :class="{ 'triangle--open': isNestedOpen(child.id) }"></span>
                     </button>
                     <button
-                      v-if="isAuthorized && grand.type === 'course'"
+                      type="button"
+                      class="row-link row-link--section"
+                      @click="navigateTo(child)"
+                      :title="child.title"
+                    >
+                      <span class="row-icon row-icon--section" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <path
+                            d="M3 7.5c0-1.1.9-2 2-2h5l2 2h7c1.1 0 2 .9 2 2v8.5c0 1.1-.9 2-2 2H5c-1.1 0-2-.9-2-2V7.5Z"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linejoin="round"
+                          />
+                        </svg>
+                      </span>
+                      <span class="row-text">{{ child.title }}</span>
+                    </button>
+                  </div>
+                  <div v-if="isNestedOpen(child.id) && (child.children || []).length" class="badge-list">
+                    <div v-for="grand in child.children" :key="grand.id" class="badge-row">
+                      <button
+                        type="button"
+                        class="badge"
+                        @click="navigateTo(grand)"
+                      >
+                        {{ grand.title }}
+                      </button>
+                      <button
+                        v-if="isAuthorized && grand.type === 'course'"
+                        type="button"
+                        class="star-btn"
+                        :class="{ 'star-btn--on': isFavoriteCourse(grand) }"
+                        :title="isFavoriteCourse(grand) ? 'Убрать из избранного' : 'Добавить в избранное'"
+                        @click.stop.prevent="toggleFavorite(grand)"
+                      >
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <path
+                            d="M12 17.27 18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21 12 17.27Z"
+                            stroke="currentColor"
+                            stroke-width="1.8"
+                            stroke-linejoin="round"
+                            :fill="isFavoriteCourse(grand) ? 'currentColor' : 'transparent'"
+                          />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                </template>
+
+                <template v-else>
+                  <div class="course-row" :class="child.type === 'section' ? 'course-row--section' : 'course-row--course'">
+                    <button
+                      type="button"
+                      class="row-link"
+                      :class="child.type === 'section' ? 'row-link--section' : 'row-link--course'"
+                      @click="navigateTo(child)"
+                      :title="child.title"
+                    >
+                      <span
+                        class="row-icon"
+                        :class="child.type === 'section' ? 'row-icon--section' : 'row-icon--course'"
+                        aria-hidden="true"
+                      >
+                        <svg v-if="child.type === 'section'" viewBox="0 0 24 24" width="18" height="18" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <path
+                            d="M3 7.5c0-1.1.9-2 2-2h5l2 2h7c1.1 0 2 .9 2 2v8.5c0 1.1-.9 2-2 2H5c-1.1 0-2-.9-2-2V7.5Z"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linejoin="round"
+                          />
+                        </svg>
+                        <svg v-else viewBox="0 0 24 24" width="18" height="18" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <path
+                            d="M6 3h11a2 2 0 0 1 2 2v14.5a1.5 1.5 0 0 1-2.34 1.25L12 17.7l-4.66 3.05A1.5 1.5 0 0 1 5 19.5V5a2 2 0 0 1 1-2Z"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linejoin="round"
+                          />
+                        </svg>
+                      </span>
+                      <span class="row-text">{{ child.title }}</span>
+                    </button>
+                    <button
+                      v-if="isAuthorized && child.type === 'course'"
                       type="button"
                       class="star-btn"
-                      :class="{ 'star-btn--on': isFavoriteCourse(grand) }"
-                      :title="isFavoriteCourse(grand) ? 'Убрать из избранного' : 'Добавить в избранное'"
-                      @click.stop.prevent="toggleFavorite(grand)"
+                      :class="{ 'star-btn--on': isFavoriteCourse(child) }"
+                      :title="isFavoriteCourse(child) ? 'Убрать из избранного' : 'Добавить в избранное'"
+                      @click.stop.prevent="toggleFavorite(child)"
                     >
                       <svg viewBox="0 0 24 24" width="18" height="18" fill="none" xmlns="http://www.w3.org/2000/svg">
                         <path
@@ -98,79 +164,20 @@
                           stroke="currentColor"
                           stroke-width="1.8"
                           stroke-linejoin="round"
-                          :fill="isFavoriteCourse(grand) ? 'currentColor' : 'transparent'"
+                          :fill="isFavoriteCourse(child) ? 'currentColor' : 'transparent'"
                         />
                       </svg>
                     </button>
                   </div>
-                </div>
-              </template>
-              <template v-else>
-                <div class="course-row" :class="child.type === 'section' ? 'course-row--section' : 'course-row--course'">
-                  <button
-                    type="button"
-                    class="row-link"
-                    :class="child.type === 'section' ? 'row-link--section' : 'row-link--course'"
-                    @click="navigateTo(child)"
-                    :title="child.title"
-                  >
-                    <span
-                      class="row-icon"
-                      :class="child.type === 'section' ? 'row-icon--section' : 'row-icon--course'"
-                      aria-hidden="true"
-                    >
-                      <svg v-if="child.type === 'section'" viewBox="0 0 24 24" width="18" height="18" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path
-                          d="M3 7.5c0-1.1.9-2 2-2h5l2 2h7c1.1 0 2 .9 2 2v8.5c0 1.1-.9 2-2 2H5c-1.1 0-2-.9-2-2V7.5Z"
-                          stroke="currentColor"
-                          stroke-width="2"
-                          stroke-linejoin="round"
-                        />
-                      </svg>
-                      <svg v-else viewBox="0 0 24 24" width="18" height="18" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path
-                          d="M6 3h11a2 2 0 0 1 2 2v14.5a1.5 1.5 0 0 1-2.34 1.25L12 17.7l-4.66 3.05A1.5 1.5 0 0 1 5 19.5V5a2 2 0 0 1 1-2Z"
-                          stroke="currentColor"
-                          stroke-width="2"
-                          stroke-linejoin="round"
-                        />
-                      </svg>
-                    </span>
-                    <span class="row-text">{{ child.title }}</span>
-                  </button>
-                  <button
-                    v-if="isAuthorized && child.type === 'course'"
-                    type="button"
-                    class="star-btn"
-                    :class="{ 'star-btn--on': isFavoriteCourse(child) }"
-                    :title="isFavoriteCourse(child) ? 'Убрать из избранного' : 'Добавить в избранное'"
-                    @click.stop.prevent="toggleFavorite(child)"
-                  >
-                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <path
-                        d="M12 17.27 18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21 12 17.27Z"
-                        stroke="currentColor"
-                        stroke-width="1.8"
-                        stroke-linejoin="round"
-                        :fill="isFavoriteCourse(child) ? 'currentColor' : 'transparent'"
-                      />
-                    </svg>
-                  </button>
-                </div>
-              </template>
-            </li>
-          </ul>
-        </div>
-        <div v-else class="empty-state">
-          <p class="empty-state__text">В этом разделе пока нет курсов или подразделов</p>
-        </div>
-      </div>
-      <div v-else-if="loading" class="section-card">
-        <p>Загрузка...</p>
-      </div>
-      <div v-else class="section-card empty-state">
-        <p class="empty-state__text">Раздел не найден или доступ к нему запрещён</p>
-      </div>
+                </template>
+              </li>
+            </ul>
+          </div>
+          <p v-else class="note">В этом разделе пока нет курсов или подразделов</p>
+        </template>
+
+        <div v-else class="state state--error">Раздел не найден или доступ к нему запрещён</div>
+      </section>
 
       <!-- Create Course Dialog -->
       <div v-if="showCreateCourseDialog" class="dialog-overlay" @click="closeDialogs">
@@ -253,11 +260,7 @@
           </div>
         </div>
       </div>
-
-      <div v-else-if="loading" class="section-card">
-        <p>Загрузка...</p>
-      </div>
-    </div>
+    </main>
   </div>
 </template>
 
@@ -277,6 +280,7 @@ const id = computed(() => Number(route.params.id))
 const courses = ref([])
 const section = ref(null)
 const loading = ref(true)
+const error = ref('')
 const openNested = ref({})
 
 const showCreateCourseDialog = ref(false)
@@ -309,6 +313,13 @@ const orderedChildren = computed(() => {
     ...list.filter(item => hasChildrenItems(item)),
     ...list.filter(item => !hasChildrenItems(item)),
   ]
+})
+
+const sectionTitle = computed(() => {
+  if (section.value?.title) return section.value.title
+  const q = String(route.query?.title || '').trim()
+  if (q) return q
+  return Number.isFinite(id.value) && id.value > 0 ? `Раздел ${id.value}` : 'Раздел'
 })
 
 const isAuthorized = computed(() => !!userStore.currentUser)
@@ -377,11 +388,13 @@ const findSectionById = (items, targetId) => {
 const load = async () => {
   try {
     loading.value = true
+    error.value = ''
     const data = await courseApi.getCourses()
     courses.value = Array.isArray(data) ? data : []
     section.value = findSectionById(courses.value, id.value)
   } catch (err) {
     console.error('Не удалось загрузить раздел', err)
+    error.value = err?.message || 'Не удалось загрузить раздел'
   } finally {
     loading.value = false
   }
@@ -482,42 +495,101 @@ onMounted(load)
 </script>
 
 <style scoped>
-.page {
+.contest-page {
   min-height: 100vh;
-  padding: 0 0 24px;
+  background: var(--color-bg-default);
   font-family: var(--font-default);
   color: var(--color-text-primary);
-  background: var(--color-bg-default);
 }
 
-.page__content {
-  max-width: 1200px;
+.contest-content {
+  max-width: 960px;
   margin: 0 auto;
-  padding: 24px 16px 0;
+  padding: 24px 16px 40px;
+}
+
+.contest-panel {
+  margin-top: 16px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
 }
 
-.section-card {
-  background: #fff;
+.state {
+  padding: 14px 16px;
+  background: var(--color-bg-card);
+  border: 1px dashed var(--color-border-default);
   border-radius: 12px;
-  padding: 14px 14px 16px;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
-  border: 1px solid #e5e9f1;
+  color: var(--color-text-muted);
+  font-size: 15px;
 }
 
-.section-header-block {
-  padding: 6px 4px 16px;
-  border-bottom: 1px solid #e5e9f1;
-  margin-bottom: 16px;
+.state--error {
+  border-color: var(--color-border-danger);
+  color: var(--color-text-danger);
 }
 
-.section-actions {
+.note {
+  margin: 0;
+  padding: 10px 12px;
+  background: var(--color-bg-primary);
+  border-radius: 10px;
+  border: 1px solid var(--color-border-light);
+  font-size: 14px;
+  color: var(--color-text-muted);
+}
+
+.contest-description {
+  padding: 12px 16px;
+  background: var(--color-bg-card);
+  border-radius: 12px;
+  border: 1px solid var(--color-border-default);
+  color: var(--color-text-muted);
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.course-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.course-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.course-title {
+  font-size: 28px;
+  font-weight: 600;
+  margin: 0;
+  color: var(--color-text-primary);
+}
+
+.course-header__actions {
   display: flex;
   gap: 10px;
+  align-items: center;
   flex-wrap: wrap;
-  padding: 0 4px 16px;
+}
+
+.menu-list {
+  width: 100%;
+  border-radius: 12px;
+  padding: 0 16px;
+  color: var(--color-text-primary);
+}
+
+.menu-list h2 {
+  margin: 0 0 12px;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--color-text-primary);
 }
 
 .button--danger {
@@ -651,53 +723,6 @@ onMounted(load)
   font-size: 14px;
 }
 
-.section-title {
-  font-size: 24px;
-  font-weight: 600;
-  line-height: 1.4;
-  color: var(--color-text-title);
-  margin: 0 0 8px;
-}
-
-.section-description {
-  font-size: 16px;
-  line-height: 1.5;
-  color: var(--color-text-primary);
-  margin: 0;
-}
-
-.section-content {
-  margin-top: 0;
-}
-
-.section-header {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  background: none;
-  padding: 6px 4px 10px;
-  text-align: left;
-  color: var(--color-text-title);
-}
-
-.section-header--inline {
-  padding: 0;
-  gap: 8px;
-  color: var(--color-text-primary);
-}
-
-.course-title {
-  font-size: 16px;
-  font-weight: 400;
-  line-height: 1.4;
-  color: var(--color-text-primary);
-}
-
-.course-title--section {
-  font-weight: 500;
-}
-
 .triangle {
   width: 0;
   height: 0;
@@ -718,8 +743,9 @@ onMounted(load)
 }
 
 .course-list {
-  margin-left: 12px;
-  padding-left: 10px;
+  padding: 0;
+  margin: 0;
+  list-style: none;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -739,9 +765,9 @@ onMounted(load)
   gap: 8px;
   width: 100%;
   padding: 10px 12px;
-  border-radius: 14px;
-  border: 1px solid rgba(59, 130, 246, 0.22);
-  background: rgba(59, 130, 246, 0.06);
+  border-radius: 8px;
+  background: var(--color-button-secondary);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
 }
 
 .section-toggle {
@@ -774,19 +800,17 @@ onMounted(load)
   gap: 10px;
   width: 100%;
   padding: 10px 12px;
-  border-radius: 14px;
-  border: 1px solid #e5e9f1;
-  background: #ffffff;
+  border-radius: 8px;
+  background: var(--color-button-secondary);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
 }
 
 .course-row--section {
-  border-color: rgba(59, 130, 246, 0.22);
-  background: rgba(59, 130, 246, 0.06);
+  border-color: rgba(39, 52, 106, 0.30);
 }
 
 .course-row--course {
-  border-color: #e5e9f1;
-  background: #ffffff;
+  border-color: rgba(224, 227, 240, 0.45);
 }
 
 .badge-row {
@@ -815,6 +839,8 @@ onMounted(load)
   font-weight: 500;
   color: var(--color-text-primary);
   white-space: nowrap;
+  border: none;
+  cursor: pointer;
 }
 
 .row-link {
@@ -893,20 +919,9 @@ onMounted(load)
   opacity: 0.9;
 }
 
-.empty-state {
-  padding: 16px 0;
-}
-
-.empty-state__text {
-  font-size: 16px;
-  color: var(--color-text-primary);
-  margin: 0;
-  text-align: center;
-}
-
 @media (min-width: 900px) {
-  .page__content { 
-    padding: 28px 32px 0; 
+  .contest-content { 
+    padding: 28px 32px 40px; 
   }
 }
 </style>
