@@ -30,7 +30,7 @@ class InteractiveRunWaitForStatusTests(SimpleTestCase):
         )
 
     def _make_vm_agent_server_run(self):
-        namespace: dict[str, object] = {}
+        namespace: dict[str, object] = {"__name__": "vm_agent_server"}
         exec(VM_AGENT_SERVER_SOURCE, namespace)
         run_cls = namespace.get("InteractiveRun")
         if run_cls is None:
