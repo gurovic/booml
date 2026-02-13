@@ -289,7 +289,7 @@ const handleCreateNotebook = async () => {
   width: 100%;
   height: 100%;
   display: flex;
-  gap: 20px;
+  gap: 15px;
 }
 
 .problem__content {
@@ -357,7 +357,7 @@ const handleCreateNotebook = async () => {
 }
 
 .problem__menu {
-  max-width: 350px;
+  max-width: 420px;
   width: 100%;
   flex-grow: 1;
   display: flex;
