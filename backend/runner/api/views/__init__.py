@@ -28,5 +28,5 @@ from .home import (
     FavoriteCoursesRemoveView,
     FavoriteCoursesReorderView,
 )
-from .run_cell import RunCellView
+from .run_cell import RunCellView, RunCellInputView
 from .run_cell_stream import RunCellStreamStartView, RunCellStreamStatusView

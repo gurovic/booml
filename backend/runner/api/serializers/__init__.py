@@ -8,7 +8,7 @@ from .sessions import (
     SessionFileUploadSerializer,
     SessionFilePreviewSerializer,
 )
-from .cells import CellRunSerializer, CellRunStreamStatusSerializer
+from .cells import CellRunSerializer, CellRunStreamStatusSerializer, CellRunInputSerializer
 from .courses import (
     CourseCreateSerializer,
     CourseParticipantsUpdateSerializer,
