@@ -183,7 +183,12 @@ class InteractiveRun:
 
     def wait_for_status(self, since_seq: int | None = None) -> str:
         with self._condition:
-            expected_seq = self._status_seq if since_seq is None else since_seq
+            if since_seq is None:
+                while self.status not in {"input_required", "success", "error"}:
+                    self._condition.wait()
+                return self.status
+
+            expected_seq = since_seq
             while True:
                 if self.status in {"input_required", "success", "error"} and self._status_seq != expected_seq:
                     return self.status

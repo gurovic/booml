@@ -129,7 +129,7 @@ import { submitSolution } from '@/api/submission'
 import { createNotebook } from '@/api/notebook'
 import { useUserStore } from '@/stores/UserStore'
 import MarkdownIt from 'markdown-it'
-import mkKatex from 'markdown-it-katex'
+import markdownKatex from '@/utils/markdownKatex'
 import UiHeader from '@/components/ui/UiHeader.vue'
 import UiBreadcrumbs from '@/components/ui/UiBreadcrumbs.vue'
 import UiIdPill from '@/components/ui/UiIdPill.vue'
@@ -138,7 +138,7 @@ import { normalizeContestProblemLabel, toContestProblemLabel } from '@/utils/con
 const md = new MarkdownIt({
   html: false,
   breaks: true,
-}).use(mkKatex)
+}).use(markdownKatex, { throwOnError: false })
 
 const route = useRoute()
 const userStore = useUserStore()
@@ -381,6 +381,21 @@ const handleCreateNotebook = async () => {
 
 .problem__text :deep(p) {
   margin-bottom: 16px;
+}
+
+.problem__text :deep(.math-block) {
+  margin: 16px 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.problem__text :deep(.math-block .katex-display) {
+  margin: 0;
+  text-align: center;
+}
+
+.problem__text :deep(.math-block .katex-display > .katex) {
+  white-space: nowrap;
 }
 
 .problem__text :deep(h2) {
