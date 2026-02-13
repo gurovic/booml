@@ -19,7 +19,7 @@ from uuid import uuid4
 import logging
 
 from .vm_models import VirtualMachine
-#1234
+
 _AGENT_CACHE: Dict[str, VmAgent] = {}
 _INTERACTIVE_RUNS: Dict[str, "InteractiveRun"] = {}
 logger = logging.getLogger(__name__)
@@ -183,10 +183,10 @@ class InteractiveRun:
 
     def wait_for_status(self, since_seq: int | None = None) -> str:
         with self._condition:
-            expected_seq = self._status_seq if since_seq is None else since_seq
             while True:
-                if self.status in {"input_required", "success", "error"} and self._status_seq != expected_seq:
-                    return self.status
+                if self.status in {"input_required", "success", "error"}:
+                    if since_seq is None or self._status_seq != since_seq:
+                        return self.status
                 self._condition.wait()
 
     def _write_stdout(self, text: str) -> None:
