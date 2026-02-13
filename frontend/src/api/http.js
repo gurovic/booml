@@ -71,18 +71,27 @@ async function ensureCsrfToken() {
 
 export { getCookie, ensureCsrfToken };
 
-export async function apiPost(endpoint, data = {}) {
+export async function apiPost(endpoint, data = {}, options = {}) {
   const csrftoken = await ensureCsrfToken();
   const url = buildUrl(endpoint)
+  
+  // Check if data is FormData
+  const isFormData = data instanceof FormData;
+  
+  const headers = {
+    ...(csrftoken ? { 'X-CSRFToken': csrftoken } : {}),
+    ...(options.headers || {})
+  };
+  
+  // Don't set Content-Type for FormData - browser will set it with boundary
+  if (!isFormData && !headers['Content-Type']) {
+    headers['Content-Type'] = 'application/json';
+  }
+  
   const res = await fetch(url, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(csrftoken ? { 'X-CSRFToken': csrftoken } : {})
-    },
-    body: JSON.stringify({
-      ...data
-    }),
+    headers,
+    body: isFormData ? data : JSON.stringify(data),
     credentials: 'include'
   })
 
@@ -94,4 +103,46 @@ export async function apiPost(endpoint, data = {}) {
   const result = await res.json();
   console.log(result);
   return result;
+}
+
+export async function apiPut(endpoint, data = {}) {
+  const csrftoken = await ensureCsrfToken();
+  const url = buildUrl(endpoint)
+  const res = await fetch(url, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(csrftoken ? { 'X-CSRFToken': csrftoken } : {})
+    },
+    body: JSON.stringify(data),
+    credentials: 'include'
+  })
+
+  if (!res.ok) {
+    const errorText = await res.text()
+    throw new Error(`API Error: ${res.status} — ${errorText}`)
+  }
+
+  return await res.json();
+}
+
+export async function apiPatch(endpoint, data = {}) {
+  const csrftoken = await ensureCsrfToken();
+  const url = buildUrl(endpoint)
+  const res = await fetch(url, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(csrftoken ? { 'X-CSRFToken': csrftoken } : {})
+    },
+    body: JSON.stringify(data),
+    credentials: 'include'
+  })
+
+  if (!res.ok) {
+    const errorText = await res.text()
+    throw new Error(`API Error: ${res.status} — ${errorText}`)
+  }
+
+  return await res.json();
 }
