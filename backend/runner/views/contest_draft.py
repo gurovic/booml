@@ -11,6 +11,7 @@ from django.utils import timezone
 
 from ..models import Contest, Course, Problem, CourseParticipant, ContestProblem
 from ..forms.contest_draft import ContestForm
+from ..services.contest_labels import contest_problem_label
 from .contest_leaderboard import build_contest_leaderboards
 
 User = get_user_model()
@@ -193,8 +194,14 @@ def contest_detail(request, contest_id):
         .order_by("position", "id")
     )
     problems = [
-        {"id": link.problem_id, "title": link.problem.title, "position": link.position}
-        for link in problem_links
+        {
+            "id": link.problem_id,
+            "title": link.problem.title,
+            "position": link.position,
+            "index": index,
+            "label": contest_problem_label(index),
+        }
+        for index, link in enumerate(problem_links)
     ]
     leaderboards, overall_leaderboard = build_contest_leaderboards(contest)
 

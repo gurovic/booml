@@ -3,7 +3,7 @@ import json
 from django.contrib.auth import get_user_model
 from django.test import RequestFactory, TestCase
 
-from runner.models import Contest, Course, CourseParticipant, Section
+from runner.models import Contest, ContestProblem, Course, CourseParticipant, Problem, Section
 from runner.services.section_service import SectionCreateInput, create_section
 from runner.views.contest_draft import contest_detail
 from runner.views.course import course_detail
@@ -107,6 +107,26 @@ class ContestDetailViewTests(TestCase):
         payload = json.loads(response.content.decode())
         self.assertEqual(payload["title"], "Private")
         self.assertEqual(payload["allowed_participants"], [])
+
+    def test_problems_include_stable_letter_labels_by_contest_order(self):
+        p1 = Problem.objects.create(title="P1", statement="...")
+        p2 = Problem.objects.create(title="P2", statement="...")
+        p3 = Problem.objects.create(title="P3", statement="...")
+        ContestProblem.objects.create(contest=self.contest, problem=p1, position=0)
+        ContestProblem.objects.create(contest=self.contest, problem=p2, position=2)
+        ContestProblem.objects.create(contest=self.contest, problem=p3, position=1)
+
+        request = self.factory.get("/")
+        request.user = self.teacher
+        response = contest_detail(request, contest_id=self.contest.id)
+
+        self.assertEqual(response.status_code, 200)
+        payload = json.loads(response.content.decode())
+        problems = payload["problems"]
+
+        self.assertEqual([row["id"] for row in problems], [p1.id, p3.id, p2.id])
+        self.assertEqual([row["index"] for row in problems], [0, 1, 2])
+        self.assertEqual([row["label"] for row in problems], ["A", "B", "C"])
 
 
 class CourseDetailViewTests(TestCase):
