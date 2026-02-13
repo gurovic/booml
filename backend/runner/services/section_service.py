@@ -9,7 +9,17 @@ from ..models import Section
 
 User = get_user_model()
 
-ROOT_SECTION_TITLES = ("Авторские", "Тематические", "Олимпиады")
+# Root categories shown on HomePage. Historically they existed under different titles
+# ("Тематические" vs "Тематическое", "Авторские" vs "Авторское"), so we treat them as aliases.
+ROOT_SECTION_CANONICAL_ORDER = ("Олимпиады", "Тематические", "Авторские")
+ROOT_SECTION_TITLE_ALIASES: dict[str, str] = {
+    "Олимпиады": "Олимпиады",
+    "Тематические": "Тематические",
+    "Тематическое": "Тематические",
+    "Авторские": "Авторские",
+    "Авторское": "Авторские",
+}
+ROOT_SECTION_TITLES = tuple(ROOT_SECTION_TITLE_ALIASES.keys())
 
 
 @dataclass(slots=True)
@@ -35,7 +45,17 @@ def _ensure_no_cycles(parent: Section, child_id: int | None) -> None:
 
 
 def is_root_section(section: Section) -> bool:
-    return section.parent_id is None and section.title in ROOT_SECTION_TITLES
+    return section.parent_id is None and section.title in ROOT_SECTION_TITLE_ALIASES
+
+
+def root_section_order_key(section: Section) -> tuple[int, str]:
+    """Stable ordering for root categories across title aliases."""
+    canonical = ROOT_SECTION_TITLE_ALIASES.get(section.title)
+    try:
+        idx = ROOT_SECTION_CANONICAL_ORDER.index(canonical) if canonical else 10_000
+    except ValueError:
+        idx = 10_000
+    return (idx, (section.title or "").lower())
 
 
 def create_section(payload: SectionCreateInput) -> Section:

@@ -12,6 +12,35 @@
         </button>
       </div>
 
+      <div class="polygon__toolbar">
+        <div class="search">
+          <span class="search__icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M10.5 18a7.5 7.5 0 1 1 0-15 7.5 7.5 0 0 1 0 15Z" stroke="currentColor" stroke-width="2"/>
+              <path d="M16.5 16.5 21 21" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            </svg>
+          </span>
+          <input
+            v-model="search"
+            type="search"
+            class="search__input"
+            placeholder="Поиск по названию"
+            autocomplete="off"
+            @input="onSearchInput"
+          />
+          <button
+            v-if="search.trim()"
+            class="search__clear"
+            type="button"
+            title="Очистить"
+            aria-label="Очистить поиск"
+            @click="clearSearch"
+          >
+            ×
+          </button>
+        </div>
+      </div>
+
       <div v-if="loading" class="polygon__loading">
         Загрузка...
       </div>
@@ -39,6 +68,7 @@
         <table class="problems-table">
           <thead>
             <tr>
+              <th class="problems-table__header">ID</th>
               <th class="problems-table__header">Название</th>
               <th class="problems-table__header">Рейтинг</th>
               <th class="problems-table__header">Статус</th>
@@ -52,6 +82,9 @@
               class="problems-table__row"
               @click="goToEdit(problem.id)"
             >
+              <td class="problems-table__cell problems-table__cell--id">
+                <UiIdPill :id="problem.id" title="ID задачи" />
+              </td>
               <td class="problems-table__cell">{{ problem.title }}</td>
               <td class="problems-table__cell">{{ problem.rating }}</td>
               <td class="problems-table__cell">
@@ -66,6 +99,16 @@
             </tr>
           </tbody>
         </table>
+
+        <div v-if="totalPages > 1" class="pager">
+          <button class="pager__btn" type="button" :disabled="page === 1" @click="setPage(page - 1)">
+            Назад
+          </button>
+          <div class="pager__info">Стр. {{ page }} / {{ totalPages }}</div>
+          <button class="pager__btn" type="button" :disabled="page === totalPages" @click="setPage(page + 1)">
+            Вперёд
+          </button>
+        </div>
       </div>
     </div>
 
@@ -126,10 +169,11 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onBeforeUnmount, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { getPolygonProblems, createPolygonProblem } from '@/api/polygon'
 import UiHeader from '@/components/ui/UiHeader.vue'
+import UiIdPill from '@/components/ui/UiIdPill.vue'
 
 const router = useRouter()
 const problems = ref([])
@@ -139,6 +183,10 @@ const showCreateDialog = ref(false)
 const creating = ref(false)
 const createError = ref(null)
 const ratingError = ref(null)
+const search = ref('')
+const page = ref(1)
+const pageSize = 20
+const totalPages = ref(1)
 const newProblem = ref({
   title: '',
   rating: 800
@@ -148,14 +196,49 @@ const loadProblems = async () => {
   loading.value = true
   error.value = null
   try {
-    const data = await getPolygonProblems()
-    problems.value = Array.isArray(data) ? data : []
+    const data = await getPolygonProblems({
+      q: search.value,
+      page: page.value,
+      page_size: pageSize,
+    })
+
+    // Backward-compatible: endpoint returns either an array (no paging) or an object (paging).
+    if (Array.isArray(data)) {
+      problems.value = data
+      totalPages.value = 1
+    } else {
+      problems.value = Array.isArray(data?.items) ? data.items : []
+      totalPages.value = Number(data?.total_pages || 1) || 1
+    }
   } catch (err) {
     console.error('Не удалось загрузить задачи', err)
     error.value = 'Не удалось загрузить задачи. Попробуйте позже.'
   } finally {
     loading.value = false
   }
+}
+
+let _searchTimer = null
+const onSearchInput = () => {
+  if (_searchTimer) clearTimeout(_searchTimer)
+  _searchTimer = setTimeout(() => {
+    page.value = 1
+    loadProblems()
+  }, 250)
+}
+
+const clearSearch = () => {
+  search.value = ''
+  page.value = 1
+  loadProblems()
+}
+
+const setPage = (p) => {
+  const n = Number(p)
+  if (!Number.isFinite(n)) return
+  if (n < 1 || n > totalPages.value) return
+  page.value = n
+  loadProblems()
 }
 
 const createProblem = async () => {
@@ -216,6 +299,11 @@ const formatDate = (dateStr) => {
   return date.toLocaleDateString('ru-RU')
 }
 
+onBeforeUnmount(() => {
+  if (_searchTimer) clearTimeout(_searchTimer)
+  _searchTimer = null
+})
+
 onMounted(loadProblems)
 </script>
 
@@ -254,6 +342,130 @@ onMounted(loadProblems)
   padding: 12px 24px;
   font-size: 16px;
   white-space: nowrap;
+}
+
+.polygon__toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 18px;
+}
+
+.search {
+  position: relative;
+  width: min(560px, 100%);
+}
+
+.search__icon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: rgba(22, 33, 89, 0.55);
+  pointer-events: none;
+}
+
+.search__input {
+  width: 100%;
+  height: 44px;
+  border-radius: 12px;
+  border: 1px solid rgba(22, 33, 89, 0.18);
+  background: #ffffff;
+  padding: 0 40px 0 40px;
+  font-size: 16px;
+  color: rgba(22, 33, 89, 0.92);
+}
+
+/* Hide the native "clear" affordance for <input type="search"> to avoid double X. */
+.search__input::-webkit-search-cancel-button,
+.search__input::-webkit-search-decoration,
+.search__input::-webkit-search-results-button,
+.search__input::-webkit-search-results-decoration {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.search__input::-ms-clear,
+.search__input::-ms-reveal {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+.search__input:focus {
+  outline: 2px solid rgba(22, 33, 89, 0.28);
+  outline-offset: 2px;
+}
+
+.search__clear {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  border: none;
+  background: rgba(22, 33, 89, 0.08);
+  cursor: pointer;
+  color: rgba(22, 33, 89, 0.8);
+  font-size: 18px;
+  line-height: 1;
+}
+
+.search__clear:hover {
+  background: rgba(22, 33, 89, 0.12);
+}
+
+.pager {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 16px 0;
+}
+
+.pager__btn {
+  border: 1px solid rgba(22, 33, 89, 0.18);
+  background: #ffffff;
+  padding: 8px 12px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-weight: 700;
+  color: rgba(22, 33, 89, 0.9);
+  white-space: nowrap;
+}
+
+.pager__btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.pager__info {
+  color: rgba(22, 33, 89, 0.75);
+  font-weight: 700;
+  text-align: center;
+}
+
+@media (max-width: 520px) {
+  .pager {
+    grid-template-columns: 1fr 1fr;
+    grid-template-areas:
+      "info info"
+      "prev next";
+  }
+
+  .pager__info {
+    grid-area: info;
+  }
+
+  .pager__btn:first-child {
+    grid-area: prev;
+  }
+
+  .pager__btn:last-child {
+    grid-area: next;
+    justify-self: end;
+  }
 }
 
 .polygon__loading,
@@ -337,6 +549,11 @@ onMounted(loadProblems)
 .problems-table__cell {
   padding: 16px 20px;
   font-size: 16px;
+}
+
+.problems-table__cell--id {
+  width: 1%;
+  white-space: nowrap;
 }
 
 .status-badge {

@@ -11,6 +11,7 @@ const notebookDetail = {
     cellOutputSnapshots: {},
     runCellStreamStartUrl: null,
     runCellStreamStatusUrl: null,
+    runCellInputUrl: null,
     storageEnabled: undefined,
     inactivityTimers: {
         prompt: null,
@@ -40,6 +41,7 @@ const notebookDetail = {
     filesList: null,
     filesPreview: null,
     previewRequestId: 0,
+
 
     sanitizeUrl(value) {
         if (typeof value !== 'string') {
@@ -492,13 +494,46 @@ const notebookDetail = {
                     signal: job.controller?.signal
                 });
 
-                const data = await response.json();
+                let data = await response.json();
 
                 if (!response.ok) {
                     const message = data?.detail || data?.error || 'Не удалось выполнить ячейку';
                     const error = new Error(message);
                     error.status = response.status;
                     throw error;
+                }
+
+                while (data?.status === 'input_required') {
+                    const formattedOutput = NotebookUtils.formatCellRunResult(data);
+                    outputElement.innerHTML = formattedOutput;
+                    this.enhanceOutputElement(outputElement);
+                    outputElement.className = 'output running';
+                    this.renderArtifacts(cellId, data.artifacts || []);
+                    if (!this.runCellInputUrl) {
+                        throw new Error('URL интерактивного ввода недоступен');
+                    }
+                    const value = await this.awaitInlineInput(outputElement);
+                    const inputResponse = await fetch(this.runCellInputUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': this.config.csrfToken
+                        },
+                        body: JSON.stringify({
+                            session_id: sessionId,
+                            cell_id: cellNumericId,
+                            run_id: data.run_id,
+                            input: value
+                        }),
+                        signal: job.controller?.signal
+                    });
+                    data = await inputResponse.json();
+                    if (!inputResponse.ok) {
+                        const message = data?.detail || data?.error || 'Не удалось отправить ввод';
+                        const error = new Error(message);
+                        error.status = inputResponse.status;
+                        throw error;
+                    }
                 }
 
                 const formattedOutput = NotebookUtils.formatCellRunResult(data);
@@ -695,6 +730,64 @@ const notebookDetail = {
 
             await new Promise((resolve) => setTimeout(resolve, 300));
         }
+    },
+
+    clearInlineStdin(outputElement) {
+        if (!outputElement) {
+            return;
+        }
+        const existing = outputElement.querySelector('.stdin-inline');
+        if (existing) {
+            existing.remove();
+        }
+    },
+
+    getStdoutPre(outputElement) {
+        if (!outputElement) {
+            return null;
+        }
+        return outputElement.querySelector('[data-stream-stdout]') || outputElement.querySelector('.output-text pre');
+    },
+
+    ensureStdoutPre(outputElement) {
+        let pre = this.getStdoutPre(outputElement);
+        if (pre) {
+            return pre;
+        }
+        const wrapper = document.createElement('div');
+        wrapper.className = 'output-text';
+        pre = document.createElement('pre');
+        wrapper.appendChild(pre);
+        outputElement.appendChild(wrapper);
+        return pre;
+    },
+
+    awaitInlineInput(outputElement) {
+        this.clearInlineStdin(outputElement);
+        const pre = this.ensureStdoutPre(outputElement);
+        const wrapper = document.createElement('span');
+        wrapper.className = 'stdin-inline';
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.autocomplete = 'off';
+        input.spellcheck = false;
+        input.autocapitalize = 'off';
+        input.autocorrect = 'off';
+        input.className = 'stdin-inline';
+        wrapper.appendChild(input);
+        pre.appendChild(wrapper);
+        input.focus();
+        return new Promise((resolve) => {
+            input.addEventListener('keydown', (event) => {
+                if (event.key !== 'Enter') {
+                    return;
+                }
+                event.preventDefault();
+                const value = input.value || '';
+                wrapper.remove();
+                resolve(value);
+            });
+        });
     },
 
     enhanceOutputElement(outputElement) {
@@ -963,6 +1056,117 @@ const notebookDetail = {
         this.scheduleInactivityPrompt();
     },
 
+    initImportExport() {
+    // Инициализация импорта/экспорта
+    // Методы будут вызываться из обработчиков событий
+    },
+
+    exportNotebook() {
+    /** Экспортирует текущий ноутбук в формате .ipynb */
+    if (!this.config.notebookId) {
+        alert('ID ноутбука не найден');
+        return;
+    }
+    
+    const exportUrl = this.sanitizeUrl(this.notebookElement?.dataset.exportNotebookUrl);
+    if (!exportUrl) {
+        alert('URL экспорта недоступен');
+        return;
+    }
+    
+    // Открываем ссылку для скачивания
+    const link = document.createElement('a');
+    link.href = `${exportUrl}?notebook_id=${this.config.notebookId}`;
+    link.download = '';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    },
+
+    triggerImportFileSelect() {
+    /** Открывает диалог выбора файла для импорта */
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.ipynb,.json';
+    input.style.display = 'none';
+    
+    input.addEventListener('change', (event) => {
+        const file = event.target.files?.[0];
+        if (file) {
+            this.handleImportFile(file);
+        }
+        document.body.removeChild(input);
+    });
+    
+    document.body.appendChild(input);
+    input.click();
+},
+
+async handleImportFile(file) {
+    /** Обрабатывает загруженный файл для импорта */
+    if (!file) {
+        return;
+    }
+    
+    const importUrl = this.sanitizeUrl(this.notebookElement?.dataset.importNotebookUrl);
+    if (!importUrl) {
+        alert('URL импорта недоступен');
+        return;
+    }
+    
+    // Проверяем расширение
+    const fileName = file.name.toLowerCase();
+    if (!fileName.endsWith('.ipynb') && !fileName.endsWith('.json')) {
+        alert('Поддерживаются только .ipynb и .json файлы');
+        return;
+    }
+    
+    try {
+        const formData = new FormData();
+        formData.append('file', file);
+        
+        const response = await fetch(importUrl, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': this.config.csrfToken
+            },
+            body: formData
+        });
+        
+        const data = await response.json();
+        
+        if (!response.ok) {
+            throw new Error(data?.message || 'Ошибка импорта');
+        }
+        
+        if (data.status === 'success') {
+            alert(data.message);
+            // Перенаправляем на новый ноутбук
+            if (data.notebook_id) {
+                const redirectUrl = this.buildNotebookUrl(data.notebook_id);
+                if (redirectUrl) {
+                    window.location.href = redirectUrl;
+                } else {
+                    // Или просто перезагружаем страницу
+                    window.location.reload();
+                }
+            }
+        }
+    } catch (error) {
+        console.error('Ошибка импорта:', error);
+        alert('Ошибка импорта: ' + (error.message || error));
+    }
+    },
+
+    buildNotebookUrl(notebookId) {
+    /** Строит URL для ноутбука */
+    const template = this.notebookElement?.dataset.notebookUrlTemplate;
+    if (!template || !notebookId) {
+        return null;
+    }
+    return template.replace('{id}', notebookId);
+    },
+
     markActivity() {
         this.lastActivityTs = Date.now();
         this.hideInactivityPrompt();
@@ -1065,6 +1269,7 @@ const notebookDetail = {
         this.copyCellUrlTemplate = this.notebookElement?.dataset.copyCellUrlTemplate || '';
         this.moveCellUrlTemplate = this.notebookElement?.dataset.moveCellUrlTemplate || '';
         this.runCellUrl = this.sanitizeUrl(config.runCellUrl) || this.sanitizeUrl(this.notebookElement?.dataset.runCellUrl);
+        this.runCellInputUrl = this.sanitizeUrl(config.runCellInputUrl) || this.sanitizeUrl(this.notebookElement?.dataset.runCellInputUrl);
         this.runCellStreamStartUrl = this.sanitizeUrl(config.runCellStreamStartUrl) || this.sanitizeUrl(this.notebookElement?.dataset.runCellStreamStartUrl);
         this.runCellStreamStatusUrl = this.sanitizeUrl(config.runCellStreamStatusUrl) || this.sanitizeUrl(this.notebookElement?.dataset.runCellStreamStatusUrl);
         this.sessionCreateUrl = this.sanitizeUrl(config.sessionCreateUrl) || this.sanitizeUrl(this.notebookElement?.dataset.sessionCreateUrl);

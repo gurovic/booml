@@ -6,6 +6,7 @@ import HomePage from '@/pages/HomePage.vue'
 import SectionPage from '@/pages/SectionPage.vue'
 import CoursePage from '@/pages/CoursePage.vue'
 import ContestPage from '@/pages/ContestPage.vue'
+import CoursesPage from '@/pages/CoursesPage.vue'
 import ContestLeaderboardPage from '@/pages/ContestLeaderboardPage.vue'
 import LoginPage from '@/pages/LoginPage.vue'
 import RegisterPage from '@/pages/RegisterPage.vue'
@@ -26,6 +27,11 @@ const router = createRouter({
       path: '/start-page',
       name: 'start',
       component: StartPage,
+    },
+    {
+      path: '/courses',
+      name: 'courses',
+      component: CoursesPage,
     },
     {
       path: '/problem/:id',

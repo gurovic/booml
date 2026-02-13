@@ -73,7 +73,7 @@ export { getCookie, ensureCsrfToken };
 
 export async function apiPost(endpoint, data = {}) {
   const csrftoken = await ensureCsrfToken();
-  const url = endpoint
+  const url = buildUrl(endpoint)
   const res = await fetch(url, {
     method: 'POST',
     headers: {

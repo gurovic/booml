@@ -3,8 +3,9 @@
     <UiHeader />
 
     <main class="contest-content">
+      <UiBreadcrumbs :contest="contest" />
       <section class="contest-panel">
-        <div v-if="isLoading" class="state">Loading leaderboard...</div>
+        <div v-if="isLoading" class="state">Загрузка...</div>
         <div v-else-if="error" class="state state--error">{{ error }}</div>
         <template v-else>
           <div class="leaderboard-card">
@@ -21,7 +22,7 @@
               </router-link>
             </div>
 
-            <p v-if="!entries.length" class="note">No participants yet.</p>
+            <p v-if="!entries.length" class="note">Пока нет участников.</p>
             <div v-else class="leaderboard-table-wrap">
               <table class="leaderboard-table">
                 <thead>
@@ -74,6 +75,7 @@ import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { contestApi } from '@/api'
 import UiHeader from '@/components/ui/UiHeader.vue'
+import UiBreadcrumbs from '@/components/ui/UiBreadcrumbs.vue'
 
 const route = useRoute()
 const contestId = computed(() => Number(route.params.id))
@@ -92,7 +94,7 @@ const error = ref('')
 const contestTitle = computed(() => {
   if (contest.value?.title) return contest.value.title
   if (queryTitle.value) return queryTitle.value
-  return hasValidId.value ? `Contest ${contestId.value}` : 'Contest'
+  return hasValidId.value ? `Контест ${contestId.value}` : 'Контест'
 })
 
 const scoringType = computed(() => overallLeaderboard.value?.scoring || contest.value?.scoring || '')
@@ -101,14 +103,14 @@ const scoringLabel = computed(() => {
   const labelMap = {
     icpc: 'ICPC',
     ioi: 'IOI',
-    partial: 'Partial',
+    partial: 'Частичная',
   }
   const label = labelMap[scoringType.value] || scoringType.value
   const count = overallLeaderboard.value?.problems_count
   if (count != null) {
-    return `Scoring: ${label} | Problems: ${count}`
+    return `Система: ${label} | Задач: ${count}`
   }
-  return `Scoring: ${label}`
+  return `Система: ${label}`
 })
 
 const showPenalty = computed(() => scoringType.value === 'icpc')
@@ -119,7 +121,7 @@ const problemColumns = computed(() => {
     ? problemLeaderboards.value
     : []
   return list.map((board) => {
-    const title = board.problem_title || `Problem ${board.problem_id}`
+    const title = board.problem_title || `Задача ${board.problem_id}`
     const trimmed = title.length > 16 ? `${title.slice(0, 16)}…` : title
     return {
       id: board.problem_id,
@@ -186,7 +188,7 @@ const loadLeaderboard = async () => {
   if (!hasValidId.value) {
     contest.value = null
     overallLeaderboard.value = null
-    error.value = 'Invalid contest id.'
+    error.value = 'Некорректный id контеста.'
     return
   }
 
@@ -203,11 +205,11 @@ const loadLeaderboard = async () => {
       ? leaderboardData.leaderboards
       : []
     if (!overallLeaderboard.value) {
-      error.value = 'Leaderboard data is unavailable.'
+      error.value = 'Данные таблицы недоступны.'
     }
   } catch (err) {
     console.error('Failed to load leaderboard.', err)
-    error.value = err?.message || 'Failed to load leaderboard.'
+    error.value = err?.message || 'Не удалось загрузить таблицу.'
   } finally {
     isLoading.value = false
   }
@@ -236,6 +238,7 @@ watch(contestId, () => {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  margin-top: 16px;
 }
 
 .leaderboard-card {
@@ -282,37 +285,64 @@ watch(contestId, () => {
 }
 
 .leaderboard-table {
-  width: max-content;
+  width: 100%;
   min-width: 100%;
   border-collapse: separate;
-  border-spacing: 8px 10px;
+  border-spacing: 0;
+  font-size: 16px;
 }
 
 .leaderboard-cell {
-  height: 50px;
-  padding: 0 12px;
-  box-sizing: border-box;
-  border-radius: 5px;
-  background: #E4DAFF;
-  color: #27346A;
-  text-align: center;
-  font-size: 14px;
+  padding: 15px 20px;
   vertical-align: middle;
   white-space: nowrap;
+  color: #333333;
 }
 
 .leaderboard-cell--head {
-  background: #9480C9;
-  color: #FFFFFF;
-  font-weight: 400;
+  color: #ffffff;
+  font-weight: 500;
+  text-align: left;
+}
+
+.leaderboard-table thead tr {
+  background-color: #9480C9;
+}
+
+.leaderboard-table thead tr th:first-child {
   border-top-left-radius: 20px;
+}
+
+.leaderboard-table thead tr th:last-child {
   border-top-right-radius: 20px;
-  border-bottom-left-radius: 5px;
-  border-bottom-right-radius: 5px;
+}
+
+.leaderboard-table tbody tr {
+  background-color: #E4DAFF;
+  transition: opacity 0.2s ease;
+}
+
+.leaderboard-table tbody tr:nth-child(even) {
+  background-color: #EDE6FF;
+}
+
+.leaderboard-table tbody tr:hover {
+  opacity: 0.9;
+}
+
+.leaderboard-table tbody tr + tr {
+  border-top: 2px solid var(--color-bg-default);
+}
+
+.leaderboard-table tbody tr:last-child td:first-child {
+  border-bottom-left-radius: 20px;
+}
+
+.leaderboard-table tbody tr:last-child td:last-child {
+  border-bottom-right-radius: 20px;
 }
 
 .leaderboard-cell--name {
-  text-align: left;
   min-width: 200px;
   max-width: 260px;
 }
@@ -368,14 +398,9 @@ watch(contestId, () => {
 }
 
 @media (max-width: 640px) {
-  .leaderboard-table {
-    border-spacing: 6px 8px;
-  }
-
   .leaderboard-cell {
-    height: 44px;
-    padding: 0 8px;
-    font-size: 13px;
+    padding: 12px 14px;
+    font-size: 14px;
   }
 
   .leaderboard-cell__title {

@@ -1,10 +1,16 @@
 <template>
   <UiHeader />
+  <div class="container">
+    <UiBreadcrumbs :problem="problem" />
+  </div>
   <div class="problem">
     <div class="container">
       <div v-if="problem != null" class="problem__inner">
         <div class="problem__content">
-          <h1 class="problem__name">{{ problem.title }}</h1>
+          <h1 class="problem__name">
+            <span class="problem__title-text">{{ problem.title }}</span>
+            <UiIdPill v-if="problem?.id" class="problem__id" :id="problem.id" title="ID задачи" />
+          </h1>
           <div class="problem__text" v-html="problem.rendered_statement"></div>
         </div>
         <ul class="problem__menu">
@@ -14,9 +20,13 @@
               <li
                 class="problem__file"
                 v-for="file in availableFiles"
-                :key="file.name"
+                :key="file.key"
               >
-                <a class="problem__file-href button button--secondary" :href="file.url" :download="file.name">{{ file.name }}</a>
+                <a
+                  class="problem__file-href button button--secondary"
+                  :href="file.url"
+                  :download="file.downloadName"
+                >{{ file.downloadName }}</a>
             </li>
             </ul>
           </li>
@@ -68,18 +78,6 @@
               </div>
             </div>
           </li>
-          <li class="problem__files problem__menu-item" v-if="availableFiles.length > 0">
-            <h2 class="problem__files-title problem__item-title">Файлы</h2>
-            <ul class="problem__files-list">
-              <li
-                class="problem__file"
-                v-for="file in availableFiles"
-                :key="file.name"
-              >
-                <a class="problem__file-href button button--secondary" :href="file.url" :download="file.name">{{ file.name }}</a>
-            </li>
-            </ul>
-          </li>
           <li class="problem__submissions problem__menu-item">
             <h2 class="problem__submissions-title problem__item-title">Последние посылки</h2>
             <ul class="problem__submissions-list">
@@ -100,7 +98,7 @@
                 >
                   <p>{{ submission.id }}</p>
                   <p>{{ submission.submitted_at }}</p>
-                  <p>{{ submission.status }}</p>
+                  <p>{{ getStatusLabel(submission.status) }}</p>
                   <p>{{ roundMetric(submission.metric) }}</p>
                 </router-link>
               </li>
@@ -131,6 +129,8 @@ import { useUserStore } from '@/stores/UserStore'
 import MarkdownIt from 'markdown-it'
 import mkKatex from 'markdown-it-katex'
 import UiHeader from '@/components/ui/UiHeader.vue'
+import UiBreadcrumbs from '@/components/ui/UiBreadcrumbs.vue'
+import UiIdPill from '@/components/ui/UiIdPill.vue'
 
 const md = new MarkdownIt({
   html: false,
@@ -165,12 +165,28 @@ const availableFiles = computed(() => {
   if (!problem.value || !problem.value.files) return []
   return Object.entries(problem.value.files)
     .filter(([, url]) => url)
-    .map(([name, url]) => ({ name, url }))
+    .map(([key, url]) => {
+      const k = String(key || '')
+      const downloadName = k.toLowerCase().endsWith('.csv') ? k : `${k}.csv`
+      return { key: k, url, downloadName }
+    })
 })
 
 const roundMetric = (value) => {
   if (value == null) return '-'
   return value.toFixed(3)
+}
+
+const getStatusLabel = (status) => {
+  const statusMap = {
+    'pending': '⏳ В очереди',
+    'running': '🏃 Выполняется',
+    'accepted': '✅ Протестировано',
+    'failed': '❌ Ошибка',
+    'validation_error': '⚠️ Ошибка валидации',
+    'validated': '✅ Валидировано'
+  }
+  return statusMap[status] || status
 }
 
 const handleFileChange = (event) => {
@@ -266,7 +282,7 @@ const handleCreateNotebook = async () => {
 .problem {
   width: 100%;
   height: 100%;
-  padding: 20px 0;
+  padding: 10px 0;
 }
 
 .problem__inner {
@@ -304,6 +320,17 @@ const handleCreateNotebook = async () => {
 
   padding-left: 16px;
   border-left: 6px solid var(--color-primary);
+  overflow-wrap: anywhere;
+}
+
+.problem__id {
+  margin-left: 12px;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.problem__title-text {
+  display: inline;
 }
 
 .problem__text {
