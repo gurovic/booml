@@ -84,7 +84,9 @@ export async function apiPost(endpoint, data = {}, options = {}) {
   };
   
   // Don't set Content-Type for FormData - browser will set it with boundary
-  if (!isFormData && !headers['Content-Type']) {
+  // Check for Content-Type case-insensitively
+  const hasContentType = Object.keys(headers).some(key => key.toLowerCase() === 'content-type');
+  if (!isFormData && !hasContentType) {
     headers['Content-Type'] = 'application/json';
   }
   

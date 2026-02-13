@@ -247,7 +247,9 @@
                 id="metric-code"
                 v-model="formData.descriptor.metric_code"
                 class="form-textarea"
-                placeholder="def custom_metric(y_true, y_pred):&#10;    # Ваш код здесь&#10;    pass"
+                placeholder="def custom_metric(y_true, y_pred):
+    # Ваш код здесь
+    pass"
                 rows="6"
               ></textarea>
               <div class="form-help">
