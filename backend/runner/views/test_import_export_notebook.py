@@ -82,14 +82,8 @@ class ImportExportNotebookTests(TestCase):
         
         self.assertEqual(imported_cells[0].cell_type, Cell.CODE)
         self.assertEqual(imported_cells[0].content, 'print("Hello")')
-        # Импорт сохраняет вывод в JSON: {"stdout": "...", "error": false}
-        output = imported_cells[0].output
-        if output and output.startswith('{'):
-            out_data = json.loads(output)
-            self.assertEqual(out_data.get('stdout'), 'Hello')
-            self.assertFalse(out_data.get('error', True))
-        else:
-            self.assertEqual(output, 'Hello')
+        # При импорте вывод не сохраняется
+        self.assertEqual(imported_cells[0].output, '')
         self.assertEqual(imported_cells[0].execution_order, 0)
         
         self.assertEqual(imported_cells[1].cell_type, Cell.TEXT)

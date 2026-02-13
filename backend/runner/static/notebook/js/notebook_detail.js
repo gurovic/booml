@@ -1068,11 +1068,11 @@ async handleImportFile(file) {
 
     buildNotebookUrl(notebookId) {
     /** Строит URL для ноутбука */
-    const template = this.notebookElement?.dataset.notebookUrlTemplate;
-    if (!template || !notebookId) {
+    if (!notebookId) {
         return null;
     }
-    return template.replace('{id}', notebookId);
+    // Строим URL напрямую, так как шаблон может содержать 0 вместо плейсхолдера
+    return `/notebook/${notebookId}/`;
     },
 
     markActivity() {

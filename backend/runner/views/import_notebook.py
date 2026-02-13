@@ -85,40 +85,12 @@ def import_notebook(request):
                 else:
                     content = str(source)
                 
+                # ВАЖНО: При импорте вывод НЕ сохраняется - полностью игнорируем outputs из файла
+                # Не извлекаем и не обрабатываем outputs - они не нужны при импорте
+                
                 # Определяем тип ячейки для Booml
                 if jupyter_cell_type == 'code':
                     cell_type = Cell.CODE
-                    # Пытаемся извлечь вывод из ячейки
-                    outputs = cell_data.get('outputs', [])
-                    output_content = ''
-                    
-                    for output in outputs:
-                        output_type = output.get('output_type', '')
-                        if output_type == 'stream':
-                            text = output.get('text', '')
-                            if isinstance(text, list):
-                                text = ''.join(text)
-                            output_content += text
-                        elif output_type == 'execute_result' or output_type == 'display_data':
-                            data = output.get('data', {})
-                            # Пытаемся найти текстовое представление
-                            if 'text/plain' in data:
-                                output_content += str(data['text/plain'])
-                            elif 'text/html' in data:
-                                output_content += str(data['text/html'])
-                        elif output_type == 'error':
-                            ename = output.get('ename', 'Error')
-                            evalue = output.get('evalue', '')
-                            output_content += f"Ошибка: {ename} - {evalue}"
-                    
-                    # Сохраняем вывод как JSON для совместимости
-                    if output_content:
-                        output_json = json.dumps({
-                            'stdout': output_content,
-                            'error': False
-                        }, ensure_ascii=False)
-                    else:
-                        output_json = ''
                 
                 elif jupyter_cell_type == 'markdown':
                     # Проверяем, была ли это исходно LaTeX ячейка
@@ -131,19 +103,17 @@ def import_notebook(request):
                             content = content_cleaned[2:-2].strip()
                     else:
                         cell_type = Cell.TEXT
-                    output_json = ''
                 
                 else:
                     # Неизвестный тип - используем код по умолчанию
                     cell_type = Cell.CODE
-                    output_json = ''
                 
-                # Создаем ячейку
+                # Создаем ячейку БЕЗ вывода - вывод всегда пустой при импорте
                 cell = Cell.objects.create(
                     notebook=notebook,
                     cell_type=cell_type,
                     content=content,
-                    output=output_json,
+                    output='',  # Вывод всегда пустой при импорте
                     execution_order=execution_order
                 )
                 created_cells.append(cell.id)
@@ -151,6 +121,11 @@ def import_notebook(request):
                 
             except Exception as e:
                 errors.append(f"Ячейка {idx + 1}: ошибка создания - {str(e)}")
+        
+        # Гарантируем, что все импортированные ячейки имеют пустой вывод
+        # Это защита на случай, если вывод был установлен где-то еще
+        if created_cells:
+            Cell.objects.filter(id__in=created_cells).update(output='')
         
         response_data = {
             'status': 'success',
