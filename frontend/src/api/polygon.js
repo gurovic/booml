@@ -1,4 +1,4 @@
-import { apiGet, apiPost, apiPut, apiPatch } from './http'
+import { apiGet, apiPost, apiPut } from './http'
 
 export function getPolygonProblems(params = {}) {
     return apiGet('backend/polygon/problems', params)
