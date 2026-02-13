@@ -142,7 +142,9 @@
               placeholder="800"
               min="800"
               max="3000"
+              step="100"
             />
+            <div v-if="ratingError" class="form-error">{{ ratingError }}</div>
           </div>
         </div>
         <div class="dialog__footer">
@@ -180,6 +182,7 @@ const error = ref(null)
 const showCreateDialog = ref(false)
 const creating = ref(false)
 const createError = ref(null)
+const ratingError = ref(null)
 const search = ref('')
 const page = ref(1)
 const pageSize = 20
@@ -239,13 +242,27 @@ const setPage = (p) => {
 }
 
 const createProblem = async () => {
+  createError.value = null
+  ratingError.value = null
+
   if (!newProblem.value.title.trim()) {
     createError.value = 'Введите название задачи'
     return
   }
 
+  // Validate that rating is within range
+  if (newProblem.value.rating < 800 || newProblem.value.rating > 3000) {
+    ratingError.value = 'Рейтинг должен быть от 800 до 3000'
+    return
+  }
+
+  // Validate that rating is divisible by 100
+  if (newProblem.value.rating && newProblem.value.rating % 100 !== 0) {
+    ratingError.value = 'Рейтинг должен быть кратен 100'
+    return
+  }
+
   creating.value = true
-  createError.value = null
   
   try {
     const data = {
@@ -268,6 +285,7 @@ const closeCreateDialog = () => {
   showCreateDialog.value = false
   newProblem.value = { title: '', rating: 800 }
   createError.value = null
+  ratingError.value = null
 }
 
 const goToEdit = (problemId) => {
