@@ -12,7 +12,7 @@ from ..models import Notebook, Cell
 @require_http_methods(["POST"])
 def import_notebook(request):
     """
-    Импортирует ноутбук из .ipynb файла (формат Jupyter Notebook).
+    Импортирует ноутбук из .ipynb файла.
     Создает новый ноутбук на основе импортированных данных.
     """
     User = get_user_model()
@@ -31,11 +31,11 @@ def import_notebook(request):
         file_content = uploaded_file.read().decode('utf-8')
         notebook_data = json.loads(file_content)
         
-        # Проверяем, является ли это валидным Jupyter Notebook по содержимому
+        # Проверяем, является ли это валидным .ipynb по содержимому
         if 'cells' not in notebook_data:
             return JsonResponse({
                 'status': 'error',
-                'message': 'Неверный формат файла. Ожидается структура Jupyter Notebook (.ipynb) с ключом "cells"'
+                'message': 'Неверный формат файла. Ожидается структура .ipynb с ключом "cells"'
             }, status=400)
         
         cells_data = notebook_data.get('cells', [])
@@ -76,7 +76,7 @@ def import_notebook(request):
         
         for idx, cell_data in enumerate(cells_data):
             try:
-                jupyter_cell_type = cell_data.get('cell_type', 'code')
+                source_cell_type = cell_data.get('cell_type', 'code')
                 source = cell_data.get('source', [])
                 
                 # Конвертируем источник в строку
@@ -86,7 +86,7 @@ def import_notebook(request):
                     content = str(source)
                 
                 # Определяем тип ячейки для Booml
-                if jupyter_cell_type == 'code':
+                if source_cell_type == 'code':
                     cell_type = Cell.CODE
                     # Пытаемся извлечь вывод из ячейки
                     outputs = cell_data.get('outputs', [])
@@ -120,7 +120,7 @@ def import_notebook(request):
                     else:
                         output_json = ''
                 
-                elif jupyter_cell_type == 'markdown':
+                elif source_cell_type == 'markdown':
                     # Проверяем, была ли это исходно LaTeX ячейка
                     metadata = cell_data.get('metadata', {})
                     if metadata.get('original_type') == 'latex':
@@ -162,10 +162,10 @@ def import_notebook(request):
         return JsonResponse(response_data)
 
     except json.JSONDecodeError as e:
-        # Файл должен быть валидным JSON (формат Jupyter Notebook)
+        # Файл должен быть валидным JSON (.ipynb)
         return JsonResponse({
             'status': 'error',
-            'message': f'Ошибка парсинга JSON: {str(e)}. Убедитесь, что файл является валидным файлом Jupyter Notebook (.ipynb)'
+            'message': f'Ошибка парсинга JSON: {str(e)}. Убедитесь, что файл является валидным .ipynb'
         }, status=400)
     except UnicodeDecodeError as e:
         return JsonResponse({

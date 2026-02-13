@@ -602,7 +602,7 @@ onMounted(loadSidebar)
 .home__content {
   max-width: 1200px;
   margin: 0 auto;
-  padding: 24px 16px 0;
+  padding: 10px 16px 0;
 }
 
 .home__layout {
@@ -1148,7 +1148,7 @@ onMounted(loadSidebar)
 }
 
 @media (min-width: 900px) {
-  .home__content { padding: 28px 32px 0; }
+  .home__content { padding: 10px 32px 0; }
 }
 
 @media (max-width: 960px) {

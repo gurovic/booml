@@ -179,6 +179,7 @@ import UiBreadcrumbs from '@/components/ui/UiBreadcrumbs.vue'
 import UiLinkList from '@/components/ui/UiLinkList.vue'
 import UiIdPill from '@/components/ui/UiIdPill.vue'
 import { arrayMove } from '@/utils/arrayMove'
+import { normalizeContestProblemLabel, toContestProblemLabel } from '@/utils/contestProblemLabel'
 
 const route = useRoute()
 const userStore = useUserStore()
@@ -220,12 +221,22 @@ const problemItems = computed(() => {
   const problems = Array.isArray(contest.value?.problems) ? contest.value.problems : []
   return problems
     .filter(problem => problem?.id != null)
-    .map(problem => ({
-      id: problem.id,
-      idPill: problem.id,
-      text: problem.title || `Problem ${problem.id}`,
-      route: { name: 'problem', params: { id: problem.id }, query: { contest: contestId.value } },
-    }))
+    .map((problem, index) => {
+      const ordinal = Number.isInteger(problem?.index) && problem.index >= 0 ? problem.index : index
+      const label = normalizeContestProblemLabel(problem?.label) || toContestProblemLabel(ordinal)
+      return {
+        id: problem.id,
+        idPill: label,
+        idPillPrefix: '',
+        idPillTitle: `Problem ${label}`,
+        text: problem.title || `Problem ${problem.id}`,
+        route: {
+          name: 'problem',
+          params: { id: problem.id },
+          query: { contest: contestId.value, problem_label: label },
+        },
+      }
+    })
 })
 
 const leaderboardRoute = computed(() => {
@@ -397,7 +408,7 @@ watch(showAddProblemDialog, (newValue) => {
 .contest-content {
   max-width: 960px;
   margin: 0 auto;
-  padding: 24px 16px 40px;
+  padding: 0 16px 40px;
 }
 
 .contest-panel {
@@ -787,7 +798,7 @@ watch(showAddProblemDialog, (newValue) => {
 
 @media (min-width: 900px) {
   .contest-content {
-    padding: 28px 24px 48px;
+    padding: 0 24px 48px;
   }
 }
 </style>

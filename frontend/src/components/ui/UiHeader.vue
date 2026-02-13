@@ -111,18 +111,12 @@ const handleCoursesClick = () => {
 .header__logo {
   width: 72px;
   height: 72px;
-  margin-left: 24px;
   object-fit: contain;
   margin-right: 5px
 }
 
 .header__title:hover {
   opacity: 0.9;
-}
-
-.header__title:focus {
-  outline: 2px solid #ffffff;
-  outline-offset: 2px;
 }
 
 .header__nav {
@@ -148,11 +142,6 @@ const handleCoursesClick = () => {
 
 .header__nav-link:hover {
   opacity: 0.8;
-}
-
-.header__nav-link:focus {
-  outline: 2px solid #ffffff;
-  outline-offset: 2px;
 }
 
 .header__button {

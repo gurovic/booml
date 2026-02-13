@@ -505,7 +505,7 @@ onMounted(load)
 .contest-content {
   max-width: 960px;
   margin: 0 auto;
-  padding: 24px 16px 40px;
+  padding: 0 16px 40px;
 }
 
 .contest-panel {
@@ -921,7 +921,7 @@ onMounted(load)
 
 @media (min-width: 900px) {
   .contest-content { 
-    padding: 28px 32px 40px; 
+    padding: 0 32px 40px;
   }
 }
 </style>

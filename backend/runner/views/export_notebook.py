@@ -12,7 +12,7 @@ from ..models import Notebook, Cell
 def export_notebook(request, notebook_id):
     notebook = get_object_or_404(Notebook, id=notebook_id)
     
-    # Собираем ячейки в формате Jupyter
+    # Собираем ячейки в формате .ipynb
     cells_data = []
     execution_count = 1
     
@@ -76,7 +76,7 @@ def export_notebook(request, notebook_id):
         elif cell.cell_type == Cell.LATEX:
             # LaTeX ячейка - конвертируем в markdown с математическими вставками
             latex_content = cell.content or ''
-            # Оборачиваем LaTeX в $$ для отображения в Jupyter
+            # Оборачиваем LaTeX в $$ для отображения в .ipynb
             markdown_content = f"$$\n{latex_content}\n$$"
             cells_data.append({
                 'cell_type': 'markdown',
@@ -86,7 +86,7 @@ def export_notebook(request, notebook_id):
                 'source': markdown_content.split('\n')
             })
     
-    # Формируем структуру Jupyter Notebook
+    # Формируем структуру .ipynb
     notebook_data = {
         'cells': cells_data,
         'metadata': {

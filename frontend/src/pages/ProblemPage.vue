@@ -8,6 +8,7 @@
       <div v-if="problem != null" class="problem__inner">
         <div class="problem__content">
           <h1 class="problem__name">
+            <span v-if="contestProblemLabel" class="problem__contest-label">Problem {{ contestProblemLabel }}</span>
             <span class="problem__title-text">{{ problem.title }}</span>
             <UiIdPill v-if="problem?.id" class="problem__id" :id="problem.id" title="ID задачи" />
           </h1>
@@ -122,6 +123,7 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue'
 import { useRoute } from 'vue-router'
+import { contestApi } from '@/api'
 import { getProblem } from '@/api/problem'
 import { submitSolution } from '@/api/submission'
 import { createNotebook } from '@/api/notebook'
@@ -131,6 +133,7 @@ import markdownKatex from '@/utils/markdownKatex'
 import UiHeader from '@/components/ui/UiHeader.vue'
 import UiBreadcrumbs from '@/components/ui/UiBreadcrumbs.vue'
 import UiIdPill from '@/components/ui/UiIdPill.vue'
+import { normalizeContestProblemLabel, toContestProblemLabel } from '@/utils/contestProblemLabel'
 
 const md = new MarkdownIt({
   html: false,
@@ -147,8 +150,34 @@ let submitMessage = ref(null)
 let fileInputKey = ref(0)
 let isCreatingNotebook = ref(false)
 let notebookMessage = ref(null)
+const contestProblemLabel = ref('')
 
-onMounted(async () => {
+const queryValue = (raw) => (Array.isArray(raw) ? raw[0] : raw)
+const contestIdFromQuery = computed(() => {
+  const parsed = Number(queryValue(route.query.contest))
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null
+})
+const queryProblemLabel = computed(() => normalizeContestProblemLabel(queryValue(route.query.problem_label)))
+
+const resolveContestProblemLabel = async () => {
+  contestProblemLabel.value = queryProblemLabel.value
+  if (contestProblemLabel.value || !problem.value?.id || !contestIdFromQuery.value) return
+
+  try {
+    const contestData = await contestApi.getContest(contestIdFromQuery.value)
+    const problems = Array.isArray(contestData?.problems) ? contestData.problems : []
+    const idx = problems.findIndex(row => Number(row?.id) === Number(problem.value.id))
+    if (idx < 0) return
+
+    contestProblemLabel.value =
+      normalizeContestProblemLabel(problems[idx]?.label) || toContestProblemLabel(idx)
+  } catch (err) {
+    console.warn('Failed to resolve contest problem label:', err)
+  }
+}
+
+const loadProblem = async () => {
+  contestProblemLabel.value = ''
   try {
     const res = await getProblem(route.params.id)
     problem.value = res
@@ -157,9 +186,12 @@ onMounted(async () => {
   } finally {
     if (problem.value != null) {
       problem.value.rendered_statement = md.render(problem.value.statement)
+      await resolveContestProblemLabel()
     }
   }
-})
+}
+
+onMounted(loadProblem)
 
 const availableFiles = computed(() => {
   if (!problem.value || !problem.value.files) return []
@@ -331,6 +363,13 @@ const handleCreateNotebook = async () => {
 
 .problem__title-text {
   display: inline;
+}
+
+.problem__contest-label {
+  display: block;
+  font-size: 22px;
+  font-weight: 600;
+  margin-bottom: 8px;
 }
 
 .problem__text {
