@@ -127,7 +127,13 @@ class InteractiveRun:
     def wait_for_status(self, since_seq: int | None = None) -> str:
         with self._condition:
             while True:
-                if self.status in {"input_required", "success", "error"}:
+                # Always treat terminal states as immediately returnable, regardless of since_seq.
+                if self.status in {"success", "error"}:
+                    return self.status
+
+                # For non-terminal "input_required", only return if there's a new status
+                # sequence since the caller last observed it.
+                if self.status == "input_required":
                     if since_seq is None or self._status_seq != since_seq:
                         return self.status
                 self._condition.wait()
