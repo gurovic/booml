@@ -46,6 +46,12 @@ class ImportExportNotebookTests(TestCase):
 
         self.assertEqual(export_response.status_code, 200)
         self.assertIn("json", export_response.get("Content-Type", "").lower())
+        
+        # Проверяем, что имя файла правильное
+        content_disposition = export_response.get('Content-Disposition', '')
+        self.assertIn('attachment', content_disposition)
+        self.assertIn('.ipynb', content_disposition)
+        self.assertIn('Test_Notebook.ipynb', content_disposition)
 
         exported_data = json.loads(export_response.content.decode('utf-8'))
         
@@ -149,4 +155,70 @@ class ImportExportNotebookTests(TestCase):
         source = notebook_data['cells'][0].get('source', [])
         content = '\n'.join(source) if isinstance(source, list) else source
         self.assertEqual(content, 'test code')
+
+    def test_export_notebook_filename(self):
+        """Проверяет, что экспортируемый файл имеет правильное имя с расширением .ipynb"""
+        export_url = reverse("runner:export_notebook", args=[self.notebook.id])
+        export_response = self.client.get(export_url)
+        
+        self.assertEqual(export_response.status_code, 200)
+        
+        # Проверяем Content-Disposition заголовок
+        content_disposition = export_response.get('Content-Disposition', '')
+        self.assertIn('attachment', content_disposition)
+        self.assertIn('.ipynb', content_disposition)
+        
+        # Проверяем, что имя файла содержит название блокнота
+        # Формат: attachment; filename="Test_Notebook.ipynb"; filename*=UTF-8''...
+        self.assertIn('Test_Notebook.ipynb', content_disposition)
+        
+        # Проверяем Content-Type
+        content_type = export_response.get('Content-Type', '')
+        self.assertIn('application/json', content_type)
+
+    def test_export_notebook_filename_with_cyrillic(self):
+        """Проверяет экспорт блокнота с кириллическим названием"""
+        cyrillic_notebook = Notebook.objects.create(
+            owner=self.user,
+            title="Мой блокнот"
+        )
+        
+        export_url = reverse("runner:export_notebook", args=[cyrillic_notebook.id])
+        export_response = self.client.get(export_url)
+        
+        self.assertEqual(export_response.status_code, 200)
+        
+        # Проверяем Content-Disposition заголовок
+        content_disposition = export_response.get('Content-Disposition', '')
+        self.assertIn('attachment', content_disposition)
+        self.assertIn('.ipynb', content_disposition)
+        
+        # Проверяем, что имя файла содержит название блокнота (может быть в закодированном виде)
+        # Кириллица может быть в filename* параметре в закодированном виде
+        self.assertIn('filename*', content_disposition)
+
+    def test_export_notebook_filename_sanitization(self):
+        """Проверяет очистку недопустимых символов из имени файла"""
+        # Создаем блокнот с недопустимыми символами в названии
+        invalid_chars_notebook = Notebook.objects.create(
+            owner=self.user,
+            title='Test/Notebook:Name*With?Invalid"Chars<>|'
+        )
+        
+        export_url = reverse("runner:export_notebook", args=[invalid_chars_notebook.id])
+        export_response = self.client.get(export_url)
+        
+        self.assertEqual(export_response.status_code, 200)
+        
+        # Проверяем Content-Disposition заголовок
+        content_disposition = export_response.get('Content-Disposition', '')
+        self.assertIn('attachment', content_disposition)
+        self.assertIn('.ipynb', content_disposition)
+        
+        # Проверяем, что недопустимые символы заменены на подчеркивания
+        # Ожидаемое имя: Test_Notebook_Name_With_Invalid_Chars_.ipynb
+        self.assertIn('Test_Notebook', content_disposition)
+        # Убеждаемся, что недопустимые символы отсутствуют
+        self.assertNotIn('Test/Notebook', content_disposition)
+        self.assertNotIn(':', content_disposition.split('filename')[1] if 'filename' in content_disposition else '')
 

@@ -969,7 +969,7 @@ const notebookDetail = {
     // Методы будут вызываться из обработчиков событий
     },
 
-    exportNotebook() {
+    async exportNotebook() {
     /** Экспортирует текущий ноутбук в формате .ipynb */
     if (!this.config.notebookId) {
         alert('ID ноутбука не найден');
@@ -982,13 +982,64 @@ const notebookDetail = {
         return;
     }
     
-    // Открываем ссылку для скачивания
-    const link = document.createElement('a');
-    link.href = `${exportUrl}?notebook_id=${this.config.notebookId}`;
-    link.download = '';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    try {
+        // Получаем файл через fetch, чтобы иметь контроль над именем файла
+        const response = await fetch(exportUrl);
+        if (!response.ok) {
+            throw new Error('Ошибка при экспорте блокнота');
+        }
+        
+        // Получаем имя файла из заголовка Content-Disposition
+        const contentDisposition = response.headers.get('Content-Disposition');
+        let filename = null;
+        
+        if (contentDisposition) {
+            // Пытаемся извлечь имя файла из разных форматов заголовка
+            // Формат 1: filename="название.ipynb"
+            let match = contentDisposition.match(/filename="([^"]+)"/);
+            if (match && match[1]) {
+                filename = match[1];
+            } else {
+                // Формат 2: filename*=UTF-8''название.ipynb
+                match = contentDisposition.match(/filename\*=UTF-8''([^;]+)/);
+                if (match && match[1]) {
+                    filename = decodeURIComponent(match[1]);
+                } else {
+                    // Формат 3: filename=название.ipynb (без кавычек)
+                    match = contentDisposition.match(/filename=([^;]+)/);
+                    if (match && match[1]) {
+                        filename = match[1].trim();
+                    }
+                }
+            }
+        }
+        
+        // Если имя файла не получено из заголовка, используем название блокнота из DOM
+        if (!filename || filename === 'notebook.ipynb' || !filename.endsWith('.ipynb')) {
+            const notebookTitle = document.querySelector('#notebook-title')?.textContent?.trim() || 'notebook';
+            // Очищаем название от недопустимых символов
+            const safeTitle = notebookTitle
+                .replace(/[<>:"/\\|?*]/g, '_')
+                .replace(/\s+/g, '_')
+                .replace(/_+/g, '_')
+                .replace(/^_+|_+$/g, '');
+            filename = safeTitle ? `${safeTitle}.ipynb` : 'notebook.ipynb';
+        }
+        
+        // Создаем blob и скачиваем файл с правильным именем
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename; // Явно указываем имя файла с расширением .ipynb
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
+    } catch (error) {
+        console.error('Ошибка экспорта:', error);
+        alert('Ошибка при экспорте блокнота: ' + error.message);
+    }
     },
 
     triggerImportFileSelect() {
