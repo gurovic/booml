@@ -388,7 +388,22 @@ def _build_backend() -> ExecutionBackend:
     # Treat empty/default/legacy strings as legacy for backward compatibility.
     if backend_name in ("", "legacy", "default"):
         return LegacyExecutionBackend(sessions=_sessions)
-    raise ValueError(f"Unsupported execution backend: {backend_name!r}")
+    # Backward compatibility: the old Jupyter backend has been removed, but
+    # existing deployments may still use RUNTIME_EXECUTION_BACKEND="jupyter".
+    # Fall back to the legacy backend and emit a warning instead of crashing.
+    if backend_name == "jupyter":
+        logger.warning(
+            "Execution backend 'jupyter' has been removed; falling back to 'legacy'. "
+            "Please update RUNTIME_EXECUTION_BACKEND (or corresponding Django setting) "
+            "to 'legacy'."
+        )
+        return LegacyExecutionBackend(sessions=_sessions)
+    raise ValueError(
+        "Unsupported execution backend: %r. Supported backends: 'legacy'. "
+        "Note: the 'jupyter' backend has been removed; use 'legacy' or "
+        "update your RUNTIME_EXECUTION_BACKEND setting."
+        % (backend_name,)
+    )
 
 
 def _get_backend() -> ExecutionBackend:
