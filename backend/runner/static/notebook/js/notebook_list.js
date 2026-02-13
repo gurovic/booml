@@ -135,9 +135,17 @@ const notebookList = {
 
                 this.showStatus('success', message);
                 
-                setTimeout(() => {
-                    window.location.reload();
-                }, 2000);
+                // Перенаправляем на новый импортированный блокнот
+                if (data.notebook_id) {
+                    setTimeout(() => {
+                        window.location.href = `/notebook/${data.notebook_id}/`;
+                    }, 1000);
+                } else {
+                    // Если ID не получен, просто перезагружаем страницу
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 2000);
+                }
             } else {
                 throw new Error(data.message || 'Неизвестная ошибка');
             }

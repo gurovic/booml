@@ -1,4 +1,6 @@
 import json
+import re
+from urllib.parse import quote
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404
 from django.views.decorators.http import require_http_methods
@@ -114,14 +116,37 @@ def export_notebook(request, notebook_id):
     json_content = json.dumps(notebook_data, ensure_ascii=False, indent=2)
     
     if request.method == 'GET':
-        # Используем правильный MIME type для .ipynb файлов
-        response = HttpResponse(json_content, content_type='application/x-ipynb+json; charset=utf-8')
-        # Очищаем имя файла от недопустимых символов
-        safe_title = "".join(c for c in notebook.title if c.isalnum() or c in (' ', '-', '_')).strip()
-        safe_title = safe_title.replace(' ', '_')
-        filename = f"{safe_title}_{notebook.id}.ipynb"
-        # Явно указываем расширение .ipynb в Content-Disposition
-        response['Content-Disposition'] = f'attachment; filename="{filename}"; filename*=UTF-8\'\'{filename}'
+        # Подготавливаем имя файла из названия блокнота
+        # Удаляем недопустимые для файловых систем символы, но сохраняем кириллицу и другие Unicode символы
+        title = notebook.title.strip()
+        # Удаляем символы, которые могут вызвать проблемы в именах файлов: / \ : * ? " < > |
+        invalid_chars = r'[<>:"/\\|?*]'
+        safe_title = re.sub(invalid_chars, '_', title)
+        # Заменяем множественные пробелы и подчеркивания на одно подчеркивание
+        safe_title = re.sub(r'[\s_]+', '_', safe_title)
+        # Убираем подчеркивания в начале и конце
+        safe_title = safe_title.strip('_')
+        
+        # Если название пустое после очистки, используем значение по умолчанию
+        if not safe_title:
+            safe_title = 'notebook'
+        
+        # Имя файла - только название блокнота с расширением .ipynb
+        filename = f"{safe_title}.ipynb"
+        
+        # Используем application/json с правильным именем файла
+        # Браузеры лучше распознают этот MIME type и правильно сохраняют файл с расширением
+        response = HttpResponse(json_content, content_type='application/json; charset=utf-8')
+        
+        # Формируем Content-Disposition заголовок с поддержкой UTF-8 для кириллицы
+        # Используем RFC 5987 для правильной кодировки имени файла
+        # Указываем имя файла в обоих форматах для максимальной совместимости с разными браузерами
+        # Кодируем имя файла для использования в filename* параметре (RFC 5987)
+        # quote правильно обрабатывает Unicode строки и кодирует их в процентное представление
+        encoded_filename = quote(filename, safe='')
+        # Формат: attachment; filename="название.ipynb"; filename*=UTF-8''закодированное_название.ipynb
+        response['Content-Disposition'] = f'attachment; filename="{filename}"; filename*=UTF-8\'\'{encoded_filename}'
+        
         return response
     
     return JsonResponse({
