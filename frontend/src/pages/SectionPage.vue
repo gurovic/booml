@@ -49,128 +49,19 @@
           <div v-if="actionError" class="state state--error">{{ actionError }}</div>
 
           <div v-if="hasChildren" class="menu-list">
-            <ul class="course-list">
-              <li
+            <ul class="course-list course-list--tree">
+              <CourseTreeNode
                 v-for="child in orderedChildren"
                 :key="child.id"
-                class="course-item"
-              >
-                <template v-if="hasChildrenItems(child)">
-                  <div class="nested-header-row">
-                    <button
-                      type="button"
-                      class="section-toggle section-toggle--nested"
-                      :disabled="!(child.children || []).length"
-                      @click="toggleNested(child.id)"
-                      :aria-expanded="isNestedOpen(child.id)"
-                      aria-label="Раскрыть/свернуть"
-                    >
-                      <span class="triangle triangle--nested" :class="{ 'triangle--open': isNestedOpen(child.id) }"></span>
-                    </button>
-                    <button
-                      type="button"
-                      class="row-link row-link--section"
-                      @click="navigateTo(child)"
-                      :title="child.title"
-                    >
-                      <span class="row-icon row-icon--section" aria-hidden="true">
-                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" xmlns="http://www.w3.org/2000/svg">
-                          <path
-                            d="M3 7.5c0-1.1.9-2 2-2h5l2 2h7c1.1 0 2 .9 2 2v8.5c0 1.1-.9 2-2 2H5c-1.1 0-2-.9-2-2V7.5Z"
-                            stroke="currentColor"
-                            stroke-width="2"
-                            stroke-linejoin="round"
-                          />
-                        </svg>
-                      </span>
-                      <span class="row-text">{{ child.title }}</span>
-                    </button>
-                  </div>
-                  <div v-if="isNestedOpen(child.id) && (child.children || []).length" class="badge-list">
-                    <div v-for="grand in child.children" :key="grand.id" class="badge-row">
-                      <button
-                        type="button"
-                        class="badge"
-                        @click="navigateTo(grand)"
-                      >
-                        {{ grand.title }}
-                      </button>
-                      <button
-                        v-if="isAuthorized && grand.type === 'course'"
-                        type="button"
-                        class="star-btn"
-                        :class="{ 'star-btn--on': isFavoriteCourse(grand) }"
-                        :title="isFavoriteCourse(grand) ? 'Убрать из избранного' : 'Добавить в избранное'"
-                        @click.stop.prevent="toggleFavorite(grand)"
-                      >
-                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" xmlns="http://www.w3.org/2000/svg">
-                          <path
-                            d="M12 17.27 18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21 12 17.27Z"
-                            stroke="currentColor"
-                            stroke-width="1.8"
-                            stroke-linejoin="round"
-                            :fill="isFavoriteCourse(grand) ? 'currentColor' : 'transparent'"
-                          />
-                        </svg>
-                      </button>
-                    </div>
-                  </div>
-                </template>
-
-                <template v-else>
-                  <div class="course-row" :class="child.type === 'section' ? 'course-row--section' : 'course-row--course'">
-                    <button
-                      type="button"
-                      class="row-link"
-                      :class="child.type === 'section' ? 'row-link--section' : 'row-link--course'"
-                      @click="navigateTo(child)"
-                      :title="child.title"
-                    >
-                      <span
-                        class="row-icon"
-                        :class="child.type === 'section' ? 'row-icon--section' : 'row-icon--course'"
-                        aria-hidden="true"
-                      >
-                        <svg v-if="child.type === 'section'" viewBox="0 0 24 24" width="18" height="18" fill="none" xmlns="http://www.w3.org/2000/svg">
-                          <path
-                            d="M3 7.5c0-1.1.9-2 2-2h5l2 2h7c1.1 0 2 .9 2 2v8.5c0 1.1-.9 2-2 2H5c-1.1 0-2-.9-2-2V7.5Z"
-                            stroke="currentColor"
-                            stroke-width="2"
-                            stroke-linejoin="round"
-                          />
-                        </svg>
-                        <svg v-else viewBox="0 0 24 24" width="18" height="18" fill="none" xmlns="http://www.w3.org/2000/svg">
-                          <path
-                            d="M6 3h11a2 2 0 0 1 2 2v14.5a1.5 1.5 0 0 1-2.34 1.25L12 17.7l-4.66 3.05A1.5 1.5 0 0 1 5 19.5V5a2 2 0 0 1 1-2Z"
-                            stroke="currentColor"
-                            stroke-width="2"
-                            stroke-linejoin="round"
-                          />
-                        </svg>
-                      </span>
-                      <span class="row-text">{{ child.title }}</span>
-                    </button>
-                    <button
-                      v-if="isAuthorized && child.type === 'course'"
-                      type="button"
-                      class="star-btn"
-                      :class="{ 'star-btn--on': isFavoriteCourse(child) }"
-                      :title="isFavoriteCourse(child) ? 'Убрать из избранного' : 'Добавить в избранное'"
-                      @click.stop.prevent="toggleFavorite(child)"
-                    >
-                      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path
-                          d="M12 17.27 18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21 12 17.27Z"
-                          stroke="currentColor"
-                          stroke-width="1.8"
-                          stroke-linejoin="round"
-                          :fill="isFavoriteCourse(child) ? 'currentColor' : 'transparent'"
-                        />
-                      </svg>
-                    </button>
-                  </div>
-                </template>
-              </li>
+                :node="child"
+                :level="0"
+                :open-state="openNested"
+                :show-favorite="isAuthorized"
+                :is-favorite="isFavoriteCourse"
+                @toggle-section="toggleNested"
+                @navigate="navigateTo"
+                @toggle-favorite="toggleFavorite"
+              />
             </ul>
           </div>
           <p v-else class="note">В этом разделе пока нет курсов или подразделов</p>
@@ -270,6 +161,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { courseApi, homeApi } from '@/api'
 import UiHeader from '@/components/ui/UiHeader.vue'
 import UiBreadcrumbs from '@/components/ui/UiBreadcrumbs.vue'
+import CourseTreeNode from '@/components/ui/CourseTreeNode.vue'
 import { useUserStore } from '@/stores/UserStore'
 
 const route = useRoute()
@@ -358,7 +250,6 @@ const toggleFavorite = async (course) => {
   }
 }
 
-const isNestedOpen = nestedId => !!openNested.value[String(nestedId)]
 const toggleNested = nestedId => {
   const key = String(nestedId)
   openNested.value = { ...openNested.value, [key]: !openNested.value[key] }
@@ -749,6 +640,10 @@ onMounted(load)
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+
+.course-list--tree {
+  gap: 8px;
 }
 
 .course-item {
