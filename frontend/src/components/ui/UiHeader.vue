@@ -120,11 +120,6 @@ const handleCoursesClick = () => {
   opacity: 0.9;
 }
 
-.header__title:focus {
-  outline: 2px solid #ffffff;
-  outline-offset: 2px;
-}
-
 .header__nav {
   display: flex;
   align-items: center;
@@ -148,11 +143,6 @@ const handleCoursesClick = () => {
 
 .header__nav-link:hover {
   opacity: 0.8;
-}
-
-.header__nav-link:focus {
-  outline: 2px solid #ffffff;
-  outline-offset: 2px;
 }
 
 .header__button {
