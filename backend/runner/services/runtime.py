@@ -7,6 +7,7 @@ import io
 import logging
 import os
 import shutil
+import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -20,7 +21,14 @@ from urllib.request import urlopen
 from django.conf import settings
 from django.utils import timezone
 
-from .vm_agent import _handle_shell_commands, dispose_vm_agent, get_vm_agent
+from .vm_agent import (
+    _handle_shell_commands,
+    dispose_vm_agent,
+    get_vm_agent,
+    get_interactive_run,
+    provide_interactive_input,
+    start_interactive_run,
+)
 from .vm_exceptions import VmError
 from .vm_manager import get_vm_manager
 from .vm_models import VirtualMachine
@@ -57,6 +65,23 @@ class RuntimeExecutionResult:
     variables: Dict[str, str]
     outputs: List[Dict[str, object]]
     artifacts: List[Dict[str, object]]
+    status: str = "success"
+    prompt: str | None = None
+    run_id: str | None = None
+
+
+def _build_execution_result(payload: Dict[str, object]) -> RuntimeExecutionResult:
+    return RuntimeExecutionResult(
+        stdout=str(payload.get("stdout") or ""),
+        stderr=str(payload.get("stderr") or ""),
+        error=payload.get("error"),
+        variables=payload.get("variables") or {},
+        outputs=payload.get("outputs") or [],
+        artifacts=payload.get("artifacts") or [],
+        status=str(payload.get("status") or "success"),
+        prompt=payload.get("prompt"),
+        run_id=payload.get("run_id"),
+    )
 
 
 @dataclass
@@ -262,6 +287,16 @@ class ExecutionBackend:
     def stop_session(self, session_id: str) -> bool:  # pragma: no cover - abstract
         raise NotImplementedError
 
+    def provide_input(
+        self,
+        session_id: str,
+        run_id: str,
+        text: str | None,
+        *,
+        stdin_eof: bool = False,
+    ) -> RuntimeExecutionResult:  # pragma: no cover - abstract
+        raise NotImplementedError
+
     def get_session(self, session_id: str, *, touch: bool = True, now: datetime | None = None) -> RuntimeSession | None:
         current = _resolve_now(now)
         self._auto_cleanup_expired(now=current)
@@ -369,18 +404,68 @@ class LegacyExecutionBackend(ExecutionBackend):
 
     def run_code(self, session_id: str, code: str) -> RuntimeExecutionResult:
         session = self._require_session(session_id)
-        agent = get_vm_agent(session_id, session)
-        result_payload = agent.exec_code(code)
+        run_id = uuid.uuid4().hex
+        vm = session.vm
+        if vm and vm.backend == "docker":
+            agent = get_vm_agent(session_id, session)
+            if hasattr(agent, "exec_interactive_start"):
+                result_payload = agent.exec_interactive_start(code, run_id=run_id)
+            else:
+                result_payload = agent.exec_code(code)
+        else:
+            run = start_interactive_run(session=session, code=code, run_id=run_id)
+            run.wait_for_status()
+            result_payload = run.to_payload()
         session.updated_at = _resolve_now()
+        return _build_execution_result(result_payload)
 
-        return RuntimeExecutionResult(
-            stdout=result_payload.get("stdout", ""),
-            stderr=result_payload.get("stderr", ""),
-            error=result_payload.get("error"),
-            variables=result_payload.get("variables", {}),
-            outputs=result_payload.get("outputs", []),
-            artifacts=result_payload.get("artifacts", []),
-        )
+    def provide_input(
+        self,
+        session_id: str,
+        run_id: str,
+        text: str | None,
+        *,
+        stdin_eof: bool = False,
+    ) -> RuntimeExecutionResult:
+        session = self._require_session(session_id)
+        vm = session.vm
+        if vm and vm.backend == "docker":
+            agent = get_vm_agent(session_id, session)
+            if hasattr(agent, "exec_interactive_input"):
+                result_payload = agent.exec_interactive_input(run_id, text, stdin_eof=stdin_eof)
+            else:
+                result_payload = {
+                    "status": "error",
+                    "prompt": None,
+                    "run_id": run_id,
+                    "stdout": "",
+                    "stderr": "",
+                    "error": "Interactive input is not supported by the VM agent",
+                    "variables": {},
+                    "outputs": [],
+                    "artifacts": [],
+                }
+        else:
+            run = get_interactive_run(run_id)
+            if run is None:
+                result_payload = {
+                    "status": "error",
+                    "prompt": None,
+                    "run_id": run_id,
+                    "stdout": "",
+                    "stderr": "",
+                    "error": "Interactive run not found",
+                    "variables": {},
+                    "outputs": [],
+                    "artifacts": [],
+                }
+            else:
+                seq = run.status_seq
+                provide_interactive_input(run_id, text, stdin_eof=stdin_eof)
+                run.wait_for_status(since_seq=seq)
+                result_payload = run.to_payload()
+        session.updated_at = _resolve_now()
+        return _build_execution_result(result_payload)
 
     def run_code_stream(
         self,
@@ -391,18 +476,15 @@ class LegacyExecutionBackend(ExecutionBackend):
         stderr_path: Path,
     ) -> RuntimeExecutionResult:
         session = self._require_session(session_id)
-        agent = get_vm_agent(session_id, session)
-        result_payload = agent.exec_code_stream(code, stdout_path=stdout_path, stderr_path=stderr_path)
+        vm = session.vm
+        if vm and vm.backend == "docker":
+            agent = get_vm_agent(session_id, session)
+            result_payload = agent.exec_code_stream(code, stdout_path=stdout_path, stderr_path=stderr_path)
+        else:
+            agent = get_vm_agent(session_id, session)
+            result_payload = agent.exec_code_stream(code, stdout_path=stdout_path, stderr_path=stderr_path)
         session.updated_at = _resolve_now()
-
-        return RuntimeExecutionResult(
-            stdout=result_payload.get("stdout", ""),
-            stderr=result_payload.get("stderr", ""),
-            error=result_payload.get("error"),
-            variables=result_payload.get("variables", {}),
-            outputs=result_payload.get("outputs", []),
-            artifacts=result_payload.get("artifacts", []),
-        )
+        return _build_execution_result(result_payload)
 
 
 class JupyterExecutionBackend(ExecutionBackend):
@@ -545,6 +627,16 @@ class JupyterExecutionBackend(ExecutionBackend):
             outputs=kernel_result.outputs,
             artifacts=kernel_result.artifacts,
         )
+
+    def provide_input(
+        self,
+        session_id: str,
+        run_id: str,
+        text: str | None,
+        *,
+        stdin_eof: bool = False,
+    ) -> RuntimeExecutionResult:
+        raise RuntimeError("Interactive input is not supported by the Jupyter backend")
 
     # --- kernel lifecycle -------------------------------------------------
 
@@ -860,6 +952,16 @@ def run_code_stream(
     stderr_path: Path,
 ) -> RuntimeExecutionResult:
     return _get_backend().run_code_stream(session_id, code, stdout_path=stdout_path, stderr_path=stderr_path)
+
+
+def provide_input(
+    session_id: str,
+    run_id: str,
+    text: str | None,
+    *,
+    stdin_eof: bool = False,
+) -> RuntimeExecutionResult:
+    return _get_backend().provide_input(session_id, run_id, text, stdin_eof=stdin_eof)
 
 
 def register_runtime_shutdown_hooks() -> None:

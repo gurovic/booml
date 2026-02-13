@@ -11,6 +11,7 @@ const notebookDetail = {
     cellOutputSnapshots: {},
     runCellStreamStartUrl: null,
     runCellStreamStatusUrl: null,
+    runCellInputUrl: null,
     storageEnabled: undefined,
     inactivityTimers: {
         prompt: null,
@@ -493,13 +494,46 @@ const notebookDetail = {
                     signal: job.controller?.signal
                 });
 
-                const data = await response.json();
+                let data = await response.json();
 
                 if (!response.ok) {
                     const message = data?.detail || data?.error || 'Не удалось выполнить ячейку';
                     const error = new Error(message);
                     error.status = response.status;
                     throw error;
+                }
+
+                while (data?.status === 'input_required') {
+                    const formattedOutput = NotebookUtils.formatCellRunResult(data);
+                    outputElement.innerHTML = formattedOutput;
+                    this.enhanceOutputElement(outputElement);
+                    outputElement.className = 'output running';
+                    this.renderArtifacts(cellId, data.artifacts || []);
+                    if (!this.runCellInputUrl) {
+                        throw new Error('URL интерактивного ввода недоступен');
+                    }
+                    const value = await this.awaitInlineInput(outputElement);
+                    const inputResponse = await fetch(this.runCellInputUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': this.config.csrfToken
+                        },
+                        body: JSON.stringify({
+                            session_id: sessionId,
+                            cell_id: cellNumericId,
+                            run_id: data.run_id,
+                            input: value
+                        }),
+                        signal: job.controller?.signal
+                    });
+                    data = await inputResponse.json();
+                    if (!inputResponse.ok) {
+                        const message = data?.detail || data?.error || 'Не удалось отправить ввод';
+                        const error = new Error(message);
+                        error.status = inputResponse.status;
+                        throw error;
+                    }
                 }
 
                 const formattedOutput = NotebookUtils.formatCellRunResult(data);
@@ -696,6 +730,64 @@ const notebookDetail = {
 
             await new Promise((resolve) => setTimeout(resolve, 300));
         }
+    },
+
+    clearInlineStdin(outputElement) {
+        if (!outputElement) {
+            return;
+        }
+        const existing = outputElement.querySelector('.stdin-inline');
+        if (existing) {
+            existing.remove();
+        }
+    },
+
+    getStdoutPre(outputElement) {
+        if (!outputElement) {
+            return null;
+        }
+        return outputElement.querySelector('[data-stream-stdout]') || outputElement.querySelector('.output-text pre');
+    },
+
+    ensureStdoutPre(outputElement) {
+        let pre = this.getStdoutPre(outputElement);
+        if (pre) {
+            return pre;
+        }
+        const wrapper = document.createElement('div');
+        wrapper.className = 'output-text';
+        pre = document.createElement('pre');
+        wrapper.appendChild(pre);
+        outputElement.appendChild(wrapper);
+        return pre;
+    },
+
+    awaitInlineInput(outputElement) {
+        this.clearInlineStdin(outputElement);
+        const pre = this.ensureStdoutPre(outputElement);
+        const wrapper = document.createElement('span');
+        wrapper.className = 'stdin-inline';
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.autocomplete = 'off';
+        input.spellcheck = false;
+        input.autocapitalize = 'off';
+        input.autocorrect = 'off';
+        input.className = 'stdin-inline';
+        wrapper.appendChild(input);
+        pre.appendChild(wrapper);
+        input.focus();
+        return new Promise((resolve) => {
+            input.addEventListener('keydown', (event) => {
+                if (event.key !== 'Enter') {
+                    return;
+                }
+                event.preventDefault();
+                const value = input.value || '';
+                wrapper.remove();
+                resolve(value);
+            });
+        });
     },
 
     enhanceOutputElement(outputElement) {
@@ -1177,6 +1269,7 @@ async handleImportFile(file) {
         this.copyCellUrlTemplate = this.notebookElement?.dataset.copyCellUrlTemplate || '';
         this.moveCellUrlTemplate = this.notebookElement?.dataset.moveCellUrlTemplate || '';
         this.runCellUrl = this.sanitizeUrl(config.runCellUrl) || this.sanitizeUrl(this.notebookElement?.dataset.runCellUrl);
+        this.runCellInputUrl = this.sanitizeUrl(config.runCellInputUrl) || this.sanitizeUrl(this.notebookElement?.dataset.runCellInputUrl);
         this.runCellStreamStartUrl = this.sanitizeUrl(config.runCellStreamStartUrl) || this.sanitizeUrl(this.notebookElement?.dataset.runCellStreamStartUrl);
         this.runCellStreamStatusUrl = this.sanitizeUrl(config.runCellStreamStatusUrl) || this.sanitizeUrl(this.notebookElement?.dataset.runCellStreamStatusUrl);
         this.sessionCreateUrl = this.sanitizeUrl(config.sessionCreateUrl) || this.sanitizeUrl(this.notebookElement?.dataset.sessionCreateUrl);
