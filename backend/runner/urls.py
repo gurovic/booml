@@ -52,7 +52,14 @@ from .views.list_of_problems_polygon import problem_list_polygon
 from .views.create_problem_polygon import create_problem_polygon
 from .views.edit_problem_polygon import edit_problem_polygon
 from .views.publish_problem_polygon import publish_problem_polygon
-from .views.polygon_api import polygon_problems_api, create_polygon_problem_api
+from .views.polygon_api import (
+    polygon_problems_api, 
+    create_polygon_problem_api,
+    get_polygon_problem_api,
+    update_polygon_problem_api,
+    upload_polygon_problem_file_api,
+    publish_polygon_problem_api,
+)
 from .views.api import start_api
 
 
@@ -124,6 +131,10 @@ urlpatterns = [
     path('backend/start/', start_api),
     path('backend/polygon/problems', polygon_problems_api),
     path('backend/polygon/problems/create', create_polygon_problem_api),
+    path('backend/polygon/problems/<int:problem_id>', get_polygon_problem_api),
+    path('backend/polygon/problems/<int:problem_id>/update', update_polygon_problem_api),
+    path('backend/polygon/problems/<int:problem_id>/upload', upload_polygon_problem_file_api),
+    path('backend/polygon/problems/<int:problem_id>/publish', publish_polygon_problem_api),
     path('backend/course/<int:course_id>/', course_detail, name='backend_course_detail'),
     path('backend/contest/', list_contests, name='backend_contest_list'),
     path('backend/contest/<int:contest_id>/', contest_detail, name='backend_contest_detail'),
