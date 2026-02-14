@@ -29,6 +29,11 @@ from .views import (
     SessionFilePreviewView,
     StopSessionView,
 )
+from .views.notebook_submissions import (
+    NotebookSubmissionCreateView,
+    NotebookSubmissionListView,
+    NotebookSubmissionDetailView,
+)
 
 urlpatterns = [
     path("submissions/", SubmissionCreateView.as_view(), name="submission-create"),
@@ -36,6 +41,9 @@ urlpatterns = [
     path("notebooks/", CreateNotebookView.as_view(), name="notebook-create"),
     path("submissions/<int:pk>/", SubmissionDetailView.as_view(), name="submission-detail"),
     path("submissions/problem/<int:problem_id>/", ProblemSubmissionsListView.as_view(), name="submission-list-problem"),
+    path("notebook-submissions/", NotebookSubmissionCreateView.as_view(), name="notebook-submission-create"),
+    path("notebook-submissions/mine/", NotebookSubmissionListView.as_view(), name="notebook-submission-list"),
+    path("notebook-submissions/<int:pk>/", NotebookSubmissionDetailView.as_view(), name="notebook-submission-detail"),
     path("sessions/notebook/", CreateNotebookSessionView.as_view(), name="notebook-session-create"),
     path("sessions/reset/", ResetSessionView.as_view(), name="session-reset"),
     path("sessions/stop/", StopSessionView.as_view(), name="session-stop"),

@@ -2,6 +2,7 @@ from .notebook import Notebook
 from .cell import Cell
 from .report import Report
 from .submission import Submission
+from .notebook_submission import NotebookSubmission
 from .contest import Contest, ContestProblem
 from .problem_desriptor import ProblemDescriptor
 from .problem_data import ProblemData

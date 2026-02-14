@@ -26,6 +26,14 @@ class Contest(models.Model):
         through="ContestProblem",
         related_name="contests",
     )
+    template_notebook = models.ForeignKey(
+        "Notebook",
+        on_delete=models.SET_NULL,
+        related_name="contest_templates",
+        null=True,
+        blank=True,
+        help_text="Template notebook for notebook-based contests",
+    )
     source = models.CharField(
         max_length=255,
         blank=True,
@@ -38,6 +46,18 @@ class Contest(models.Model):
         blank=True,
         help_text="Contest duration in minutes",
     )
+    
+    class ContestType(models.TextChoices):
+        REGULAR = "regular", "Regular (problem-based)"
+        NOTEBOOK = "notebook", "Notebook (cell-based)"
+    
+    contest_type = models.CharField(
+        max_length=20,
+        choices=ContestType.choices,
+        default=ContestType.REGULAR,
+        help_text="Type of contest: regular problem-based or notebook-based",
+    )
+    
     class Scoring(models.TextChoices):
         ICPC = "icpc", "ICPC (penalty by time)"
         IOI = "ioi", "IOI (sum of scores)"

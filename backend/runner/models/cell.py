@@ -18,6 +18,17 @@ class Cell(models.Model):
     output = models.TextField(blank=True)
     execution_order = models.IntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
+    # Mark if this cell is a task cell (for notebook contests)
+    is_task_cell = models.BooleanField(default=False)
+    # Link to problem for task cells
+    problem = models.ForeignKey(
+        "Problem",
+        on_delete=models.SET_NULL,
+        related_name="task_cells",
+        null=True,
+        blank=True,
+        help_text="Problem associated with this task cell (for notebook contests)"
+    )
 
     class Meta:
         ordering = ['execution_order']
