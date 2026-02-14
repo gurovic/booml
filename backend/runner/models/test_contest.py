@@ -1,7 +1,7 @@
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 
-from runner.models import Contest, Course, CourseParticipant, Section
+from runner.models import Contest, Course, CourseParticipant, Section, Notebook
 from runner.services.section_service import SectionCreateInput, create_section
 
 User = get_user_model()
@@ -123,3 +123,66 @@ class ContestVisibilityTests(TestCase):
 
         self.assertTrue(contest.is_visible_to(self.student))
         self.assertFalse(contest.is_visible_to(self.outsider))
+
+
+class NotebookContestTests(TestCase):
+    """Tests for notebook-based contest functionality"""
+    
+    def setUp(self):
+        self.teacher = User.objects.create_user(username="teacher", password="pass")
+        self.student = User.objects.create_user(username="student", password="pass")
+        
+        self.root_section = Section.objects.get(title="Авторские", parent__isnull=True)
+        self.section = create_section(
+            SectionCreateInput(
+                title="Teacher Section",
+                owner=self.teacher,
+                parent=self.root_section,
+            )
+        )
+        self.course = Course.objects.create(
+            title="Course A",
+            owner=self.teacher,
+            section=self.section,
+        )
+    
+    def test_create_regular_contest(self):
+        """Test creating a regular (problem-based) contest"""
+        contest = Contest.objects.create(
+            course=self.course,
+            title="Regular Contest",
+            contest_type=Contest.ContestType.REGULAR,
+            created_by=self.teacher,
+        )
+        
+        self.assertEqual(contest.contest_type, Contest.ContestType.REGULAR)
+        self.assertIsNone(contest.template_notebook)
+    
+    def test_create_notebook_contest(self):
+        """Test creating a notebook-based contest"""
+        # Create template notebook
+        template = Notebook.objects.create(
+            title="Contest Template",
+            owner=self.teacher
+        )
+        
+        contest = Contest.objects.create(
+            course=self.course,
+            title="Notebook Contest",
+            contest_type=Contest.ContestType.NOTEBOOK,
+            template_notebook=template,
+            created_by=self.teacher,
+        )
+        
+        self.assertEqual(contest.contest_type, Contest.ContestType.NOTEBOOK)
+        self.assertEqual(contest.template_notebook, template)
+    
+    def test_default_contest_type_is_regular(self):
+        """Test that default contest type is regular"""
+        contest = Contest.objects.create(
+            course=self.course,
+            title="Default Contest",
+            created_by=self.teacher,
+        )
+        
+        self.assertEqual(contest.contest_type, Contest.ContestType.REGULAR)
