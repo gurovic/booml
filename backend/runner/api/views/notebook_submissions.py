@@ -82,7 +82,7 @@ class NotebookSubmissionCreateView(generics.CreateAPIView):
 
 class NotebookSubmissionListView(generics.ListAPIView):
     """
-    GET /api/notebook-submissions/
+    GET /api/notebook-submissions/mine/
     List all notebook submissions for the current user.
     """
     serializer_class = NotebookSubmissionReadSerializer

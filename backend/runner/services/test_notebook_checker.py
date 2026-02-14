@@ -179,8 +179,10 @@ class NotebookSubmissionCheckerTests(TestCase):
         self.assertEqual(len(result.cell_results), 2)
         
         # Average score should be 0.5 (1.0 + 0.0) / 2
+        # Status should be FAILED since not all tasks passed
         submission.refresh_from_db()
         self.assertEqual(submission.total_score, 0.5)
+        self.assertEqual(submission.status, NotebookSubmission.STATUS_FAILED)
     
     def test_check_cell_without_output(self):
         """Test checking a cell with no output"""

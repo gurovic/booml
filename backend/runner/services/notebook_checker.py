@@ -82,9 +82,11 @@ class NotebookSubmissionChecker:
         avg_score = total_score / total_tasks if total_tasks > 0 else 0.0
         
         # Update notebook submission
+        # Consider a submission accepted if all tasks pass (perfect score)
+        # Otherwise mark as failed to indicate some tasks didn't pass
         notebook_submission.metrics = cell_results
         notebook_submission.total_score = avg_score
-        notebook_submission.status = NotebookSubmission.STATUS_ACCEPTED if avg_score > 0 else NotebookSubmission.STATUS_FAILED
+        notebook_submission.status = NotebookSubmission.STATUS_ACCEPTED if avg_score == 1.0 else NotebookSubmission.STATUS_FAILED
         notebook_submission.save(update_fields=["metrics", "total_score", "status"])
         
         logger.info(
