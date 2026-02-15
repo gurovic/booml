@@ -97,21 +97,31 @@ watch(
 .code-editor-host :deep(.cm-gutters) {
   background: transparent;
   border-right: none;
-  color: #9aa3c7;
+  color: var(--color-text-muted);
   font-family: 'Courier New', monospace;
-  font-size: 15px;
-  line-height: 1.6;
+  font-size: 13px;
+  line-height: 1.2;
+  padding: 0;
 }
 
 .code-editor-host :deep(.cm-lineNumbers .cm-gutterElement) {
-  padding: 0 10px 0 0;
+  padding: 0;
+}
+
+.code-editor-host :deep(.cm-lineNumbers) {
+  min-width: 0.3em;
+}
+
+.code-editor-host :deep(.cm-line) {
+  padding-left: 0;
+  padding-right: 0;
 }
 
 .code-editor-host :deep(.cm-content) {
   font-family: 'Courier New', monospace;
-  font-size: 15px;
-  line-height: 1.6;
-  color: #1f2a5a;
+  font-size: 13px;
+  line-height: 1.2;
+  color: var(--color-text-primary);
 }
 
 .code-editor-host :deep(.cm-activeLine),

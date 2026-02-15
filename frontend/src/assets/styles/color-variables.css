@@ -37,4 +37,9 @@
   --color-error-text: #991b1b;
   --color-error-border: #fecaca;
   --color-border-danger: #F1B6B4;
+
+  /* ===== Session Status ===== */
+  --color-session-active: #00CC1B;
+  --color-session-starting: #ECD100;
+  --color-session-stopped: #FF383C;
 }
