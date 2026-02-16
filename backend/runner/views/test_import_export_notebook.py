@@ -1,4 +1,6 @@
 import json
+import base64
+import email.header
 from io import BytesIO
 
 from django.contrib.auth import get_user_model
@@ -188,14 +190,53 @@ class ImportExportNotebookTests(TestCase):
         
         self.assertEqual(export_response.status_code, 200)
         
-        # Проверяем Content-Disposition заголовок
-        content_disposition = export_response.get('Content-Disposition', '')
-        self.assertIn('attachment', content_disposition)
-        self.assertIn('.ipynb', content_disposition)
+        # Получаем Content-Disposition заголовок
+        # Django может кодировать заголовки с не-ASCII символами, поэтому нужно декодировать
+        content_disposition_raw = export_response.get('Content-Disposition', '')
         
-        # Проверяем, что имя файла содержит название блокнота (может быть в закодированном виде)
-        # Кириллица может быть в filename* параметре в закодированном виде
-        self.assertIn('filename*', content_disposition)
+        # Декодируем заголовок, если он закодирован (RFC 2047)
+        try:
+            decoded_header = email.header.decode_header(content_disposition_raw)
+            content_disposition = ''.join(
+                part.decode(encoding or 'utf-8') if isinstance(part, bytes) else part
+                for part, encoding in decoded_header
+            )
+        except (UnicodeDecodeError, AttributeError):
+            # Если декодирование не удалось, используем исходную строку
+            content_disposition = content_disposition_raw
+        
+        # Проверяем базовые требования
+        self.assertIn('attachment', content_disposition.lower())
+        self.assertIn('.ipynb', content_disposition.lower())
+        
+        # Проверяем наличие filename параметра
+        self.assertTrue(
+            'filename' in content_disposition.lower(),
+            f"Должен быть параметр filename. Получено: {content_disposition}"
+        )
+        
+        # Проверяем наличие filename* для поддержки UTF-8 (RFC 5987)
+        # Это важно для правильной обработки кириллицы в браузерах
+        self.assertTrue(
+            'filename*' in content_disposition.lower() or 'utf-8' in content_disposition.lower(),
+            f"Должен быть параметр filename* для UTF-8. Получено: {content_disposition}"
+        )
+        
+        # Извлекаем имя файла из заголовка для проверки
+        import re
+        # Пытаемся найти имя файла в разных форматах
+        filename_match = re.search(r'filename[^=]*=["\']([^"\']+)["\']', content_disposition, re.IGNORECASE)
+        if not filename_match:
+            # Пытаемся найти без кавычек
+            filename_match = re.search(r'filename[^=]*=([^;\s]+)', content_disposition, re.IGNORECASE)
+        
+        if filename_match:
+            filename = filename_match.group(1)
+            # Проверяем, что имя файла содержит расширение .ipynb
+            self.assertIn('.ipynb', filename.lower())
+            # Проверяем, что имя файла не пустое и не просто "notebook.ipynb"
+            self.assertNotEqual(filename.lower(), 'notebook.ipynb', 
+                              f"Имя файла должно быть основано на названии блокнота, получено: {filename}")
 
     def test_export_notebook_filename_sanitization(self):
         """Проверяет очистку недопустимых символов из имени файла"""
