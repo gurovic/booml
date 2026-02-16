@@ -109,7 +109,7 @@ def import_notebook(request):
                         elif output_type == 'error':
                             ename = output.get('ename', 'Error')
                             evalue = output.get('evalue', '')
-                            output_content += f"Ошибка: {ename} - {evalue}"
+                            output_content += f"{ename}: {evalue}"
                     
                     # Сохраняем вывод как JSON для совместимости
                     if output_content:
