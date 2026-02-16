@@ -4,6 +4,7 @@ import ProblemPage from '@/pages/ProblemPage.vue'
 import HomePage from '@/pages/HomePage.vue'
 import SectionPage from '@/pages/SectionPage.vue'
 import CoursePage from '@/pages/CoursePage.vue'
+import CourseLeaderboardPage from '@/pages/CourseLeaderboardPage.vue'
 import ContestPage from '@/pages/ContestPage.vue'
 import LoginPage from '@/pages/LoginPage.vue'
 import RegisterPage from '@/pages/RegisterPage.vue'
@@ -35,6 +36,16 @@ const router = createRouter({
       path: '/course/:id',
       name: 'course',
       component: CoursePage,
+    },
+    {
+      path: '/course/:id/leaderboard/',
+      name: 'course-leaderboard',
+      component: CourseLeaderboardPage,
+    },
+    {
+      path: '/demo/leaderboard/',
+      name: 'demo-leaderboard',
+      component: CourseLeaderboardPage,
     },
     {
       path: '/contest/:id',

@@ -13,3 +13,10 @@ export async function getCourse(courseId) {
   }
   return await apiGet(`backend/course/${courseId}/`)
 }
+
+export async function getCourseLeaderboard(courseId) {
+  if (courseId == null || courseId === '') {
+    return null
+  }
+  return await apiGet(`course/${courseId}/leaderboard/`)
+}

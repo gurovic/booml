@@ -7,8 +7,17 @@
         <div v-if="isLoading" class="state">Loading contests...</div>
         <div v-else-if="error" class="state state--error">{{ error }}</div>
         <template v-else>
+          <div class="course-header">
+            <h1 class="course-title">{{ courseTitle }}</h1>
+            <router-link
+              :to="{ name: 'course-leaderboard', params: { id: courseId }}"
+              class="leaderboard-link"
+            >
+              Таблица результатов курса
+            </router-link>
+          </div>
           <UiLinkList
-            :title="courseTitle"
+            :title="'Contests'"
             :items="contestItems"
           />
           <p v-if="!contestItems.length" class="note">This course has no contests yet.</p>
@@ -100,6 +109,35 @@ watch(courseId, () => {
   gap: 12px;
 }
 
+.course-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.course-title {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 600;
+}
+
+.leaderboard-link {
+  padding: 8px 16px;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border-default);
+  border-radius: 8px;
+  color: var(--color-text-primary);
+  text-decoration: none;
+  font-size: 14px;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.leaderboard-link:hover {
+  background: var(--color-bg-hover);
+  border-color: var(--color-border-active);
+}
+
 .state {
   padding: 14px 16px;
   background: var(--color-bg-card);
@@ -127,6 +165,10 @@ watch(courseId, () => {
 @media (min-width: 900px) {
   .contest-content {
     padding: 28px 24px 48px;
+  }
+
+  .course-title {
+    font-size: 32px;
   }
 }
 </style>
