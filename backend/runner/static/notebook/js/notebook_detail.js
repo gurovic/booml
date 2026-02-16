@@ -115,6 +115,89 @@ const notebookDetail = {
         }
     },
 
+    stripPythonStringsAndComments(code) {
+        if (!code) {
+            return '';
+        }
+        const source = String(code);
+        let out = '';
+        let i = 0;
+        let state = 'normal';
+        let quote = '';
+        while (i < source.length) {
+            const ch = source[i];
+            const next = source[i + 1];
+            const next2 = source[i + 2];
+
+            if (state === 'normal') {
+                if (ch === '#') {
+                    while (i < source.length && source[i] !== '\n') {
+                        i += 1;
+                    }
+                    continue;
+                }
+                if (ch === "'" || ch === '"') {
+                    if (ch === next && ch === next2) {
+                        state = 'triple';
+                        quote = ch;
+                        out += '   ';
+                        i += 3;
+                        continue;
+                    }
+                    state = 'single';
+                    quote = ch;
+                    out += ' ';
+                    i += 1;
+                    continue;
+                }
+                out += ch;
+                i += 1;
+                continue;
+            }
+
+            if (state === 'single') {
+                if (ch === '\\' && i + 1 < source.length) {
+                    out += ' ';
+                    i += 2;
+                    continue;
+                }
+                if (ch === quote) {
+                    state = 'normal';
+                    out += ' ';
+                    i += 1;
+                    continue;
+                }
+                out += ch === '\n' ? '\n' : ' ';
+                i += 1;
+                continue;
+            }
+
+            if (state === 'triple') {
+                if (ch === quote && next === quote && next2 === quote) {
+                    state = 'normal';
+                    out += '   ';
+                    i += 3;
+                    continue;
+                }
+                out += ch === '\n' ? '\n' : ' ';
+                i += 1;
+                continue;
+            }
+        }
+        return out;
+    },
+
+    requiresInteractiveInput(code) {
+        if (!code) {
+            return false;
+        }
+        const cleaned = this.stripPythonStringsAndComments(code);
+        return /\binput\s*\(/.test(cleaned)
+            || /\bbuiltins\s*\.\s*input\b/.test(cleaned)
+            || /\bsys\s*\.\s*stdin\b/.test(cleaned)
+            || /\bfileinput\s*\.\s*input\b/.test(cleaned);
+    },
+
     getStoredSessionId() {
         return this.readStorage(this.getSessionStorageKey());
     },
@@ -467,7 +550,14 @@ const notebookDetail = {
         const startedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
 
         try {
-            if (runCellStreamStartUrl && runCellStreamStatusUrl) {
+            const needsInput = this.requiresInteractiveInput(code);
+            const canStream = Boolean(runCellStreamStartUrl && runCellStreamStatusUrl);
+            const useStreaming = canStream && !needsInput;
+            if (needsInput && !runCellUrl) {
+                throw new Error('Интерактивный ввод недоступен');
+            }
+
+            if (useStreaming) {
                 await this.executeQueueJobStreaming({
                     job,
                     cellId,
@@ -578,7 +668,7 @@ const notebookDetail = {
             }
             console.error('Ошибка выполнения ячейки:', error);
             const message = error?.message || 'Не удалось выполнить ячейку';
-            const errorHtml = `<div class="output-error"><strong>Ошибка:</strong> ${NotebookUtils.escapeHtml(message)}</div>`;
+            const errorHtml = `<div class="output-error">${NotebookUtils.escapeHtml(message)}</div>`;
             outputElement.innerHTML = errorHtml;
             outputElement.className = 'output error';
             this.renderArtifacts(cellId, []);
@@ -633,16 +723,36 @@ const notebookDetail = {
         let stdoutNode = null;
         let stderrNode = null;
 
-        const ensureStreamNodes = () => {
-            if (stdoutNode && stderrNode) {
+        const clearLoading = () => {
+            if (outputElement.querySelector('.output-loading')) {
+                outputElement.innerHTML = '';
+            }
+        };
+
+        const ensureStdoutNode = () => {
+            if (stdoutNode) {
                 return;
             }
-            outputElement.innerHTML = `
-                <div class="output-text"><pre data-stream-stdout></pre></div>
-                <div class="output-stderr"><strong>STDERR:</strong><pre data-stream-stderr></pre></div>
-            `;
-            stdoutNode = outputElement.querySelector('[data-stream-stdout]');
-            stderrNode = outputElement.querySelector('[data-stream-stderr]');
+            clearLoading();
+            const wrapper = document.createElement('div');
+            wrapper.className = 'output-text';
+            stdoutNode = document.createElement('pre');
+            stdoutNode.setAttribute('data-stream-stdout', '');
+            wrapper.appendChild(stdoutNode);
+            outputElement.appendChild(wrapper);
+        };
+
+        const ensureStderrNode = () => {
+            if (stderrNode) {
+                return;
+            }
+            clearLoading();
+            const wrapper = document.createElement('div');
+            wrapper.className = 'output-stderr';
+            stderrNode = document.createElement('pre');
+            stderrNode.setAttribute('data-stream-stderr', '');
+            wrapper.appendChild(stderrNode);
+            outputElement.appendChild(wrapper);
         };
 
         const appendText = (node, text) => {
@@ -679,11 +789,11 @@ const notebookDetail = {
             }
 
             if (statusData.stdout) {
-                ensureStreamNodes();
+                ensureStdoutNode();
                 appendText(stdoutNode, statusData.stdout);
             }
             if (statusData.stderr) {
-                ensureStreamNodes();
+                ensureStderrNode();
                 appendText(stderrNode, statusData.stderr);
             }
             const stdoutNext = Number(statusData.stdout_offset);
