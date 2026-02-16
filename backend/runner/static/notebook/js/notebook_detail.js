@@ -1443,10 +1443,8 @@ async handleImportFile(file) {
         modal.appendChild(text);
         modal.appendChild(helper);
         overlay.appendChild(modal);
-        overlay.addEventListener('click', (event) => {
-            if (event.target === overlay) {
-                this.handlePresenceConfirm();
-            }
+        overlay.addEventListener('click', () => {
+            this.handlePresenceConfirm();
         });
         overlay.hidden = true;
         return overlay;
