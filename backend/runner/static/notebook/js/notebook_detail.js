@@ -22,6 +22,9 @@ const notebookDetail = {
     inactivityPromptMs: 15 * 60 * 1000,
     inactivityBanMs: 10 * 60 * 1000,
     activityTrackingEnabled: false,
+    activityHandler: null,
+    activityEvents: ['click', 'keydown', 'mousemove', 'scroll', 'touchstart'],
+    streamPollTimeoutMs: null,
     lastActivityTs: null,
     filesRequestId: 0,
     sessionState: 'idle',
@@ -169,6 +172,18 @@ const notebookDetail = {
         }
     },
 
+    disableActivityTracking() {
+        if (!this.activityTrackingEnabled) {
+            return;
+        }
+        if (this.activityHandler) {
+            this.activityEvents.forEach((evt) => {
+                document.removeEventListener(evt, this.activityHandler);
+            });
+        }
+        this.activityTrackingEnabled = false;
+    },
+
     toggleInactivityMode() {
         if (this.inactivityMode === 'off') {
             this.inactivityMode = 'prompt';
@@ -178,6 +193,7 @@ const notebookDetail = {
             this.inactivityMode = 'off';
             this.clearInactivityTimers();
             this.hideInactivityPrompt();
+            this.disableActivityTracking();
         }
         if (this.notebookElement) {
             this.notebookElement.dataset.inactivityMode = this.inactivityMode;
@@ -832,7 +848,7 @@ const notebookDetail = {
             node.appendChild(document.createTextNode(text));
         };
 
-        const maxPollMs = null;
+        const maxPollMs = this.streamPollTimeoutMs;
         while (true) {
             const nowMs = (typeof performance !== 'undefined' && performance.now)
                 ? performance.now()
@@ -1227,11 +1243,14 @@ const notebookDetail = {
     },
 
     initActivityTracking() {
+        if (this.inactivityMode === 'off' || !this.inactivityPromptMs) {
+            this.disableActivityTracking();
+            return;
+        }
         this.lastActivityTs = Date.now();
         if (!this.activityTrackingEnabled) {
-            const events = ['click', 'keydown', 'mousemove', 'scroll', 'touchstart'];
             this.activityHandler = this.markActivity.bind(this);
-            events.forEach((evt) => {
+            this.activityEvents.forEach((evt) => {
                 document.addEventListener(evt, this.activityHandler, { passive: true });
             });
             this.activityTrackingEnabled = true;
@@ -1493,6 +1512,10 @@ async handleImportFile(file) {
             config.inactivityBanMinutes ?? this.notebookElement?.dataset.inactivityBanMinutes,
             10 * 60 * 1000,
         );
+        this.streamPollTimeoutMs = this.parseMinutes(
+            config.streamPollTimeoutMinutes ?? this.notebookElement?.dataset.streamPollTimeoutMinutes,
+            0,
+        ) || null;
         this.sessionStatusElement = this.notebookElement?.querySelector('[data-session-status]') || null;
         this.sessionButtons = {
             create: this.notebookElement?.querySelector('[data-action="create-session"]') || null,
