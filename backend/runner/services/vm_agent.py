@@ -183,15 +183,17 @@ class InteractiveRun:
 
     def wait_for_status(self, since_seq: int | None = None) -> str:
         with self._condition:
-            if since_seq is None:
-                while self.status not in {"input_required", "success", "error"}:
-                    self._condition.wait()
-                return self.status
-
-            expected_seq = since_seq
             while True:
-                if self.status in {"input_required", "success", "error"} and self._status_seq != expected_seq:
+                # Always return immediately for terminal states; no further updates will occur.
+                if self.status in {"success", "error"}:
                     return self.status
+
+                # For input_required, apply since_seq gating so callers can wait for a new prompt.
+                if self.status == "input_required":
+                    if since_seq is None or self._status_seq != since_seq:
+                        return self.status
+
+                # For other states (e.g., running), wait for the next status change.
                 self._condition.wait()
 
     def _write_stdout(self, text: str) -> None:
