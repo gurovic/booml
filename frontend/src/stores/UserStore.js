@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed, watch } from 'vue'
 import * as user from '@/api/user'
+import { resetCourseTreeCache } from '@/utils/courseTreeCache'
 
 export const useUserStore = defineStore('user', () => {
     const currentUser = ref(null)
@@ -10,15 +11,22 @@ export const useUserStore = defineStore('user', () => {
 
     watch(
         currentUser,
-        (newCurrentUser) => {
+        (newCurrentUser, oldCurrentUser) => {
             localStorage.setItem('currentUser', JSON.stringify(newCurrentUser));
+
+            // Prevent stale private titles in breadcrumbs when switching users without reload.
+            const newId = newCurrentUser?.id ?? null
+            const oldId = oldCurrentUser?.id ?? null
+            if (newId !== oldId) {
+                resetCourseTreeCache({ userCacheKey: newId })
+            }
         },
         { deep: true }
     );
 
 
     const isAuthenticated = computed(() => {
-        return !!currentUser.value && !!currentUser.value.accessToken
+        return !!(currentUser.value && currentUser.value.accessToken)
     })
 
     async function loginUser(username, password) {
@@ -29,15 +37,18 @@ export const useUserStore = defineStore('user', () => {
             })
 
             if (res.success) {
+                const accessToken = res?.tokens?.access || res?.user?.access || null
+                const refreshToken = res?.tokens?.refresh || res?.user?.refresh || null
                 currentUser.value = {
                     'id': res.user.id,
                     'username': res.user.username,
                     'email': res.user.email,
                     'role': res.user.role,
-                    'accessToken': res.user.access,
-                    'refreshToken': res.user.refresh,
+                    'accessToken': accessToken,
+                    'refreshToken': refreshToken,
                 }
 
+                resetCourseTreeCache({ userCacheKey: res.user.id })
                 return {
                     success: true,
                     message: res.message,
@@ -68,15 +79,18 @@ export const useUserStore = defineStore('user', () => {
             })
 
             if (res.success) {
+                const accessToken = res?.tokens?.access || null
+                const refreshToken = res?.tokens?.refresh || null
                 currentUser.value = {
                     'id': res.user.id,
                     'username': res.user.username,
                     'email': res.user.email,
                     'role': res.user.role,
-                    'accessToken': res.user.access,
-                    'refreshToken': res.user.refresh,
+                    'accessToken': accessToken,
+                    'refreshToken': refreshToken,
                 }
 
+                resetCourseTreeCache({ userCacheKey: res.user.id })
                 return {
                     success: true,
                     message: res.message,
@@ -100,6 +114,7 @@ export const useUserStore = defineStore('user', () => {
         try {
             await user.logout()
             clearStorage()
+            resetCourseTreeCache({ userCacheKey: null })
             return { success: true }
         } catch (err) {
             console.error('Failed to logout user:', err)
@@ -114,15 +129,32 @@ export const useUserStore = defineStore('user', () => {
     async function checkAuth() {
         try {
             const res = await user.checkAuth()
+            if (res?.is_authenticated) {
+                currentUser.value = {
+                    'id': res?.user?.id || null,
+                    'username': res?.user?.username || null,
+                    'email': res?.user?.email || null,
+                    'role': res?.user?.role || null,
+                    'accessToken': res?.tokens?.access || res?.user?.accessToken || null,
+                    'refreshToken': res?.tokens?.refresh || res?.user?.refreshToken || null,
+                }
+            } else {
+                // Clear all fields when not authenticated
+                currentUser.value = null
+                resetCourseTreeCache({ userCacheKey: null })
+            }
             return res
         } catch (err) {
             console.error('Failed to check authorisation user:', err)
+            currentUser.value = null
+            resetCourseTreeCache({ userCacheKey: null })
             return { is_authenticated: false }
         }
     }
 
     function clearStorage() {
         currentUser.value = null
+        resetCourseTreeCache({ userCacheKey: null })
     }
 
     return {

@@ -45,18 +45,21 @@ class ImportExportNotebookTests(TestCase):
         export_response = self.client.get(export_url)
 
         self.assertEqual(export_response.status_code, 200)
-        self.assertIn("application/json", export_response.get("Content-Type", ""))
+        self.assertIn("json", export_response.get("Content-Type", "").lower())
 
         exported_data = json.loads(export_response.content.decode('utf-8'))
         
-        self.assertIn('notebook', exported_data)
         self.assertIn('cells', exported_data)
-        self.assertEqual(exported_data['notebook']['title'], 'Test Notebook')
+        self.assertIn('metadata', exported_data)
+        booml = exported_data['metadata'].get('booml_metadata', {})
+        self.assertEqual(booml.get('booml_title'), 'Test Notebook')
+        self.assertEqual(booml.get('compute_device'), 'cpu')
         self.assertEqual(len(exported_data['cells']), 3)
 
         json_file = BytesIO(export_response.content)
         json_file.name = 'test_notebook.json'
-        
+        json_file.seek(0)
+
         import_url = reverse("runner:import_notebook")
         import_response = self.client.post(
             import_url,
@@ -67,19 +70,26 @@ class ImportExportNotebookTests(TestCase):
         self.assertEqual(import_response.status_code, 200)
         import_data = import_response.json()
         self.assertEqual(import_data['status'], 'success')
-        self.assertEqual(import_data['cells_created'], 3)
-        self.assertEqual(import_data['cells_total'], 3)
+        self.assertIn('notebook_id', import_data)
 
         imported_notebook = Notebook.objects.get(id=import_data['notebook_id'])
         self.assertIsNotNone(imported_notebook)
         self.assertEqual(imported_notebook.title, 'Test Notebook')
+        self.assertEqual(imported_notebook.compute_device, 'cpu')
 
         imported_cells = imported_notebook.cells.all().order_by('execution_order')
         self.assertEqual(imported_cells.count(), 3)
         
         self.assertEqual(imported_cells[0].cell_type, Cell.CODE)
         self.assertEqual(imported_cells[0].content, 'print("Hello")')
-        self.assertEqual(imported_cells[0].output, 'Hello')
+        # Импорт сохраняет вывод в JSON: {"stdout": "...", "error": false}
+        output = imported_cells[0].output
+        if output and output.startswith('{'):
+            out_data = json.loads(output)
+            self.assertEqual(out_data.get('stdout'), 'Hello')
+            self.assertFalse(out_data.get('error', True))
+        else:
+            self.assertEqual(output, 'Hello')
         self.assertEqual(imported_cells[0].execution_order, 0)
         
         self.assertEqual(imported_cells[1].cell_type, Cell.TEXT)
@@ -96,10 +106,12 @@ class ImportExportNotebookTests(TestCase):
         self.assertEqual(export_response.status_code, 200)
         exported_data = json.loads(export_response.content.decode('utf-8'))
         self.assertEqual(len(exported_data['cells']), 0)
-        self.assertEqual(exported_data['notebook']['title'], 'Test Notebook')
+        booml = exported_data.get('metadata', {}).get('booml_metadata', {})
+        self.assertEqual(booml.get('booml_title'), 'Test Notebook')
 
         json_file = BytesIO(export_response.content)
         json_file.name = 'empty_notebook.json'
+        json_file.seek(0)
 
         import_url = reverse("runner:import_notebook")
         import_response = self.client.post(
@@ -111,8 +123,7 @@ class ImportExportNotebookTests(TestCase):
         self.assertEqual(import_response.status_code, 200)
         import_data = import_response.json()
         self.assertEqual(import_data['status'], 'success')
-        self.assertEqual(import_data['cells_created'], 0)
-        self.assertEqual(import_data['cells_total'], 0)
+        self.assertIn('notebook_id', import_data)
 
         imported_notebook = Notebook.objects.get(id=import_data['notebook_id'])
         # owner может быть None
@@ -138,7 +149,10 @@ class ImportExportNotebookTests(TestCase):
         self.assertIn('filename', response_data)
         
         notebook_data = response_data['data']
-        self.assertEqual(notebook_data['notebook']['title'], 'Test Notebook')
+        booml = notebook_data['metadata'].get('booml_metadata', {})
+        self.assertEqual(booml.get('booml_title'), 'Test Notebook')
         self.assertEqual(len(notebook_data['cells']), 1)
-        self.assertEqual(notebook_data['cells'][0]['content'], 'test code')
+        source = notebook_data['cells'][0].get('source', [])
+        content = '\n'.join(source) if isinstance(source, list) else source
+        self.assertEqual(content, 'test code')
 

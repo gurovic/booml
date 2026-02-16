@@ -11,10 +11,13 @@ from .models import (
     Section,
     Course,
     CourseParticipant,
+    FavoriteCourse,
     PreValidation,
     Leaderboard,
     ProblemDescriptor,
-    Tag
+    Tag,
+    ContestProblem,
+    SiteUpdate,
 )
 
 @admin.register(Report)  # Регистрируем модель в админке
@@ -59,7 +62,7 @@ admin.site.register(ProblemData)
 
 @admin.register(Notebook)
 class NotebookAdmin(admin.ModelAdmin):
-    list_display = ("id", "title", "owner", "created_at", "updated_at")
+    list_display = ("id", "title", "owner", "compute_device", "created_at", "updated_at")
     list_filter = ("created_at", "updated_at")
     search_fields = ("title", "owner__username")
 
@@ -71,6 +74,14 @@ class CellAdmin(admin.ModelAdmin):
     search_fields = ("notebook__title",)
 
 
+class ContestProblemInline(admin.TabularInline):
+    model = ContestProblem
+    extra = 0
+    autocomplete_fields = ("problem",)
+    ordering = ("position", "id")
+    fields = ("problem", "position")
+
+
 @admin.register(Contest)
 class ContestAdmin(admin.ModelAdmin):
     list_display = (
@@ -78,6 +89,8 @@ class ContestAdmin(admin.ModelAdmin):
         "title",
         "course",
         "is_published",
+        "approval_status",
+        "access_type",
         "is_rated",
         "scoring",
         "registration_type",
@@ -87,9 +100,20 @@ class ContestAdmin(admin.ModelAdmin):
         "created_by",
         "created_at",
     )
-    list_filter = ("is_published", "is_rated", "scoring", "registration_type", "status", "course")
+    list_filter = ("is_published", "approval_status", "access_type", "is_rated", "scoring", "registration_type", "status", "course")
     search_fields = ("title", "course__title", "created_by__username", "source")
-    filter_horizontal = ("problems",)
+    inlines = (ContestProblemInline,)
+    filter_horizontal = ("allowed_participants",)
+    list_editable = ("is_published", "approval_status", "access_type")
+
+    def save_model(self, request, obj, form, change):
+        # Auto-approve contests when admin publishes them
+        if obj.is_published and obj.approval_status == Contest.ApprovalStatus.PENDING:
+            obj.approval_status = Contest.ApprovalStatus.APPROVED
+            obj.approved_by = request.user
+            from django.utils import timezone
+            obj.approved_at = timezone.now()
+        super().save_model(request, obj, form, change)
 
 
 @admin.register(PreValidation)
@@ -144,6 +168,20 @@ class CourseParticipantAdmin(admin.ModelAdmin):
     list_display = ("id", "course", "user", "role", "is_owner", "added_at")
     list_filter = ("role", "is_owner")
     search_fields = ("course__title", "user__username")
+
+@admin.register(FavoriteCourse)
+class FavoriteCourseAdmin(admin.ModelAdmin):
+    list_display = ("id", "user", "course", "position", "created_at")
+    list_filter = ("created_at",)
+    search_fields = ("user__username", "course__title")
+    ordering = ("user_id", "position", "id")
+
+@admin.register(SiteUpdate)
+class SiteUpdateAdmin(admin.ModelAdmin):
+    list_display = ("id", "title", "is_published", "created_at")
+    list_filter = ("is_published", "created_at")
+    search_fields = ("title", "body")
+    ordering = ("-created_at",)
 
 @admin.register(Tag)
 class TagAdmin(admin.ModelAdmin):

@@ -3,11 +3,11 @@
 <head>
     <link
       rel="stylesheet"
-      href="https://cdn.jsdelivr.net/npm/easymde/dist/easymde.min.css"
+      href="https://cdn.jsdelivr.net/npm/easymde/dist/easymde.min.css  "
     />
     <link
       rel="stylesheet"
-      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css  "
       integrity="sha512-iecdLmaskl7CVkqkXNQ/ZH/XLlvWZOJyj7Yy7tcenmpD1ypASozpmT/E0iPtmFIB46ZmdtAc9eNBvH0H/ZpiBw=="
       crossorigin="anonymous"
       referrerpolicy="no-referrer"
@@ -34,8 +34,8 @@
             }
         };
     </script>
-    <script defer src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/markdown-it@13.0.1/dist/markdown-it.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js  "></script>
+    <script src="https://cdn.jsdelivr.net/npm/markdown-it@13.0.1/dist/markdown-it.min.js  "></script>
     <script src="{% static 'notebook/js/utils.js' %}"></script>
     <script src="{% static 'notebook/js/notebook_detail.js' %}"></script>
     <style>
@@ -83,6 +83,199 @@
             border-radius: 4px;
             resize: vertical;
         }
+
+        .output-html table,
+        .output-markdown table,
+        .output-text table {
+            border-collapse: collapse;
+            width: auto;
+            max-width: 100%;
+            font-size: 13px;
+            color: #222;
+        }
+
+        .output-html table.dataframe,
+        .output-markdown table.dataframe {
+            border: 1px solid #e0e0e0;
+            background: #fff;
+        }
+
+        .output-html table.dataframe thead th,
+        .output-markdown table.dataframe thead th {
+            position: sticky;
+            top: 0;
+            background: #f6f6f6;
+            font-weight: 600;
+            border-bottom: 1px solid #d8d8d8;
+            padding: 6px 10px;
+            text-align: right;
+            white-space: nowrap;
+        }
+
+        .output-html table.dataframe tbody th,
+        .output-markdown table.dataframe tbody th {
+            background: #fafafa;
+            font-weight: 600;
+            text-align: right;
+            padding: 6px 10px;
+            border-right: 1px solid #eee;
+            white-space: nowrap;
+        }
+
+        .output-html table.dataframe td,
+        .output-markdown table.dataframe td {
+            padding: 6px 10px;
+            border-top: 1px solid #eee;
+            text-align: right;
+            white-space: nowrap;
+        }
+
+        .output-html table.dataframe tbody tr:nth-child(even),
+        .output-markdown table.dataframe tbody tr:nth-child(even) {
+            background: #f7f9fc;
+        }
+
+        .output-html table.dataframe tbody tr:hover,
+        .output-markdown table.dataframe tbody tr:hover {
+            background: #f1f7ff;
+        }
+
+        .output-html .dataframe-container,
+        .output-markdown .dataframe-container {
+            overflow: auto;
+            max-width: 100%;
+            max-height: 360px;
+            border: 1px solid #e6e6e6;
+            border-radius: 6px;
+        }
+
+        .output-html .dataframe-container.dataframe-expanded,
+        .output-markdown .dataframe-container.dataframe-expanded {
+            max-height: none;
+        }
+
+        .output-html .dataframe-container::-webkit-scrollbar,
+        .output-markdown .dataframe-container::-webkit-scrollbar {
+            height: 10px;
+            width: 10px;
+        }
+
+        .output-html .dataframe-container::-webkit-scrollbar-thumb,
+        .output-markdown .dataframe-container::-webkit-scrollbar-thumb {
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 8px;
+        }
+
+        .output-html .dataframe-container::-webkit-scrollbar-track,
+        .output-markdown .dataframe-container::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.05);
+        }
+
+        .stdin-inline {
+            display: inline-block;
+            vertical-align: baseline;
+        }
+
+        input.stdin-inline {
+            font: inherit;
+            color: inherit;
+            background: transparent;
+            border: none;
+            outline: none;
+            padding: 0;
+            margin: 0;
+            min-width: 8ch;
+            width: 12ch;
+            max-width: 60ch;
+        }
+
+        .dataframe-toolbar {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin: 6px 0;
+            font-size: 12px;
+            color: #444;
+        }
+
+        .dataframe-toolbar button {
+            border: 1px solid #d0d0d0;
+            background: #f7f7f7;
+            color: #333;
+            padding: 4px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        .dataframe-toolbar button:hover {
+            background: #eef3ff;
+            border-color: #b5c7ff;
+        }
+
+        .dataframe-summary {
+            margin-right: auto;
+            color: #666;
+        }
+
+        .dataframe-search {
+            border: 1px solid #d0d0d0;
+            border-radius: 4px;
+            padding: 4px 8px;
+            font-size: 12px;
+            min-width: 160px;
+        }
+
+        .dataframe-search:focus {
+            outline: none;
+            border-color: #9bb8ff;
+            box-shadow: 0 0 0 2px rgba(155, 184, 255, 0.3);
+        }
+
+        .dataframe-info {
+            background: #f7f9ff;
+            border: 1px solid #dbe3ff;
+            border-radius: 6px;
+            padding: 10px 12px;
+            font-size: 12px;
+            color: #334;
+            margin: 6px 0 10px;
+        }
+
+        .dataframe-info table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 6px;
+            font-size: 12px;
+        }
+
+        .dataframe-info th,
+        .dataframe-info td {
+            border-bottom: 1px solid #e6e9f5;
+            padding: 4px 6px;
+            text-align: left;
+        }
+
+        .dataframe-info th {
+            color: #445;
+            font-weight: 600;
+            background: #eef2ff;
+        }
+
+        .df-info-title {
+            font-weight: 600;
+            margin-top: 6px;
+        }
+
+        .df-info-note {
+            margin-top: 6px;
+            color: #667;
+        }
+
+        .output-html table.dataframe td.df-null,
+        .output-markdown table.dataframe td.df-null {
+            background: #fff4cc;
+            color: #7a4b00;
+        }
     </style>
 </head>
 <body>
@@ -91,16 +284,24 @@
          data-create-cell-url="{% url 'runner:create_cell' notebook.id %}"
          data-create-latex-cell-url="{% url 'runner:create_latex_cell' notebook.id %}"
          data-run-cell-url="{% url 'run-cell' %}"
+         data-run-cell-stream-start-url="{% url 'run-cell-stream-start' %}"
+         data-run-cell-stream-status-url="{% url 'run-cell-stream-status' %}"
          data-session-create-url="{% url 'notebook-session-create' %}"
          data-session-reset-url="{% url 'session-reset' %}"
          data-session-files-url="{% url 'session-files' %}"
          data-session-file-upload-url="{% url 'session-file-upload' %}"
          data-session-file-download-url="{% url 'session-file-download' %}"
+         data-session-file-preview-url="{% url 'session-file-preview' %}"
          data-session-stop-url="{% url 'session-stop' %}"
+         data-notebook-device="{{ notebook.compute_device }}"
+         data-update-device-url="{% url 'runner:update_notebook_device' notebook.id %}"
          data-delete-url-template="{% url 'runner:delete_cell' notebook.id 0 %}"
          data-copy-cell-url-template="{% url 'runner:copy_cell' notebook.id 0 %}"
          data-move-cell-url-template="{% url 'runner:move_cell' notebook.id 0 %}"
-         data-save-output-url-template="{% url 'runner:save_cell_output' notebook.id 0 %}">
+         data-save-output-url-template="{% url 'runner:save_cell_output' notebook.id 0 %}"
+         data-export-notebook-url="{% url 'runner:export_notebook' notebook.id %}"
+         data-import-notebook-url="{% url 'runner:import_notebook' %}"
+         data-notebook-url-template="{% url 'runner:notebook_detail' 0 %}">
 
         <div class="notebook-header">
             <div class="notebook-header-title">
@@ -127,6 +328,18 @@
                 <span>Состояние сессии:</span>
                 <span data-session-status>Сессия не создана</span>
             </div>
+            <div class="session-status-row">
+                <span>Устройство вычислений:</span>
+                <label>
+                    <select data-compute-device>
+                        <option value="cpu">CPU</option>
+                        <option value="gpu">GPU</option>
+                    </select>
+                </label>
+                <span data-compute-device-hint style="margin-left: 8px; color: #666; font-size: 12px;">
+                    Применяется при создании/перезапуске сессии
+                </span>
+            </div>
             <div class="session-actions">
                 <button type="button" data-action="create-session">🚀 Создать сессию</button>
                 <button type="button" data-action="reset-session">♻️ Перезапустить сессию</button>
@@ -143,8 +356,11 @@
                     <input type="file" data-upload-input multiple style="display: none;">
                 </div>
             </div>
-            <div class="files-panel-body" data-files-list>
-                <div class="files-empty">Файлы ещё не созданы</div>
+            <div class="files-panel-body">
+                <div data-files-list>
+                    <div class="files-empty">Файлы ещё не созданы</div>
+                </div>
+                <div data-files-preview></div>
             </div>
         </aside>
 
@@ -156,9 +372,8 @@
                 {% csrf_token %}
                 <button type="submit" data-action="delete-notebook">🗑 Удалить блокнот</button>
             </form>
-            <button data-action="export-notebook">📥 Экспорт ноутбука</button>
-            <button data-action="import-notebook">📤 Импорт ноутбука</button>
-            <input type="file" id="import-file-input" accept=".json" style="display: none;" data-import-url="{% url 'runner:import_notebook' %}">
+            <button data-action="export-notebook">📥 Экспорт (.ipynb)</button>
+            <button data-action="import-notebook">📤 Импорт (.ipynb/.json)</button>
             <button data-action="create-cell">➕ Новая ячейка кода</button>
             <button data-action="create-latex-cell">➕ Новая LaTeX-ячейка</button>
             <button onclick="runAll()">Запустить все ячейки с кодом</button>
@@ -178,18 +393,29 @@
 
     {% csrf_token %}
 
+    {% url "run-cell" as run_cell_url %}
+    {% url "run-cell-input" as run_cell_input_url %}
+    {% url "notebook-session-create" as session_create_url %}
+    {% url "session-reset" as session_reset_url %}
+    {% url "session-files" as session_files_url %}
+    {% url "session-file-preview" as session_file_preview_url %}
+    {% url "session-file-download" as session_file_download_url %}
+    {% url "session-stop" as session_stop_url %}
+
     <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            notebookDetail.init({
-                notebookId: {{ notebook.id }},
-                csrfToken: '{{ csrf_token }}',
-                runCellUrl: '{% url "run-cell" %}',
-                sessionCreateUrl: '{% url "notebook-session-create" %}',
-                sessionResetUrl: '{% url "session-reset" %}',
-                sessionFilesUrl: '{% url "session-files" %}',
-                sessionFileDownloadUrl: '{% url "session-file-download" %}',
-                sessionStopUrl: '{% url "session-stop" %}'
-            });
+    document.addEventListener('DOMContentLoaded', function() {
+        notebookDetail.init({
+            notebookId: {{ notebook.id }},  // ✅ Число — кавычки не нужны
+            csrfToken: '{{ csrf_token|escapejs }}',  // ✅ Обязательно экранируем!
+            runCellUrl: '{{ run_cell_url|escapejs }}',
+            runCellInputUrl: '{{ run_cell_input_url|escapejs }}',
+            sessionCreateUrl: '{{ session_create_url|escapejs }}',
+            sessionResetUrl: '{{ session_reset_url|escapejs }}',
+            sessionFilesUrl: '{{ session_files_url|escapejs }}',
+            sessionFilePreviewUrl: '{{ session_file_preview_url|escapejs }}',
+            sessionFileDownloadUrl: '{{ session_file_download_url|escapejs }}',
+            sessionStopUrl: '{{ session_stop_url|escapejs }}'
+        });
         });
     </script>
 </body>

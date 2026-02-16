@@ -18,6 +18,15 @@ const NotebookUtils = {
     formatCellRunResult(data) {
         const blocks = [];
 
+        if (Array.isArray(data.outputs)) {
+            data.outputs.forEach((item) => {
+                const rendered = this.renderOutputItem(item);
+                if (rendered) {
+                    blocks.push(rendered);
+                }
+            });
+        }
+
         if (data.stdout) {
             const escapedStdout = this.escapeHtml(data.stdout);
             blocks.push(`<div class="output-text"><pre>${escapedStdout}</pre></div>`);
@@ -34,6 +43,67 @@ const NotebookUtils = {
         }
 
         return blocks.join('') || '<div class="output-empty">Нет вывода</div>';
+    },
+
+    renderOutputItem(item) {
+        if (!item || typeof item !== 'object') {
+            return '';
+        }
+        const type = String(item.type || '');
+        const data = item.data;
+        const url = item.url;
+        const name = this.escapeHtml(item.name || 'output');
+
+        if (type === 'text/html' && typeof data === 'string') {
+            const isDataframe = data.includes('<table') && data.includes('dataframe');
+            if (isDataframe) {
+                const meta = item.metadata ? encodeURIComponent(JSON.stringify(item.metadata)) : '';
+                const metaAttr = meta ? ` data-meta="${meta}"` : '';
+                return `<div class="output-html"><div class="dataframe-container"${metaAttr}>${data}</div></div>`;
+            }
+            return `<div class="output-html">${data}</div>`;
+        }
+
+        if (type === 'text/markdown' && typeof data === 'string') {
+            const renderer = this.getMarkdownRenderer();
+            const html = renderer.render(data);
+            return `<div class="output-markdown">${html}</div>`;
+        }
+
+        if (type.startsWith('image/')) {
+            const src = this.buildImageSource(type, data, url);
+            if (!src) {
+                if (url) {
+                    return `<div class="output-image-link"><a href="${url}" target="_blank" rel="noopener noreferrer">${name}</a></div>`;
+                }
+                return '';
+            }
+            return `<div class="output-image"><img src="${src}" alt="${name}"></div>`;
+        }
+
+        if (type === 'text/plain') {
+            const text = typeof data === 'string' ? data : String(data || '');
+            const escaped = this.escapeHtml(text);
+            return `<div class="output-text"><pre>${escaped}</pre></div>`;
+        }
+
+        if (url) {
+            return `<div class="output-link"><a href="${url}" target="_blank" rel="noopener noreferrer">${name}</a></div>`;
+        }
+        return '';
+    },
+
+    buildImageSource(type, data, url) {
+        if (typeof data === 'string' && data.trim()) {
+            if (data.startsWith('data:')) {
+                return data;
+            }
+            return `data:${type};base64,${data}`;
+        }
+        if (typeof url === 'string' && url.trim()) {
+            return url;
+        }
+        return '';
     },
 
     async saveCellOutput(notebookId, cellId, code, output, csrfToken, saveOutputUrl) {

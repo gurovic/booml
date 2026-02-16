@@ -58,6 +58,9 @@ const notebookList = {
     initImport() {
         const fileInput = document.getElementById('import-file-input');
         if (fileInput) {
+            // УБИРАЕМ accept атрибут - показываем все файлы
+            // Сервер проверит содержимое файла
+            fileInput.removeAttribute('accept');
             fileInput.addEventListener('change', (e) => {
                 const file = e.target.files[0];
                 if (file) {
@@ -69,13 +72,28 @@ const notebookList = {
     },
 
     triggerImportFileSelect() {
-        const fileInput = document.getElementById('import-file-input');
-        if (fileInput) {
-            fileInput.click();
-        }
+        // Создаем input динамически для лучшей совместимости с браузерами
+        const input = document.createElement('input');
+        input.type = 'file';
+        // НЕ устанавливаем accept - показываем все файлы, сервер проверит содержимое
+        // Это гарантирует, что .ipynb файлы будут доступны для выбора
+        input.style.display = 'none';
+        
+        input.addEventListener('change', (event) => {
+            const file = event.target.files?.[0];
+            if (file) {
+                this.importNotebook(file);
+            }
+            document.body.removeChild(input);
+        });
+        
+        document.body.appendChild(input);
+        input.click();
     },
 
     async importNotebook(file) {
+        console.log('Импорт файла:', file.name, 'тип:', file.type, 'размер:', file.size);
+        
         const fileInput = document.getElementById('import-file-input');
         const importUrl = fileInput?.dataset.importUrl;
         
@@ -84,10 +102,9 @@ const notebookList = {
             return;
         }
 
-        if (!file.name.endsWith('.json')) {
-            this.showStatus('error', 'Поддерживаются только JSON файлы');
-            return;
-        }
+        // УБРАНА проверка расширения - сервер проверит содержимое файла
+        // Это позволяет импортировать файлы даже если браузер не распознал расширение
+        // Поддерживаются файлы .ipynb и .json
 
         try {
             this.showStatus('info', 'Импорт ноутбука...');
@@ -110,11 +127,10 @@ const notebookList = {
             }
 
             if (data.status === 'success') {
-                let message = `Ноутбук "${data.notebook_title}" успешно импортирован. `;
-                message += `Создано ячеек: ${data.cells_created} из ${data.cells_total}`;
+                let message = data.message || 'Ноутбук успешно импортирован';
                 
-                if (data.warnings && data.warnings.length > 0) {
-                    message += `. Предупреждений: ${data.warnings.length}`;
+                if (data.errors && data.errors.length > 0) {
+                    message += `. Ошибок при создании ячеек: ${data.errors.length}`;
                 }
 
                 this.showStatus('success', message);

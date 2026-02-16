@@ -34,6 +34,7 @@ class VmSpec:
     resources: VmResources
     network: VmNetworkPolicy
     ttl_sec: int
+    gpu: bool = False
 
 
 @dataclass

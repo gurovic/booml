@@ -1,11 +1,13 @@
-from .submissions import build_descriptor_from_problem, SubmissionCreateView, MySubmissionsListView
+from .submissions import build_descriptor_from_problem, SubmissionCreateView, MySubmissionsListView, SubmissionDetailView, ProblemSubmissionsListView
 from .sessions import (
+    CreateNotebookView,
     CreateNotebookSessionView,
     ResetSessionView,
     StopSessionView,
     SessionFilesView,
     SessionFileDownloadView,
     SessionFileUploadView,
+    SessionFilePreviewView,
     build_notebook_session_id,
     extract_notebook_id,
     ensure_notebook_access,
@@ -15,6 +17,16 @@ from .courses import (
     CourseParticipantsUpdateView,
     CourseSelfEnrollView,
     CourseTreeView,
+    CourseBrowseView,
     SectionCreateView,
+    SectionDeleteView,
 )
-from .run_cell import RunCellView
+from .home import (
+    HomeSidebarView,
+    FavoriteCoursesListView,
+    FavoriteCoursesAddView,
+    FavoriteCoursesRemoveView,
+    FavoriteCoursesReorderView,
+)
+from .run_cell import RunCellView, RunCellInputView
+from .run_cell_stream import RunCellStreamStartView, RunCellStreamStatusView

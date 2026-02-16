@@ -3,7 +3,7 @@ from typing import Iterable
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
 
-from ...models import Course, CourseParticipant, Section
+from ...models import Course, CourseParticipant, Section, SectionTeacher
 from ...services import (
     CourseCreateInput,
     SectionCreateInput,
@@ -83,9 +83,15 @@ class CourseCreateSerializer(serializers.Serializer):
         section = data.pop("section_id")
         data["section"] = section
         owner = self.context["request"].user
-        if not is_root_section(section) and section.owner_id != owner.id:
+        if is_root_section(section):
+            # Root sections are shared categories. Only teachers/admins can create content there.
+            if not (owner.is_staff or owner.is_superuser):
+                raise serializers.ValidationError(
+                    {"section_id": "Only teachers can create courses in root sections"}
+                )
+        elif section.owner_id != owner.id and not SectionTeacher.objects.filter(section=section, user=owner).exists():
             raise serializers.ValidationError(
-                {"section_id": "Only section owner can create courses in this section"}
+                {"section_id": "Only section owner or assigned teacher can create courses in this section"}
             )
         data["teacher_objs"] = _resolve_users(data.get("teacher_ids") or [], "teacher_ids")
         data["student_objs"] = _resolve_users(data.get("student_ids") or [], "student_ids")
@@ -179,10 +185,16 @@ class SectionCreateSerializer(serializers.Serializer):
             raise serializers.ValidationError(
                 {"title": "Root section with this title already exists"}
             )
-        if parent is not None and not is_root_section(parent) and parent.owner_id != owner.id:
-            raise serializers.ValidationError(
-                {"parent_id": "Only section owner can create nested sections"}
-            )
+        if parent is not None:
+            if is_root_section(parent):
+                if not (owner.is_staff or owner.is_superuser):
+                    raise serializers.ValidationError(
+                        {"parent_id": "Only teachers can create sections in root categories"}
+                    )
+            elif parent.owner_id != owner.id and not SectionTeacher.objects.filter(section=parent, user=owner).exists():
+                raise serializers.ValidationError(
+                    {"parent_id": "Only section owner or assigned teacher can create nested sections"}
+                )
         return data
 
     def create(self, validated_data):

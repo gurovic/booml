@@ -36,6 +36,13 @@ services:
         aliases:
           - redis
 
+  runner-vm:
+    image: runner-vm:latest
+    build:
+      context: ./backend
+      dockerfile: docker/Dockerfile
+    command: ["true"]
+
   backend:
     container_name: booml-backend
     build:
@@ -59,6 +66,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      runner-vm:
+        condition: service_started
     environment:
       DJANGO_SETTINGS_MODULE: core.settings
       SECRET_KEY: dev-secret-key
@@ -71,7 +80,7 @@ services:
       DB_PORT: "5432"
       ALLOWED_HOSTS: booml.letovo.site,backend.booml.letovo.site,backend,localhost,127.0.0.1
       CSRF_TRUSTED_ORIGINS: http://localhost:8101,http://frontend:8101,http://booml.letovo.site,https://booml.letovo.site,http://backend.booml.letovo.site,https://backend.booml.letovo.site
-      RUNTIME_EXECUTION_BACKEND: jupyter
+      RUNTIME_EXECUTION_BACKEND: legacy
       RUNTIME_VM_BACKEND: docker
       # Host path corresponding to /app inside container; used for Docker VM bind mounts.
       RUNTIME_VM_HOST_ROOT: ${PWD}/backend
@@ -137,27 +146,6 @@ services:
       - "8101:8101"
     depends_on:
       - backend
-
-  notebooks:
-    container_name: booml-notebooks
-    build:
-      context: ./backend
-      dockerfile: docker/Dockerfile
-    working_dir: /workspace
-    command: >
-      jupyter lab
-        --ip=0.0.0.0
-        --port=8888
-        --no-browser
-        --allow-root
-        --NotebookApp.token=''
-        --NotebookApp.password=''
-        --NotebookApp.allow_remote_access=True
-        --NotebookApp.notebook_dir=/workspace
-    volumes:
-      - ./backend/media/notebook_sessions:/workspace
-    ports:
-      - "8888:8888"
 
 volumes:
   frontend-node-modules:

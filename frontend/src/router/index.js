@@ -1,13 +1,20 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import StartPage from '@/pages/StartPage.vue'
 import ProblemPage from '@/pages/ProblemPage.vue'
+import SubmissionPage from '@/pages/SubmissionPage.vue'
 import HomePage from '@/pages/HomePage.vue'
 import SectionPage from '@/pages/SectionPage.vue'
 import CoursePage from '@/pages/CoursePage.vue'
 import CourseLeaderboardPage from '@/pages/CourseLeaderboardPage.vue'
 import ContestPage from '@/pages/ContestPage.vue'
+import CoursesPage from '@/pages/CoursesPage.vue'
+import ContestLeaderboardPage from '@/pages/ContestLeaderboardPage.vue'
 import LoginPage from '@/pages/LoginPage.vue'
 import RegisterPage from '@/pages/RegisterPage.vue'
+import PolygonPage from '@/pages/PolygonPage.vue'
+import PolygonProblemEditPage from '@/pages/PolygonProblemEditPage.vue'
+import SubmissionListPage from '@/pages/SubmissionListPage.vue'
+import NotebookPage from '@/pages/NotebookPage.vue'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -23,9 +30,24 @@ const router = createRouter({
       component: StartPage,
     },
     {
+      path: '/courses',
+      name: 'courses',
+      component: CoursesPage,
+    },
+    {
       path: '/problem/:id',
       name: 'problem',
       component: ProblemPage,
+    },
+    {
+      path: '/submission/:id',
+      name: 'submission',
+      component: SubmissionPage,
+    },
+    {
+      path: '/problem/:id/submissions',
+      name: 'problem-submissions',
+      component: SubmissionListPage,
     },
     {
       path: '/section/:id',
@@ -51,6 +73,11 @@ const router = createRouter({
       path: '/contest/:id',
       name: 'contest',
       component: ContestPage,
+    },
+    {
+      path: '/contest/:id/leaderboard',
+      name: 'contest-leaderboard',
+      component: ContestLeaderboardPage,
     },{
       path: '/login',
       name: 'login',
@@ -59,6 +86,18 @@ const router = createRouter({
       path: '/register',
       name: 'register',
       component: RegisterPage,
+    },{
+      path: '/polygon',
+      name: 'polygon',
+      component: PolygonPage,
+    },{
+      path: '/polygon/problem/:id',
+      name: 'polygon-problem-edit',
+      component: PolygonProblemEditPage,
+    },{
+      path: '/notebook/:id',
+      name: 'notebook',
+      component: NotebookPage,
     }
   ],
 })

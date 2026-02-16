@@ -48,7 +48,11 @@ def _finalize_report(prevalidation: PreValidation, submission: Submission, start
 
     with transaction.atomic():
         prevalidation.save()
-        submission.status = "validated" if prevalidation.valid else "failed"
+        submission.status = (
+            Submission.STATUS_VALIDATED
+            if prevalidation.valid
+            else Submission.STATUS_VALIDATION_ERROR
+        )
         submission.save(update_fields=["status"])
 
     return prevalidation
@@ -79,22 +83,57 @@ def run_prevalidation(submission: Submission) -> PreValidation:
     try:
         with open(file_path, "r", encoding="utf-8", newline="") as f:
             reader = csv.DictReader(f)
+            header = list(reader.fieldnames or [])
             rows = list(reader)
     except Exception:
         _append_error(prevalidation, "Cannot read file or invalid encoding")
         return _finalize_report(prevalidation, submission, start_ts)
 
+    if not header:
+        _append_error(prevalidation, "Missing CSV header row")
+        return _finalize_report(prevalidation, submission, start_ts)
+
+    if len(header) != len(set(header)):
+        duplicates = [name for name in header if header.count(name) > 1]
+        _append_error(prevalidation, f"Duplicate column names in header: {sorted(set(duplicates))}")
+
+    expected_columns = [id_column] + [col for col in output_columns if col != id_column]
+    missing_columns = [col for col in expected_columns if col not in header]
+    extra_columns = [col for col in header if col not in expected_columns]
+    if missing_columns:
+        _append_error(prevalidation, f"Missing required columns: {missing_columns}")
+    if extra_columns:
+        _append_error(prevalidation, f"Unexpected columns: {extra_columns}")
+
+    if len(rows) == 0:
+        _append_error(prevalidation, "CSV contains no data rows")
+        return _finalize_report(prevalidation, submission, start_ts)
+
     sample_rows = []
+    sample_header = []
     sample_file = getattr(getattr(submission.problem, "data", None), "sample_submission_file", None)
-    sample_path = getattr(sample_file, "path", None)
+    sample_path = None
+    if sample_file and getattr(sample_file, "name", ""):
+        try:
+            sample_path = sample_file.path
+        except Exception:
+            sample_path = None
     if sample_path:
         try:
             with open(sample_path, "r", encoding="utf-8", newline="") as f:
-                sample_rows = list(csv.DictReader(f))
+                sample_reader = csv.DictReader(f)
+                sample_header = list(sample_reader.fieldnames or [])
+                sample_rows = list(sample_reader)
         except Exception:
             _append_error(prevalidation, "Cannot read sample submission file")
     else:
         sample_rows = []
+
+    if sample_header and header != sample_header:
+        _append_error(
+            prevalidation,
+            f"Columns do not match sample submission: expected {sample_header}, got {header}",
+        )
 
     if sample_rows and len(rows) != len(sample_rows):
         _append_error(prevalidation, "Row count does not match sample submission")
@@ -104,6 +143,12 @@ def run_prevalidation(submission: Submission) -> PreValidation:
     last_id = None
 
     for line_no, row in enumerate(rows, start=2):
+        if row.get(None):
+            _append_error(prevalidation, f"Too many columns at line {line_no}")
+            continue
+        if any(value is None for value in row.values()):
+            _append_error(prevalidation, f"Not enough columns at line {line_no}")
+
         row_id = row.get(id_column)
         if row_id is None:
             _append_error(prevalidation, f"Missing ID at line {line_no}")
