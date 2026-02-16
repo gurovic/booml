@@ -1,4 +1,4 @@
-FROM python:3.14-slim
+FROM python:3.11-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -35,8 +35,9 @@ RUN apt-get update -o Acquire::Retries=3 && apt-get install -y --no-install-reco
 
 # Install a minimal toolset for notebook sessions.
 COPY docker_requirements.txt /tmp/docker_requirements.txt
-RUN uv pip install --system -r /tmp/docker_requirements.txt && \
-    rm /tmp/docker_requirements.txt
+RUN python -m pip install --upgrade --no-cache-dir pip \
+    && uv pip install --system -r /tmp/docker_requirements.txt \
+    && rm /tmp/docker_requirements.txt
 
 # Контейнер держится живым; агент стартует через docker exec.
 CMD ["sleep", "infinity"]

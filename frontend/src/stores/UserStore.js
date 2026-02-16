@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed, watch } from 'vue'
 import * as user from '@/api/user'
+import { resetCourseTreeCache } from '@/utils/courseTreeCache'
 
 export const useUserStore = defineStore('user', () => {
     const currentUser = ref(null)
@@ -10,8 +11,15 @@ export const useUserStore = defineStore('user', () => {
 
     watch(
         currentUser,
-        (newCurrentUser) => {
+        (newCurrentUser, oldCurrentUser) => {
             localStorage.setItem('currentUser', JSON.stringify(newCurrentUser));
+
+            // Prevent stale private titles in breadcrumbs when switching users without reload.
+            const newId = newCurrentUser?.id ?? null
+            const oldId = oldCurrentUser?.id ?? null
+            if (newId !== oldId) {
+                resetCourseTreeCache({ userCacheKey: newId })
+            }
         },
         { deep: true }
     );
@@ -40,6 +48,7 @@ export const useUserStore = defineStore('user', () => {
                     'refreshToken': refreshToken,
                 }
 
+                resetCourseTreeCache({ userCacheKey: res.user.id })
                 return {
                     success: true,
                     message: res.message,
@@ -81,6 +90,7 @@ export const useUserStore = defineStore('user', () => {
                     'refreshToken': refreshToken,
                 }
 
+                resetCourseTreeCache({ userCacheKey: res.user.id })
                 return {
                     success: true,
                     message: res.message,
@@ -104,6 +114,7 @@ export const useUserStore = defineStore('user', () => {
         try {
             await user.logout()
             clearStorage()
+            resetCourseTreeCache({ userCacheKey: null })
             return { success: true }
         } catch (err) {
             console.error('Failed to logout user:', err)
@@ -130,17 +141,20 @@ export const useUserStore = defineStore('user', () => {
             } else {
                 // Clear all fields when not authenticated
                 currentUser.value = null
+                resetCourseTreeCache({ userCacheKey: null })
             }
             return res
         } catch (err) {
             console.error('Failed to check authorisation user:', err)
             currentUser.value = null
+            resetCourseTreeCache({ userCacheKey: null })
             return { is_authenticated: false }
         }
     }
 
     function clearStorage() {
         currentUser.value = null
+        resetCourseTreeCache({ userCacheKey: null })
     }
 
     return {

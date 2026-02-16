@@ -147,6 +147,7 @@ const formatDate = (dateString) => {
   if (!dateString) return '-'
   const date = new Date(dateString)
   return date.toLocaleString('ru-RU', {
+    timeZone: 'Europe/Moscow',
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
@@ -159,8 +160,9 @@ const getStatusLabel = (status) => {
   const statusMap = {
     'pending': '⏳ В очереди',
     'running': '🏃 Выполняется',
-    'accepted': '✅ Принято',
+    'accepted': '✅ Протестировано',
     'failed': '❌ Ошибка',
+    'validation_error': '⚠️ Ошибка валидации',
     'validated': '✅ Валидировано'
   }
   return statusMap[status] || status
@@ -294,7 +296,8 @@ const formatFileSize = (bytes) => {
   color: #155724;
 }
 
-.submission__status--failed {
+.submission__status--failed,
+.submission__status--validation_error {
   background: #f8d7da;
   color: #721c24;
 }

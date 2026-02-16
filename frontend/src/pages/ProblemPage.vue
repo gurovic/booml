@@ -1,10 +1,17 @@
 <template>
   <UiHeader />
+  <div class="container">
+    <UiBreadcrumbs :problem="problem" />
+  </div>
   <div class="problem">
     <div class="container">
       <div v-if="problem != null" class="problem__inner">
         <div class="problem__content">
-          <h1 class="problem__name">{{ problem.title }}</h1>
+          <h1 class="problem__name">
+            <span v-if="contestProblemLabel" class="problem__contest-label">Problem {{ contestProblemLabel }}</span>
+            <span class="problem__title-text">{{ problem.title }}</span>
+            <UiIdPill v-if="problem?.id" class="problem__id" :id="problem.id" title="ID задачи" />
+          </h1>
           <div class="problem__text" v-html="problem.rendered_statement"></div>
         </div>
         <ul class="problem__menu">
@@ -14,9 +21,13 @@
               <li
                 class="problem__file"
                 v-for="file in availableFiles"
-                :key="file.name"
+                :key="file.key"
               >
-                <a class="problem__file-href button button--secondary" :href="file.url" :download="file.name">{{ file.name }}</a>
+                <a
+                  class="problem__file-href button button--secondary"
+                  :href="file.url"
+                  :download="file.downloadName"
+                >{{ file.downloadName }}</a>
             </li>
             </ul>
           </li>
@@ -68,18 +79,6 @@
               </div>
             </div>
           </li>
-          <li class="problem__files problem__menu-item" v-if="availableFiles.length > 0">
-            <h2 class="problem__files-title problem__item-title">Файлы</h2>
-            <ul class="problem__files-list">
-              <li
-                class="problem__file"
-                v-for="file in availableFiles"
-                :key="file.name"
-              >
-                <a class="problem__file-href button button--secondary" :href="file.url" :download="file.name">{{ file.name }}</a>
-            </li>
-            </ul>
-          </li>
           <li class="problem__submissions problem__menu-item">
             <h2 class="problem__submissions-title problem__item-title">Последние посылки</h2>
             <ul class="problem__submissions-list">
@@ -100,7 +99,7 @@
                 >
                   <p>{{ submission.id }}</p>
                   <p>{{ submission.submitted_at }}</p>
-                  <p>{{ submission.status }}</p>
+                  <p>{{ getStatusLabel(submission.status) }}</p>
                   <p>{{ roundMetric(submission.metric) }}</p>
                 </router-link>
               </li>
@@ -124,18 +123,22 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue'
 import { useRoute } from 'vue-router'
+import { contestApi } from '@/api'
 import { getProblem } from '@/api/problem'
 import { submitSolution } from '@/api/submission'
 import { createNotebook } from '@/api/notebook'
 import { useUserStore } from '@/stores/UserStore'
 import MarkdownIt from 'markdown-it'
-import mkKatex from 'markdown-it-katex'
+import markdownKatex from '@/utils/markdownKatex'
 import UiHeader from '@/components/ui/UiHeader.vue'
+import UiBreadcrumbs from '@/components/ui/UiBreadcrumbs.vue'
+import UiIdPill from '@/components/ui/UiIdPill.vue'
+import { normalizeContestProblemLabel, toContestProblemLabel } from '@/utils/contestProblemLabel'
 
 const md = new MarkdownIt({
   html: false,
   breaks: true,
-}).use(mkKatex)
+}).use(markdownKatex, { throwOnError: false })
 
 const route = useRoute()
 const userStore = useUserStore()
@@ -147,8 +150,34 @@ let submitMessage = ref(null)
 let fileInputKey = ref(0)
 let isCreatingNotebook = ref(false)
 let notebookMessage = ref(null)
+const contestProblemLabel = ref('')
 
-onMounted(async () => {
+const queryValue = (raw) => (Array.isArray(raw) ? raw[0] : raw)
+const contestIdFromQuery = computed(() => {
+  const parsed = Number(queryValue(route.query.contest))
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null
+})
+const queryProblemLabel = computed(() => normalizeContestProblemLabel(queryValue(route.query.problem_label)))
+
+const resolveContestProblemLabel = async () => {
+  contestProblemLabel.value = queryProblemLabel.value
+  if (contestProblemLabel.value || !problem.value?.id || !contestIdFromQuery.value) return
+
+  try {
+    const contestData = await contestApi.getContest(contestIdFromQuery.value)
+    const problems = Array.isArray(contestData?.problems) ? contestData.problems : []
+    const idx = problems.findIndex(row => Number(row?.id) === Number(problem.value.id))
+    if (idx < 0) return
+
+    contestProblemLabel.value =
+      normalizeContestProblemLabel(problems[idx]?.label) || toContestProblemLabel(idx)
+  } catch (err) {
+    console.warn('Failed to resolve contest problem label:', err)
+  }
+}
+
+const loadProblem = async () => {
+  contestProblemLabel.value = ''
   try {
     const res = await getProblem(route.params.id)
     problem.value = res
@@ -157,20 +186,39 @@ onMounted(async () => {
   } finally {
     if (problem.value != null) {
       problem.value.rendered_statement = md.render(problem.value.statement)
+      await resolveContestProblemLabel()
     }
   }
-})
+}
+
+onMounted(loadProblem)
 
 const availableFiles = computed(() => {
   if (!problem.value || !problem.value.files) return []
   return Object.entries(problem.value.files)
     .filter(([, url]) => url)
-    .map(([name, url]) => ({ name, url }))
+    .map(([key, url]) => {
+      const k = String(key || '')
+      const downloadName = k.toLowerCase().endsWith('.csv') ? k : `${k}.csv`
+      return { key: k, url, downloadName }
+    })
 })
 
 const roundMetric = (value) => {
   if (value == null) return '-'
   return value.toFixed(3)
+}
+
+const getStatusLabel = (status) => {
+  const statusMap = {
+    'pending': '⏳ В очереди',
+    'running': '🏃 Выполняется',
+    'accepted': '✅ Протестировано',
+    'failed': '❌ Ошибка',
+    'validation_error': '⚠️ Ошибка валидации',
+    'validated': '✅ Валидировано'
+  }
+  return statusMap[status] || status
 }
 
 const handleFileChange = (event) => {
@@ -266,7 +314,7 @@ const handleCreateNotebook = async () => {
 .problem {
   width: 100%;
   height: 100%;
-  padding: 20px 0;
+  padding: 10px 0;
 }
 
 .problem__inner {
@@ -304,6 +352,24 @@ const handleCreateNotebook = async () => {
 
   padding-left: 16px;
   border-left: 6px solid var(--color-primary);
+  overflow-wrap: anywhere;
+}
+
+.problem__id {
+  margin-left: 12px;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.problem__title-text {
+  display: inline;
+}
+
+.problem__contest-label {
+  display: block;
+  font-size: 22px;
+  font-weight: 600;
+  margin-bottom: 8px;
 }
 
 .problem__text {
@@ -315,6 +381,21 @@ const handleCreateNotebook = async () => {
 
 .problem__text :deep(p) {
   margin-bottom: 16px;
+}
+
+.problem__text :deep(.math-block) {
+  margin: 16px 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.problem__text :deep(.math-block .katex-display) {
+  margin: 0;
+  text-align: center;
+}
+
+.problem__text :deep(.math-block .katex-display > .katex) {
+  white-space: nowrap;
 }
 
 .problem__text :deep(h2) {

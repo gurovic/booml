@@ -3,81 +3,84 @@
     <UiHeader />
 
     <main class="notebook-main">
-      <div class="container notebook-container">
-        <div class="notebook-title-row">
-          <h1 class="notebook-title">{{ notebookTitle }}</h1>
-        </div>
+      <div class="notebook-title-row">
+        <h1 class="notebook-title">{{ notebookTitle }}</h1>
+      </div>
 
-        <div
-          v-if="viewState.kind !== 'ready'"
-          class="notebook-state"
-          :class="{ 'notebook-state--error': viewState.kind === 'error' }"
-        >
-          {{ viewState.message }}
-        </div>
-        <div v-else class="notebook-layout">
-          <aside class="notebook-files">
-            <div class="files-header">
-              <h2 class="files-title">Файлы</h2>
-              <button type="button" class="files-add-button" title="Загрузить файл" disabled>
-                <svg class="files-add-icon" viewBox="0 0 24 24" aria-hidden="true">
+      <div
+        v-if="viewState.kind !== 'ready'"
+        class="notebook-state"
+        :class="{ 'notebook-state--error': viewState.kind === 'error' }"
+      >
+        {{ viewState.message }}
+      </div>
+      <div v-else class="notebook-layout">
+        <aside class="notebook-files">
+          <div class="files-header">
+            <h2 class="files-title">Файлы</h2>
+            <button type="button" class="files-upload-button" disabled>
+              Загрузить
+            </button>
+          </div>
+          <div class="files-list">
+            <div v-if="files.length === 0" class="files-empty">
+              Файлы появятся после запуска сессии
+            </div>
+            <button
+              v-for="file in files"
+              :key="file.name"
+              type="button"
+              class="file-item"
+            >
+              <span class="file-icon">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
                   <path
-                    d="M12 6v12M6 12h12"
+                    d="M6 3h7l5 5v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"
                     fill="none"
                     stroke="currentColor"
-                    stroke-width="2.2"
-                    stroke-linecap="round"
+                    stroke-width="1.6"
                   />
+                  <path d="M13 3v6h6" fill="none" stroke="currentColor" stroke-width="1.6" />
                 </svg>
-              </button>
-            </div>
-            <div class="files-list">
-              <div v-if="files.length === 0" class="files-empty">
-                Файлы появятся после запуска сессии
-              </div>
-              <button
-                v-for="file in files"
-                :key="file.name"
-                type="button"
-                class="file-item"
-              >
-                <span class="file-icon">
-                  <svg viewBox="0 0 24 24" aria-hidden="true">
-                    <path
-                      d="M6 3h7l5 5v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="1.6"
-                    />
-                    <path d="M13 3v6h6" fill="none" stroke="currentColor" stroke-width="1.6" />
-                  </svg>
-                </span>
-                <span class="file-name">{{ file.name }}</span>
-              </button>
-            </div>
-          </aside>
+              </span>
+              <span class="file-name">{{ file.name }}</span>
+            </button>
+          </div>
+        </aside>
 
-          <section class="notebook-workspace">
-            <div class="notebook-toolbar">
+        <section class="notebook-workspace">
+          <div class="notebook-toolbar">
+            <div class="toolbar-group">
               <div
                 v-for="action in toolbarActions"
                 :key="action.id"
-                :class="['toolbar-pill', action.variant === 'ghost' ? 'toolbar-pill--ghost' : '']"
+                :class="['toolbar-pill', 'toolbar-pill--' + action.id]"
               >
                 <span class="toolbar-label">{{ action.label }}</span>
               </div>
             </div>
-
-            <div class="cells-list">
-              <div v-if="orderedCells.length === 0" class="cells-empty">
-                В блокноте пока нет ячеек
+            <div class="toolbar-group toolbar-group--right">
+              <div class="toolbar-pill toolbar-session">
+                <span class="toolbar-label">Сессия</span>
+                <span class="toolbar-session-dot" aria-hidden="true"></span>
               </div>
+              <div class="toolbar-pill">
+                <span class="toolbar-label">Настройки</span>
+              </div>
+            </div>
+          </div>
 
-              <div
-                v-for="cell in orderedCells"
-                :key="cell.id"
-                class="cell-row"
-              >
+          <div class="cells-list">
+            <div v-if="orderedCells.length === 0" class="cells-empty">
+              В блокноте пока нет ячеек
+            </div>
+
+            <div
+              v-for="cell in orderedCells"
+              :key="cell.id"
+              class="cell-stack"
+            >
+              <div class="cell-row">
                 <article class="cell-card">
                   <div class="cell-body">
                     <button
@@ -87,22 +90,17 @@
                       disabled
                       title="Запуск ячейки"
                     >
-                      <svg viewBox="0 0 24 24" aria-hidden="true">
-                        <polygon points="8,5 19,12 8,19" fill="currentColor" />
-                      </svg>
+                      <span class="material-symbols-rounded" aria-hidden="true">play_arrow</span>
                     </button>
 
                     <div class="cell-content">
-                      <div v-if="cell.cell_type === 'code'" class="code-block">
-                        <div class="code-lines">
-                          <span
-                            v-for="(line, idx) in codeLines(cell.content)"
-                            :key="`${cell.id}-line-${idx}`"
-                            class="code-line"
-                            v-text="line || ' '"
-                          ></span>
-                        </div>
-                      </div>
+                    <div v-if="cell.cell_type === 'code'" class="code-block">
+                      <NotebookCodeEditor
+                        v-model="cell.content"
+                        @update:modelValue="() => scheduleSave(cell)"
+                        @blur="() => flushSave(cell)"
+                      />
+                    </div>
 
                       <div v-else class="text-block">
                         {{ cell.content || ' ' }}
@@ -122,16 +120,9 @@
                     >
                       error
                     </span>
-                    <svg v-else viewBox="0 0 24 24" aria-hidden="true">
-                      <path
-                        d="M5 12.5l4 4 10-10"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="2"
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                      />
-                    </svg>
+                    <span v-else class="material-symbols-rounded" aria-hidden="true">
+                      more_horiz
+                    </span>
                   </span>
                   <div class="cell-output-content" v-html="cell.output"></div>
                 </div>
@@ -150,23 +141,23 @@
                     </button>
                 </div>
               </div>
-            </div>
 
-            <div class="cells-footer">
-              <div class="footer-group">
-                <button
-                  v-for="action in footerActions"
-                  :key="action.id"
-                  type="button"
-                  class="footer-pill"
-                  disabled
-                >
-                  {{ action.label }}
-                </button>
+              <div class="cell-insert-zone">
+                <div class="footer-group cell-insert-group">
+                  <button
+                    v-for="action in footerActions"
+                    :key="`${cell.id}-${action.id}`"
+                    type="button"
+                    class="footer-pill"
+                    disabled
+                  >
+                    {{ action.label }}
+                  </button>
+                </div>
               </div>
             </div>
-          </section>
-        </div>
+          </div>
+        </section>
       </div>
     </main>
   </div>
@@ -176,13 +167,16 @@
 import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import UiHeader from '@/components/ui/UiHeader.vue'
-import { getNotebook } from '@/api/notebook'
+import NotebookCodeEditor from '@/components/NotebookCodeEditor.vue'
+import { getNotebook, saveCodeCell, saveTextCell } from '@/api/notebook'
 
 const route = useRoute()
 
 const notebook = ref(null)
 const state = ref('idle')
 const stateMessage = ref('')
+const saveTimers = new Map()
+const lastSavedContent = new Map()
 
 const notebookId = computed(() => Number(route.params.id))
 const hasValidId = computed(() => Number.isInteger(notebookId.value) && notebookId.value > 0)
@@ -215,26 +209,68 @@ const files = computed(() => {
 })
 
 const toolbarActions = [
-  { id: 'code', label: '+ Code', variant: 'primary' },
-  { id: 'text', label: '+ Text', variant: 'primary' },
-  { id: 'run', label: 'Run all', variant: 'ghost' },
+  { id: 'code', label: '+ Код', variant: 'primary' },
+  { id: 'text', label: '+ Текст', variant: 'primary' },
+  { id: 'run', label: 'Выполнить всё', variant: 'primary' },
 ]
-
 const footerActions = [
-  { id: 'code', label: '+ Code' },
-  { id: 'text', label: '+ Text' },
+  { id: 'code', label: '+ Код' },
+  { id: 'text', label: '+ Текст' },
 ]
 
 const cellActions = [
   { id: 'up', title: 'Вверх', icon: 'arrow_upward' },
   { id: 'down', title: 'Вниз', icon: 'arrow_downward' },
   { id: 'delete', title: 'Удалить', icon: 'delete' },
+  { id: 'more', title: 'Еще', icon: 'more_horiz' },
 ]
 
-const codeLines = (content) => {
-  const text = typeof content === 'string' ? content : ''
-  const lines = text.split('\n')
-  return lines.length ? lines : ['']
+const seedSavedContent = (cells) => {
+  lastSavedContent.clear()
+  saveTimers.forEach((timer) => clearTimeout(timer))
+  saveTimers.clear()
+  cells.forEach((cell) => {
+    lastSavedContent.set(cell.id, typeof cell.content === 'string' ? cell.content : '')
+  })
+}
+
+const saveCellContent = async (cell) => {
+  if (!cell?.id || !hasValidId.value) return
+  const content = typeof cell.content === 'string' ? cell.content : ''
+  const lastSaved = lastSavedContent.get(cell.id)
+  if (content === lastSaved) return
+
+  try {
+    if (cell.cell_type === 'code') {
+      await saveCodeCell(notebookId.value, cell.id, content, cell.output || '')
+    } else if (cell.cell_type === 'text') {
+      await saveTextCell(notebookId.value, cell.id, content)
+    }
+    lastSavedContent.set(cell.id, content)
+  } catch (error) {
+    console.warn('Failed to autosave cell', cell.id, error)
+  }
+}
+
+const scheduleSave = (cell) => {
+  if (!cell?.id) return
+  const existing = saveTimers.get(cell.id)
+  if (existing) clearTimeout(existing)
+  const timer = setTimeout(() => {
+    saveTimers.delete(cell.id)
+    saveCellContent(cell)
+  }, 1000)
+  saveTimers.set(cell.id, timer)
+}
+
+const flushSave = (cell) => {
+  if (!cell?.id) return
+  const timer = saveTimers.get(cell.id)
+  if (timer) {
+    clearTimeout(timer)
+    saveTimers.delete(cell.id)
+  }
+  saveCellContent(cell)
 }
 
 const isErrorOutput = (output) => {
@@ -255,6 +291,9 @@ const loadNotebook = async () => {
   stateMessage.value = ''
   try {
     notebook.value = await getNotebook(notebookId.value)
+    if (Array.isArray(notebook.value?.cells)) {
+      seedSavedContent(notebook.value.cells)
+    }
     state.value = 'ready'
   } catch (err) {
     const message = err?.message || 'Не удалось загрузить блокнот.'
@@ -278,11 +317,7 @@ watch(notebookId, () => {
 }
 
 .notebook-main {
-  padding: 24px 0 40px;
-}
-
-.notebook-container {
-  max-width: 1280px;
+  padding: 20px 30px 50px;
 }
 
 .notebook-title-row {
@@ -294,9 +329,8 @@ watch(notebookId, () => {
 
 .notebook-title {
   font-family: var(--font-title);
-  font-size: 44px;
-  margin: 0;
-  color: #0f172a;
+  font-size: 48px;
+  color: var(--color-title-text);
 }
 
 .notebook-state {
@@ -315,80 +349,75 @@ watch(notebookId, () => {
 
 .notebook-layout {
   display: grid;
-  grid-template-columns: 320px 1fr;
-  gap: 24px;
+  grid-template-columns: 300px 1fr;
+  gap: 20px;
   align-items: start;
 }
 
 .notebook-files {
   background: var(--color-bg-card);
   border-radius: 20px;
-  padding: 18px;
+  padding: 10px;
   border: 1px solid var(--color-border-light);
-  box-shadow: 0 8px 20px rgba(30, 38, 74, 0.08);
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.25);
 }
 
 .files-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 12px;
+  margin-bottom: 10px;
 }
 
 .files-title {
   margin: 0;
-  font-size: 22px;
+  font-size: 20px;
 }
 
-.files-add-button {
-  width: 32px;
-  height: 32px;
-  border-radius: 999px;
-  border: none;
-  background: var(--color-button-primary);
-  color: #fff;
+.files-upload-button {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  font-size: 20px;
+  box-sizing: border-box;
+  height: 29px;
+  padding: 5px 10px;
+  border-radius: 10px;
+  border: none;
+  background: var(--color-button-primary);
+  color: var(--color-button-text-primary);
+  font-size: 16px;
+  line-height: 1;
   cursor: not-allowed;
-  opacity: 0.6;
-}
-
-.files-add-icon {
-  width: 18px;
-  height: 18px;
+  opacity: 0.9;
 }
 
 .files-list {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 5px;
 }
 
 .files-empty {
-  padding: 12px 10px;
+  padding: 10px;
   background: var(--color-bg-primary);
-  border-radius: 12px;
-  font-size: 14px;
+  border-radius: 10px;
   color: var(--color-text-muted);
 }
 
 .file-item {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
-  border-radius: 12px;
+  gap: 5px;
+  padding: 10px;
+  border-radius: 10px;
   background: var(--color-button-secondary);
   border: none;
   text-align: left;
 }
 
 .file-icon {
-  width: 22px;
-  height: 22px;
-  color: #1f2a5a;
+  width: 20px;
+  height: 20px;
+  color: var(--color-text-primary);
   display: inline-flex;
 }
 
@@ -398,52 +427,84 @@ watch(notebookId, () => {
 }
 
 .file-name {
-  font-size: 15px;
+  font-size: 16px;
   color: var(--color-text-primary);
 }
 
 .notebook-workspace {
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 10px;
 }
 
 .notebook-toolbar {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 12px 16px;
+  justify-content: space-between;
+  padding: 10px;
   background: var(--color-bg-card);
-  border-radius: 16px;
+  border-radius: 20px;
   border: 1px solid var(--color-border-light);
-  box-shadow: 0 8px 20px rgba(30, 38, 74, 0.08);
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.25);
+  gap: 10px;
+}
+
+.toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.toolbar-group--right {
+  margin-left: auto;
 }
 
 .toolbar-pill {
-  padding: 6px 14px;
+  box-sizing: border-box;
+  height: 29px;
+  padding: 5px 10px;
   background: var(--color-button-primary);
   color: #fff;
-  border-radius: 999px;
-  font-size: 14px;
-  font-weight: 500;
+  border-radius: 10px;
+  font-size: 16px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: not-allowed;
+  opacity: 0.9;
+}
+.toolbar-pill--run::before {
+  content: "\25B6";
+  font-size: 12px;
 }
 
-.toolbar-pill--ghost {
-  background: #e9ecff;
-  color: #1f2a5a;
+.toolbar-session-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--color-session-active);
 }
 
 .cells-list {
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 0;
+}
+
+.cell-stack {
+  position: relative;
 }
 
 .cell-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 12px;
+  grid-template-columns: 1fr;
+  gap: 0;
   align-items: start;
+  position: relative;
+  padding-right: 0;
+  transition: padding-right 0.15s ease;
 }
 
 .cells-empty {
@@ -456,23 +517,23 @@ watch(notebookId, () => {
 
 .cell-card {
   background: var(--color-bg-card);
-  border-radius: 20px;
-  padding: 16px;
+  border-radius: 15px;
+  padding: 10px;
   border: 1px solid var(--color-border-light);
-  box-shadow: 0 10px 24px rgba(30, 38, 74, 0.08);
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.25);
 }
 
 .cell-body {
   display: grid;
   grid-template-columns: auto 1fr;
-  gap: 16px;
+  gap: 10px;
   align-items: start;
 }
 
 .cell-run-button {
-  width: 44px;
-  height: 44px;
-  border-radius: 14px;
+  width: 30px;
+  height: 30px;
+  border-radius: 10px;
   border: none;
   background: var(--color-button-primary);
   color: #fff;
@@ -483,9 +544,11 @@ watch(notebookId, () => {
   opacity: 0.9;
 }
 
-.cell-run-button svg {
-  width: 22px;
-  height: 22px;
+.cell-run-button .material-symbols-rounded {
+  font-size: 24px;
+  line-height: 1;
+  font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 20 !important;
+  color: #fff;
 }
 
 .cell-content {
@@ -494,44 +557,15 @@ watch(notebookId, () => {
 
 .code-block {
   background: var(--color-bg-primary);
-  border-radius: 14px;
-  padding: 16px 18px;
-}
-
-.code-lines {
-  margin: 0;
-  font-family: 'Courier New', monospace;
-  font-size: 15px;
-  line-height: 1.6;
-  color: #1f2a5a;
-}
-
-.code-line {
-  display: block;
-  padding-left: 36px;
-  position: relative;
-  white-space: pre;
-}
-
-.code-lines {
-  counter-reset: line;
-}
-
-.code-line::before {
-  counter-increment: line;
-  content: counter(line);
-  position: absolute;
-  left: 0;
-  width: 28px;
-  text-align: right;
-  color: #9aa3c7;
+  border-radius: 10px;
+  padding: 10px 0;
 }
 
 .text-block {
   background: var(--color-bg-primary);
-  border-radius: 14px;
-  padding: 16px 18px;
-  font-size: 15px;
+  border-radius: 10px;
+  padding: 10px;
+  font-size: 14px;
   color: var(--color-text-primary);
   white-space: pre-wrap;
 }
@@ -539,22 +573,73 @@ watch(notebookId, () => {
 .cell-actions {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 5px;
   background: var(--color-bg-card);
-  border-radius: 16px;
-  padding: 8px;
-  border: 1px solid var(--color-border-light);
-  box-shadow: 0 8px 16px rgba(30, 38, 74, 0.08);
+  border-radius: 15px;
+  padding: 5px;
+  border: none;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.25);
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 3;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+}
+
+.cell-row:hover .cell-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.cell-row:hover {
+  padding-right: 50px;
+}
+
+.cell-insert-zone {
+  height: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: height 0.15s ease;
+}
+
+.cell-insert-group {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-4px);
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.cell-insert-zone:hover {
+  height: 59px;
+}
+
+.cell-insert-zone:hover .cell-insert-group {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+.cell-stack:last-child .cell-insert-zone {
+  height: 59px;
+}
+
+.cell-stack:last-child .cell-insert-group {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
 }
 
 .cell-action-btn {
-  width: 36px;
-  height: 36px;
-  border-radius: 12px;
+  width: 30px;
+  height: 30px;
+  border-radius: 10px;
   border: none;
   background: var(--color-button-primary);
   color: #fff;
-  font-size: 16px;
+  font-size: 18px;
   cursor: not-allowed;
   display: flex;
   align-items: center;
@@ -562,43 +647,37 @@ watch(notebookId, () => {
 }
 
 .cell-output {
-  margin-top: 14px;
-  background: #f0edff;
-  border-radius: 12px;
-  padding: 12px 14px 12px 14px;
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  color: #1f2a5a;
-  font-size: 15px;
+  margin-top: 8px;
+  background: transparent;
+  border-radius: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: 30px 1fr;
+  column-gap: 15px;
+  align-items: start;
+  color: var(--color-text-primary);
 }
 
 .cell-output-icon {
-  width: 28px;
-  height: 28px;
-  border-radius: 10px;
-  background: #8b7bd4;
-  color: #fff;
+  width: 30px;
+  height: 30px;
+  border-radius: 0;
+  background: transparent;
+  color: var(--color-text-muted);
   display: inline-flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
-  align-self: flex-start;
-  margin-top: 2px;
-}
-
-.cell-output-icon svg {
-  width: 18px;
-  height: 18px;
+  margin-top: 0;
 }
 
 .cell-output-icon--error {
-  background: #f1b6b4;
-  color: #7a1d1d;
+  color: var(--color-error-text);
 }
 
 .cell-output-content {
   flex: 1;
   min-width: 0;
+  margin-left: 0;
 }
 
 .cell-output-content :deep(:first-child) {
@@ -607,7 +686,7 @@ watch(notebookId, () => {
 
 .cell-output-content :deep(pre) {
   margin: 0;
-  font-family: 'Courier New', monospace;
+  font-family: var(--font-default);
   font-size: 14px;
   white-space: pre-wrap;
   word-break: break-word;
@@ -616,28 +695,28 @@ watch(notebookId, () => {
 .cells-footer {
   display: flex;
   justify-content: center;
-  gap: 12px;
-  margin-top: 8px;
+  gap: 10px;
+  margin-top: 10px;
 }
 
 .footer-group {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px;
-  border-radius: 18px;
+  gap: 5px;
+  padding: 5px;
+  border-radius: 20px;
   background: var(--color-bg-card);
   border: 1px solid var(--color-border-light);
-  box-shadow: 0 8px 18px rgba(30, 38, 74, 0.12);
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.25);
 }
 
 .footer-pill {
-  padding: 8px 16px;
-  border-radius: 12px;
+  padding: 5px 10px;
+  border-radius: 15px;
   border: none;
   background: var(--color-button-primary);
   color: #fff;
-  font-size: 14px;
+  font-size: 16px;
   cursor: not-allowed;
   box-shadow: none;
 }
@@ -675,3 +754,13 @@ watch(notebookId, () => {
   }
 }
 </style>
+
+
+
+
+
+
+
+
+
+

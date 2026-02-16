@@ -16,9 +16,16 @@ class Contest(models.Model):
         on_delete=models.CASCADE,
         related_name="contests",
     )
+    # Order of contests inside a course (lower comes first).
+    position = models.PositiveIntegerField(default=0, db_index=True)
     title = models.CharField(max_length=255)
     description = models.TextField(blank=True, default="")
-    problems = models.ManyToManyField("Problem", blank=True)
+    problems = models.ManyToManyField(
+        "Problem",
+        blank=True,
+        through="ContestProblem",
+        related_name="contests",
+    )
     source = models.CharField(
         max_length=255,
         blank=True,
@@ -120,21 +127,25 @@ class Contest(models.Model):
     approved_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
-        ordering = ["-created_at"]
+        ordering = ["position", "-created_at"]
 
     def __str__(self):
         return f"{self.title} ({self.course})"
 
     def is_visible_to(self, user):
         """
-        Drafts are visible only to the section owner.
+        Drafts are visible only to course teachers (including course owner).
         Published contests follow access_type and course membership.
         """
         if not user.is_authenticated:
             return False
 
-        is_owner = self.course.section.owner_id == user.id
-        if is_owner:
+        is_admin = user.is_staff or user.is_superuser
+        is_teacher = (
+            self.course.owner_id == user.id
+            or self.course.participants.filter(user=user, role=CourseParticipant.Role.TEACHER).exists()
+        )
+        if is_admin or is_teacher:
             return True
 
         # Only approved & published contests are visible to non-owners.
@@ -158,3 +169,23 @@ class Contest(models.Model):
             self.access_token = uuid.uuid4().hex
             self.save(update_fields=["access_token"])
         return self.access_token
+
+
+class ContestProblem(models.Model):
+    """
+    Through model for Contest <-> Problem relation with stable ordering.
+
+    Note: db_table matches the auto-generated M2M table name to preserve existing data.
+    """
+
+    contest = models.ForeignKey(Contest, on_delete=models.CASCADE)
+    problem = models.ForeignKey("Problem", on_delete=models.CASCADE)
+    position = models.PositiveIntegerField(default=0, db_index=True)
+
+    class Meta:
+        db_table = "runner_contest_problems"
+        ordering = ["position", "id"]
+        unique_together = (("contest", "problem"),)
+        indexes = [
+            models.Index(fields=["contest", "position"], name="runner_contestprob_pos_idx"),
+        ]

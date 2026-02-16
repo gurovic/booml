@@ -11,6 +11,7 @@ const notebookDetail = {
     cellOutputSnapshots: {},
     runCellStreamStartUrl: null,
     runCellStreamStatusUrl: null,
+    runCellInputUrl: null,
     storageEnabled: undefined,
     inactivityTimers: {
         prompt: null,
@@ -112,6 +113,89 @@ const notebookDetail = {
         } catch (error) {
             console.warn('Не удалось очистить localStorage', error);
         }
+    },
+
+    stripPythonStringsAndComments(code) {
+        if (!code) {
+            return '';
+        }
+        const source = String(code);
+        let out = '';
+        let i = 0;
+        let state = 'normal';
+        let quote = '';
+        while (i < source.length) {
+            const ch = source[i];
+            const next = source[i + 1];
+            const next2 = source[i + 2];
+
+            if (state === 'normal') {
+                if (ch === '#') {
+                    while (i < source.length && source[i] !== '\n') {
+                        i += 1;
+                    }
+                    continue;
+                }
+                if (ch === "'" || ch === '"') {
+                    if (ch === next && ch === next2) {
+                        state = 'triple';
+                        quote = ch;
+                        out += '   ';
+                        i += 3;
+                        continue;
+                    }
+                    state = 'single';
+                    quote = ch;
+                    out += ' ';
+                    i += 1;
+                    continue;
+                }
+                out += ch;
+                i += 1;
+                continue;
+            }
+
+            if (state === 'single') {
+                if (ch === '\\' && i + 1 < source.length) {
+                    out += ' ';
+                    i += 2;
+                    continue;
+                }
+                if (ch === quote) {
+                    state = 'normal';
+                    out += ' ';
+                    i += 1;
+                    continue;
+                }
+                out += ch === '\n' ? '\n' : ' ';
+                i += 1;
+                continue;
+            }
+
+            if (state === 'triple') {
+                if (ch === quote && next === quote && next2 === quote) {
+                    state = 'normal';
+                    out += '   ';
+                    i += 3;
+                    continue;
+                }
+                out += ch === '\n' ? '\n' : ' ';
+                i += 1;
+                continue;
+            }
+        }
+        return out;
+    },
+
+    requiresInteractiveInput(code) {
+        if (!code) {
+            return false;
+        }
+        const cleaned = this.stripPythonStringsAndComments(code);
+        return /\binput\s*\(/.test(cleaned)
+            || /\bbuiltins\s*\.\s*input\b/.test(cleaned)
+            || /\bsys\s*\.\s*stdin\b/.test(cleaned)
+            || /\bfileinput\s*\.\s*input\b/.test(cleaned);
     },
 
     getStoredSessionId() {
@@ -466,7 +550,14 @@ const notebookDetail = {
         const startedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
 
         try {
-            if (runCellStreamStartUrl && runCellStreamStatusUrl) {
+            const needsInput = this.requiresInteractiveInput(code);
+            const canStream = Boolean(runCellStreamStartUrl && runCellStreamStatusUrl);
+            const useStreaming = canStream && !needsInput;
+            if (needsInput && !runCellUrl) {
+                throw new Error('Интерактивный ввод недоступен');
+            }
+
+            if (useStreaming) {
                 await this.executeQueueJobStreaming({
                     job,
                     cellId,
@@ -493,13 +584,46 @@ const notebookDetail = {
                     signal: job.controller?.signal
                 });
 
-                const data = await response.json();
+                let data = await response.json();
 
                 if (!response.ok) {
                     const message = data?.detail || data?.error || 'Не удалось выполнить ячейку';
                     const error = new Error(message);
                     error.status = response.status;
                     throw error;
+                }
+
+                while (data?.status === 'input_required') {
+                    const formattedOutput = NotebookUtils.formatCellRunResult(data);
+                    outputElement.innerHTML = formattedOutput;
+                    this.enhanceOutputElement(outputElement);
+                    outputElement.className = 'output running';
+                    this.renderArtifacts(cellId, data.artifacts || []);
+                    if (!this.runCellInputUrl) {
+                        throw new Error('URL интерактивного ввода недоступен');
+                    }
+                    const value = await this.awaitInlineInput(outputElement);
+                    const inputResponse = await fetch(this.runCellInputUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': this.config.csrfToken
+                        },
+                        body: JSON.stringify({
+                            session_id: sessionId,
+                            cell_id: cellNumericId,
+                            run_id: data.run_id,
+                            input: value
+                        }),
+                        signal: job.controller?.signal
+                    });
+                    data = await inputResponse.json();
+                    if (!inputResponse.ok) {
+                        const message = data?.detail || data?.error || 'Не удалось отправить ввод';
+                        const error = new Error(message);
+                        error.status = inputResponse.status;
+                        throw error;
+                    }
                 }
 
                 const formattedOutput = NotebookUtils.formatCellRunResult(data);
@@ -544,7 +668,7 @@ const notebookDetail = {
             }
             console.error('Ошибка выполнения ячейки:', error);
             const message = error?.message || 'Не удалось выполнить ячейку';
-            const errorHtml = `<div class="output-error"><strong>Ошибка:</strong> ${NotebookUtils.escapeHtml(message)}</div>`;
+            const errorHtml = `<div class="output-error">${NotebookUtils.escapeHtml(message)}</div>`;
             outputElement.innerHTML = errorHtml;
             outputElement.className = 'output error';
             this.renderArtifacts(cellId, []);
@@ -599,16 +723,36 @@ const notebookDetail = {
         let stdoutNode = null;
         let stderrNode = null;
 
-        const ensureStreamNodes = () => {
-            if (stdoutNode && stderrNode) {
+        const clearLoading = () => {
+            if (outputElement.querySelector('.output-loading')) {
+                outputElement.innerHTML = '';
+            }
+        };
+
+        const ensureStdoutNode = () => {
+            if (stdoutNode) {
                 return;
             }
-            outputElement.innerHTML = `
-                <div class="output-text"><pre data-stream-stdout></pre></div>
-                <div class="output-stderr"><strong>STDERR:</strong><pre data-stream-stderr></pre></div>
-            `;
-            stdoutNode = outputElement.querySelector('[data-stream-stdout]');
-            stderrNode = outputElement.querySelector('[data-stream-stderr]');
+            clearLoading();
+            const wrapper = document.createElement('div');
+            wrapper.className = 'output-text';
+            stdoutNode = document.createElement('pre');
+            stdoutNode.setAttribute('data-stream-stdout', '');
+            wrapper.appendChild(stdoutNode);
+            outputElement.appendChild(wrapper);
+        };
+
+        const ensureStderrNode = () => {
+            if (stderrNode) {
+                return;
+            }
+            clearLoading();
+            const wrapper = document.createElement('div');
+            wrapper.className = 'output-stderr';
+            stderrNode = document.createElement('pre');
+            stderrNode.setAttribute('data-stream-stderr', '');
+            wrapper.appendChild(stderrNode);
+            outputElement.appendChild(wrapper);
         };
 
         const appendText = (node, text) => {
@@ -645,11 +789,11 @@ const notebookDetail = {
             }
 
             if (statusData.stdout) {
-                ensureStreamNodes();
+                ensureStdoutNode();
                 appendText(stdoutNode, statusData.stdout);
             }
             if (statusData.stderr) {
-                ensureStreamNodes();
+                ensureStderrNode();
                 appendText(stderrNode, statusData.stderr);
             }
             const stdoutNext = Number(statusData.stdout_offset);
@@ -696,6 +840,64 @@ const notebookDetail = {
 
             await new Promise((resolve) => setTimeout(resolve, 300));
         }
+    },
+
+    clearInlineStdin(outputElement) {
+        if (!outputElement) {
+            return;
+        }
+        const existing = outputElement.querySelector('.stdin-inline');
+        if (existing) {
+            existing.remove();
+        }
+    },
+
+    getStdoutPre(outputElement) {
+        if (!outputElement) {
+            return null;
+        }
+        return outputElement.querySelector('[data-stream-stdout]') || outputElement.querySelector('.output-text pre');
+    },
+
+    ensureStdoutPre(outputElement) {
+        let pre = this.getStdoutPre(outputElement);
+        if (pre) {
+            return pre;
+        }
+        const wrapper = document.createElement('div');
+        wrapper.className = 'output-text';
+        pre = document.createElement('pre');
+        wrapper.appendChild(pre);
+        outputElement.appendChild(wrapper);
+        return pre;
+    },
+
+    awaitInlineInput(outputElement) {
+        this.clearInlineStdin(outputElement);
+        const pre = this.ensureStdoutPre(outputElement);
+        const wrapper = document.createElement('span');
+        wrapper.className = 'stdin-inline';
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.autocomplete = 'off';
+        input.spellcheck = false;
+        input.autocapitalize = 'off';
+        input.autocorrect = 'off';
+        input.className = 'stdin-inline';
+        wrapper.appendChild(input);
+        pre.appendChild(wrapper);
+        input.focus();
+        return new Promise((resolve) => {
+            input.addEventListener('keydown', (event) => {
+                if (event.key !== 'Enter') {
+                    return;
+                }
+                event.preventDefault();
+                const value = input.value || '';
+                wrapper.remove();
+                resolve(value);
+            });
+        });
     },
 
     enhanceOutputElement(outputElement) {
@@ -1228,6 +1430,7 @@ async handleImportFile(file) {
         this.copyCellUrlTemplate = this.notebookElement?.dataset.copyCellUrlTemplate || '';
         this.moveCellUrlTemplate = this.notebookElement?.dataset.moveCellUrlTemplate || '';
         this.runCellUrl = this.sanitizeUrl(config.runCellUrl) || this.sanitizeUrl(this.notebookElement?.dataset.runCellUrl);
+        this.runCellInputUrl = this.sanitizeUrl(config.runCellInputUrl) || this.sanitizeUrl(this.notebookElement?.dataset.runCellInputUrl);
         this.runCellStreamStartUrl = this.sanitizeUrl(config.runCellStreamStartUrl) || this.sanitizeUrl(this.notebookElement?.dataset.runCellStreamStartUrl);
         this.runCellStreamStatusUrl = this.sanitizeUrl(config.runCellStreamStatusUrl) || this.sanitizeUrl(this.notebookElement?.dataset.runCellStreamStatusUrl);
         this.sessionCreateUrl = this.sanitizeUrl(config.sessionCreateUrl) || this.sanitizeUrl(this.notebookElement?.dataset.sessionCreateUrl);

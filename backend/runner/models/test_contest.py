@@ -67,7 +67,7 @@ class ContestVisibilityTests(TestCase):
         )
 
         self.assertTrue(contest.is_visible_to(self.teacher))
-        self.assertFalse(contest.is_visible_to(self.co_teacher))
+        self.assertTrue(contest.is_visible_to(self.co_teacher))
         self.assertFalse(contest.is_visible_to(self.student))
         self.assertFalse(contest.is_visible_to(self.outsider))
 

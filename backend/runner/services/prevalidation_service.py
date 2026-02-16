@@ -48,7 +48,11 @@ def _finalize_report(prevalidation: PreValidation, submission: Submission, start
 
     with transaction.atomic():
         prevalidation.save()
-        submission.status = "validated" if prevalidation.valid else "failed"
+        submission.status = (
+            Submission.STATUS_VALIDATED
+            if prevalidation.valid
+            else Submission.STATUS_VALIDATION_ERROR
+        )
         submission.save(update_fields=["status"])
 
     return prevalidation

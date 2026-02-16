@@ -8,7 +8,12 @@
     "lint": "vue-cli-service lint"
   },
   "dependencies": {
+    "@codemirror/commands": "^6.0.0",
+    "@codemirror/lang-python": "^6.0.0",
+    "@codemirror/state": "^6.0.0",
+    "@codemirror/view": "^6.0.0",
     "axios": "^1.13.2",
+    "codemirror": "^6.0.0",
     "core-js": "^3.8.3",
     "katex": "^0.16.25",
     "markdown-it": "^14.1.0",
@@ -31,6 +36,10 @@
     "root": true,
     "env": {
       "node": true
+    },
+    "globals": {
+      "defineProps": "readonly",
+      "defineEmits": "readonly"
     },
     "extends": [
       "plugin:vue/vue3-essential",
