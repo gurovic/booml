@@ -303,8 +303,8 @@
          data-import-notebook-url="{% url 'runner:import_notebook' %}"
          data-notebook-url-template="{% url 'runner:notebook_detail' 0 %}"
          data-inactivity-mode="{% if notebook.problem_id %}prompt{% else %}off{% endif %}"
-         data-inactivity-prompt-minutes="1"
-         data-inactivity-ban-minutes="10">
+         data-inactivity-prompt-minutes="{{ inactivity_prompt_minutes|default:'30' }}"
+         data-inactivity-ban-minutes="{{ inactivity_ban_minutes|default:'10' }}">
 
         <div class="notebook-header">
             <div class="notebook-header-title">
