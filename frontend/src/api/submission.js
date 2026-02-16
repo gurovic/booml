@@ -21,10 +21,18 @@ export async function submitSolution(problemId, file) {
     if (errorText) {
       try {
         const errorData = JSON.parse(errorText)
-        if (errorData.message) {
-          errorMessage = errorData.message
-        } else if (errorData.detail) {
-          errorMessage = errorData.detail
+        if (errorData.message || errorData.detail || errorData.errors) {
+          const detail =
+            (typeof errorData.detail === 'string' && errorData.detail.trim()) ||
+            (Array.isArray(errorData.errors) && errorData.errors.length > 0 ? String(errorData.errors[0]) : '')
+          const message = (typeof errorData.message === 'string' ? errorData.message : '').trim()
+          if (message && detail && !message.includes(detail)) {
+            errorMessage = `${message} ${detail}`
+          } else if (detail) {
+            errorMessage = detail
+          } else if (message) {
+            errorMessage = message
+          }
         } else if (typeof errorData === 'object' && errorData !== null) {
           // Extract first error message from validation errors
           const values = Object.values(errorData)

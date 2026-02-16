@@ -132,14 +132,17 @@ class TestChecker(unittest.TestCase):
 
     @patch('runner.services.checker.pd.read_csv')
     def test_check_with_missing_problem_descriptor(self, mock_read_csv):
-        """Тест проверки с отсутствующим ProblemDescriptor"""
-        self.mock_problem.descriptor = None  # Используем правильное имя поля
-        
+        self.mock_problem.descriptor = None
+        mock_read_csv.side_effect = [
+            self.test_data['submission'],
+            self.test_data['ground_truth']
+        ]
+
         checker = SubmissionChecker()
         result = checker.check_submission(self.mock_submission)
-        
-        self.assertFalse(result.ok)
-        self.assertIn("ProblemDescriptor not found", result.errors)
+
+        self.assertTrue(result.ok)
+        self.assertIn("metric_name", result.outputs)
 
     @patch('runner.services.checker.pd.read_csv')
     def test_check_with_missing_metric(self, mock_read_csv):
@@ -383,3 +386,4 @@ class TestChecker(unittest.TestCase):
         self.assertTrue(result.ok)
         self.assertEqual(result.outputs["metric_score"], 0.0)
         mock_broadcast.assert_called_once_with(1, "csv_match", 0.0)
+

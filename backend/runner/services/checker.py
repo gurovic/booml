@@ -1,8 +1,12 @@
 # runner/services/checker.py
 import logging
+import os
+import zipfile
+from types import SimpleNamespace
 from typing import Any, Dict, Optional
 
 import pandas as pd
+from django.conf import settings
 
 from ..models.submission import Submission
 from ..models.problem_desriptor import ProblemDescriptor
@@ -42,11 +46,8 @@ class SubmissionChecker:
             return CheckResult(False, errors="Problem not found for this submission")
 
         problem_data = getattr(problem, "data", None)
-        descriptor = getattr(problem, "descriptor", None)
         if not problem_data:
             return CheckResult(False, errors="ProblemData not found for this task")
-        if not descriptor:
-            return CheckResult(False, errors="ProblemDescriptor not found for this task")
 
         submission_df = self._load_submission_file(submission.file)
         if submission_df is None:
@@ -56,6 +57,22 @@ class SubmissionChecker:
         ground_truth_df = self._load_ground_truth(ground_truth_file)
         if ground_truth_df is None:
             return CheckResult(False, errors="Failed to load ground truth from problem data")
+
+        descriptor = getattr(problem, "descriptor", None)
+        if not descriptor:
+            descriptor = self._build_fallback_descriptor(submission_df, ground_truth_df)
+            if not descriptor:
+                return CheckResult(
+                    False,
+                    errors="ProblemDescriptor not found and cannot infer schema from data files",
+                )
+            logger.warning(
+                "ProblemDescriptor missing for problem %s; using inferred schema (id=%s, target=%s, metric=%s)",
+                getattr(problem, "id", "?"),
+                getattr(descriptor, "id_column", None),
+                getattr(descriptor, "target_column", None),
+                getattr(descriptor, "metric_name", None),
+            )
 
         metric_name, metric_code = self._metric_config(submission, descriptor)
         if not metric_name and not metric_code:
@@ -123,6 +140,78 @@ class SubmissionChecker:
             },
         )
 
+    def _build_fallback_descriptor(self, submission_df: pd.DataFrame, ground_truth_df: pd.DataFrame):
+        submission_cols = list(submission_df.columns)
+        ground_truth_cols = list(ground_truth_df.columns)
+        common_cols = [col for col in ground_truth_cols if col in submission_cols]
+        if not common_cols:
+            return None
+
+        id_column = "id" if "id" in common_cols else common_cols[0]
+        target_column, pred_column = self._infer_target_columns(submission_df, ground_truth_df, id_column)
+
+        if target_column is None:
+            metric_name = "csv_match"
+            target_type = "str"
+        else:
+            target_series = ground_truth_df[target_column]
+            pred_series = submission_df[pred_column] if pred_column in submission_df.columns else None
+            unique_target = set(pd.Series(target_series).dropna().unique().tolist())
+            is_binary_target = bool(unique_target) and unique_target.issubset({0, 1, 0.0, 1.0, "0", "1"})
+            if is_binary_target and pred_series is not None and pd.api.types.is_numeric_dtype(pred_series):
+                target_type = "float"
+                metric_name = "auc"
+            elif pd.api.types.is_integer_dtype(target_series) or pd.api.types.is_bool_dtype(target_series):
+                target_type = "int"
+                metric_name = "accuracy"
+            elif pd.api.types.is_numeric_dtype(target_series):
+                target_type = "float"
+                metric_name = "rmse"
+            else:
+                target_type = "str"
+                metric_name = "accuracy"
+
+        return SimpleNamespace(
+            id_column=id_column,
+            target_column=target_column,
+            pred_column=pred_column,
+            target_type=target_type,
+            check_order=False,
+            metric_name=metric_name,
+            metric_code="",
+        )
+
+    def _infer_target_columns(self, submission_df: pd.DataFrame, ground_truth_df: pd.DataFrame, id_column: str):
+        submission_non_id = [col for col in submission_df.columns if col != id_column]
+        ground_truth_non_id = [col for col in ground_truth_df.columns if col != id_column]
+
+        pred_column = submission_non_id[0] if len(submission_non_id) == 1 else None
+        if pred_column is None:
+            for col in submission_non_id:
+                if pd.api.types.is_numeric_dtype(submission_df[col]):
+                    pred_column = col
+                    break
+            if pred_column is None and submission_non_id:
+                pred_column = submission_non_id[0]
+
+        if pred_column and pred_column in ground_truth_df.columns:
+            return pred_column, pred_column
+
+        target_keywords = {"label", "target", "answer", "y", "class", "score", "probability", "p_fix"}
+        target_column = None
+        for col in ground_truth_non_id:
+            if col.lower() in target_keywords:
+                target_column = col
+                break
+        if target_column is None:
+            numeric_cols = [col for col in ground_truth_non_id if pd.api.types.is_numeric_dtype(ground_truth_df[col])]
+            if numeric_cols:
+                target_column = numeric_cols[0]
+            elif ground_truth_non_id:
+                target_column = ground_truth_non_id[-1]
+
+        return target_column, pred_column
+
     def _load_submission_file(self, file_field) -> Optional[pd.DataFrame]:
         """Загружаем файл submission"""
         path = getattr(file_field, "path", None) or getattr(file_field, "name", None) or file_field
@@ -133,27 +222,78 @@ class SubmissionChecker:
             return None
 
     def _select_ground_truth_file(self, problem_data):
-        """Возвращает файл с правильными ответами (answer_file -> test_file fallback)."""
-        for attr in ("answer_file", "test_file"):
+        """Return best available file with expected targets."""
+        for attr in ("answer_file", "test_file", "train_file", "sample_submission_file"):
             file_field = getattr(problem_data, attr, None)
             file_name = getattr(file_field, "name", "")
             if file_field and file_name:
                 return file_field
-        logger.warning("No answer/test files available for problem %s", getattr(problem_data, "problem_id", "?"))
+        logger.warning("No ground-truth candidate files available for problem %s", getattr(problem_data, "problem_id", "?"))
         return None
 
     def _load_ground_truth(self, file_field) -> Optional[pd.DataFrame]:
-        """Загружаем ground truth из ProblemData"""
+        """Load ground truth from ProblemData file fields (csv/zip)."""
         if not file_field:
             return None
-        path = getattr(file_field, "path", None)
+        path = self._resolve_file_path(file_field)
         if not path:
-            logger.warning("Ground truth file has no path (maybe not saved yet)")
+            logger.warning("Ground truth file has no usable path")
             return None
         try:
+            if str(path).lower().endswith(".zip"):
+                return self._load_ground_truth_from_zip(path)
             return pd.read_csv(path)
         except Exception:  # pragma: no cover - log for observability
             logger.info("Failed to load ground truth file %s", path)
+            return None
+
+    def _resolve_file_path(self, file_field) -> Optional[str]:
+        path = getattr(file_field, "path", None)
+        if path and os.path.exists(path):
+            return path
+
+        name = getattr(file_field, "name", None)
+        if name:
+            media_root = None
+            try:
+                media_root = getattr(settings, "MEDIA_ROOT", None)
+            except Exception:  # pragma: no cover - settings may be unavailable in pure unit tests
+                media_root = None
+            if media_root:
+                candidate = os.path.join(media_root, str(name).replace("/", os.sep))
+                if os.path.exists(candidate):
+                    return candidate
+
+        return path
+
+    def _load_ground_truth_from_zip(self, zip_path: str) -> Optional[pd.DataFrame]:
+        try:
+            with zipfile.ZipFile(zip_path, "r") as archive:
+                csv_names = [name for name in archive.namelist() if name.lower().endswith(".csv")]
+                if not csv_names:
+                    logger.info("Zip ground truth file contains no CSV: %s", zip_path)
+                    return None
+
+                def _priority(name: str) -> tuple[int, str]:
+                    lowered = name.lower()
+                    for idx, token in enumerate(("answer", "label", "target", "truth", "test", "train")):
+                        if token in lowered:
+                            return (idx, lowered)
+                    if "sample" in lowered:
+                        return (200, lowered)
+                    return (99, lowered)
+
+                for csv_name in sorted(csv_names, key=_priority):
+                    with archive.open(csv_name, "r") as handle:
+                        df = pd.read_csv(handle)
+                    if len(df.columns) >= 2:
+                        logger.info("Loaded ground truth CSV '%s' from archive %s", csv_name, zip_path)
+                        return df
+
+                with archive.open(csv_names[0], "r") as handle:
+                    return pd.read_csv(handle)
+        except Exception:  # pragma: no cover - defensive
+            logger.info("Failed to load ground truth from zip archive %s", zip_path)
             return None
 
     def _get_metric_name(self, submission) -> Optional[str]:
@@ -224,13 +364,36 @@ class SubmissionChecker:
             }
 
         target_column = descriptor.target_column
-        true_target_column = f"{target_column}_true"
-        pred_target_column = f"{target_column}_pred"
+        pred_source_column = getattr(descriptor, "pred_column", None) or target_column
+        true_source_column = target_column
+        if true_source_column is None:
+            return {
+                "success": False,
+                "error": "Cannot infer target column for this task",
+                "score": 0.0,
+            }
+
+        submission_columns = set(submission_df.columns)
+        ground_truth_columns = set(ground_truth_df.columns)
+
+        true_target_column = (
+            f"{true_source_column}_true"
+            if true_source_column in submission_columns and true_source_column != descriptor.id_column
+            else true_source_column
+        )
+        pred_target_column = (
+            f"{pred_source_column}_pred"
+            if pred_source_column in ground_truth_columns and pred_source_column != descriptor.id_column
+            else pred_source_column
+        )
 
         if true_target_column not in merged_df.columns or pred_target_column not in merged_df.columns:
             return {
                 "success": False,
-                "error": f'Target column "{target_column}" not found in ground truth data',
+                "error": (
+                    f'Target columns not found after merge '
+                    f'(expected true="{true_target_column}", pred="{pred_target_column}")'
+                ),
                 "score": 0.0,
             }
 
@@ -405,3 +568,4 @@ def check_submission(submission: Submission) -> CheckResult:
     """Основная функция для проверки submission (используется worker'ом)"""
     checker = SubmissionChecker()
     return checker.check_submission(submission)
+
