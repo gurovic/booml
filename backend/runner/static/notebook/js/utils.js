@@ -34,12 +34,12 @@ const NotebookUtils = {
 
         if (data.stderr) {
             const escapedStderr = this.escapeHtml(data.stderr);
-            blocks.push(`<div class="output-stderr"><strong>STDERR:</strong><pre>${escapedStderr}</pre></div>`);
+            blocks.push(`<div class="output-stderr"><pre>${escapedStderr}</pre></div>`);
         }
 
         if (data.error) {
             const escapedError = this.escapeHtml(data.error);
-            blocks.push(`<div class="output-errors"><strong>Ошибка:</strong><pre>${escapedError}</pre></div>`);
+            blocks.push(`<div class="output-errors"><pre>${escapedError}</pre></div>`);
         }
 
         return blocks.join('') || '<div class="output-empty">Нет вывода</div>';

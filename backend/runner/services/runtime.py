@@ -4,6 +4,7 @@ import atexit
 import builtins
 import logging
 import os
+import subprocess
 import shutil
 import uuid
 from dataclasses import dataclass
@@ -140,14 +141,26 @@ def _build_download_helper(session: RuntimeSession):
 def _prepare_local_python_exec(workdir: Path) -> Path | None:
     venv_path = workdir / ".venv"
     try:
+        created = False
         if not venv_path.exists():
             builder = venv.EnvBuilder(with_pip=True, symlinks=os.name != "nt")
             builder.create(venv_path)
+            created = True
         if os.name == "nt":
             candidate = venv_path / "Scripts" / "python.exe"
         else:
             candidate = venv_path / "bin" / "python"
         if candidate.exists():
+            if created:
+                try:
+                    subprocess.run(
+                        [str(candidate), "-m", "pip", "install", "--upgrade", "pip"],
+                        check=False,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                    )
+                except Exception:
+                    pass
             return candidate
     except Exception:
         return None
