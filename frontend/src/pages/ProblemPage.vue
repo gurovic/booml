@@ -6,9 +6,21 @@
   <div class="problem">
     <div class="container">
       <div v-if="problem != null" class="problem__inner">
+        <nav v-if="contestProblemItems.length > 0" class="problem__selection_menu" aria-label="Выбор задачи">
+          <router-link
+            v-for="item in contestProblemItems"
+            :key="item.id"
+            :to="item.route"
+            class="problem__selection_item"
+            :class="{ 'is-selected': item.isCurrent }"
+            :aria-current="item.isCurrent ? 'true' : undefined"
+          >
+            {{ item.label }}
+          </router-link>
+        </nav>
         <div class="problem__content">
           <h1 class="problem__name">
-            <span v-if="contestProblemLabel" class="problem__contest-label">Problem {{ contestProblemLabel }}</span>
+            <span v-if="contestProblemLabel" class="problem__contest-label">Задача {{ contestProblemLabel }}</span>
             <span class="problem__title-text">{{ problem.title }}</span>
             <UiIdPill v-if="problem?.id" class="problem__id" :id="problem.id" title="ID задачи" />
           </h1>
@@ -121,7 +133,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { contestApi } from '@/api'
 import { getProblem } from '@/api/problem'
@@ -151,6 +163,7 @@ let fileInputKey = ref(0)
 let isCreatingNotebook = ref(false)
 let notebookMessage = ref(null)
 const contestProblemLabel = ref('')
+const contestProblems = ref([])
 
 const queryValue = (raw) => (Array.isArray(raw) ? raw[0] : raw)
 const contestIdFromQuery = computed(() => {
@@ -158,14 +171,42 @@ const contestIdFromQuery = computed(() => {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : null
 })
 const queryProblemLabel = computed(() => normalizeContestProblemLabel(queryValue(route.query.problem_label)))
+const currentProblemId = computed(() => Number(route.params.id))
+
+const contestProblemItems = computed(() => {
+  const problems = Array.isArray(contestProblems.value) ? contestProblems.value : []
+  const contestId = contestIdFromQuery.value
+
+  return problems
+    .filter(row => row?.id != null)
+    .map((row, idx) => {
+      const ordinal = Number.isInteger(row?.index) && row.index >= 0 ? row.index : idx
+      const label = normalizeContestProblemLabel(row?.label) || toContestProblemLabel(ordinal)
+      return {
+        id: row.id,
+        label,
+        isCurrent: Number(row.id) === currentProblemId.value,
+        route: {
+          name: 'problem',
+          params: { id: row.id },
+          query: { contest: contestId, problem_label: label },
+        },
+      }
+    })
+})
 
 const resolveContestProblemLabel = async () => {
   contestProblemLabel.value = queryProblemLabel.value
-  if (contestProblemLabel.value || !problem.value?.id || !contestIdFromQuery.value) return
+  contestProblems.value = []
+
+  if (!problem.value?.id || !contestIdFromQuery.value) return
 
   try {
     const contestData = await contestApi.getContest(contestIdFromQuery.value)
     const problems = Array.isArray(contestData?.problems) ? contestData.problems : []
+    contestProblems.value = problems
+    if (contestProblemLabel.value) return
+
     const idx = problems.findIndex(row => Number(row?.id) === Number(problem.value.id))
     if (idx < 0) return
 
@@ -192,6 +233,15 @@ const loadProblem = async () => {
 }
 
 onMounted(loadProblem)
+
+watch(
+  () => route.params.id,
+  (nextId, prevId) => {
+    if (nextId !== prevId) {
+      loadProblem()
+    }
+  }
+)
 
 const availableFiles = computed(() => {
   if (!problem.value || !problem.value.files) return []
@@ -322,6 +372,63 @@ const handleCreateNotebook = async () => {
   height: 100%;
   display: flex;
   gap: 20px;
+}
+
+.problem__selection_menu {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.problem__selection_item {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #ffffff;
+  color: #111827;
+  font-weight: 700;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  user-select: none;
+  text-decoration: none;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease,
+    transform 0.05s ease,
+    box-shadow 0.15s ease;
+}
+
+.problem__selection_item:hover {
+  background: #f3f4f6;
+}
+
+.problem__selection_item:active {
+  transform: translateY(1px);
+}
+
+.problem__selection_item.is-selected,
+.problem__selection_item[aria-current='true'] {
+  background: var(--color-button-secondary);
+  border: #9480C9 1px solid;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
+  color: var(--color-primary);
+}
+
+.problem__selection_item:focus {
+  outline: 3px solid rgba(139, 92, 246, 0.35);
+  outline-offset: 2px;
+}
+
+.problem__selection_item:focus-visible {
+  outline: 3px solid rgba(139, 92, 246, 0.35);
+  outline-offset: 2px;
 }
 
 .problem__content {
