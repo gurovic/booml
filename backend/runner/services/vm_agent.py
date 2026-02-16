@@ -25,9 +25,32 @@ _INTERACTIVE_RUNS: Dict[str, "InteractiveRun"] = {}
 logger = logging.getLogger(__name__)
 
 
-def _handle_shell_commands(code: str, workdir: Path, stdout_buffer: io.StringIO, stderr_buffer: io.StringIO, python_exec: Path | None = None) -> str:
+def _read_timeout_env(name: str, default: float | None) -> float | None:
+    raw = os.environ.get(name)
+    if raw is None or raw == "":
+        return default
+    normalized = raw.strip().lower()
+    if normalized in {"none", "infinite", "inf", "off", "no"}:
+        return None
+    try:
+        value = float(raw)
+        if value <= 0:
+            return None
+        return max(1.0, value)
+    except ValueError:
+        return default
+
+
+def _handle_shell_commands(
+    code: str,
+    workdir: Path,
+    stdout_buffer: io.StringIO,
+    stderr_buffer: io.StringIO,
+    python_exec: Path | None = None,
+) -> str:
     lines = code.split('\n')
     filtered_lines = []
+    shell_timeout = _read_timeout_env("RUNTIME_SHELL_COMMAND_TIMEOUT_SECONDS", None)
     
     for line in lines:
         stripped = line.lstrip()
@@ -40,7 +63,7 @@ def _handle_shell_commands(code: str, workdir: Path, stdout_buffer: io.StringIO,
                     capture_output=True,
                     text=True,
                     cwd=str(workdir),
-                    timeout=300,
+                    timeout=shell_timeout,
                     env={**os.environ, 'PIP_ROOT_USER_ACTION': 'ignore'}
                 )
                 stdout_buffer.write(result.stdout)
@@ -477,9 +500,13 @@ class LocalVmAgent(VmAgent):
 class FilesystemVmAgent(VmAgent):
     """Communicates with the VM agent via the shared workspace directory."""
 
-    def __init__(self, vm: VirtualMachine, *, timeout: float = 60.0):
+    def __init__(self, vm: VirtualMachine, *, timeout: float | None = None):
         self.vm = vm
-        self.timeout = timeout
+        default_timeout = _read_timeout_env("RUNTIME_VM_AGENT_TIMEOUT_SECONDS", None)
+        if timeout is None:
+            self.timeout = default_timeout
+        else:
+            self.timeout = None if timeout <= 0 else max(1.0, float(timeout))
         self.commands_dir = vm.workspace_path / ".vm_agent" / "commands"
         self.results_dir = vm.workspace_path / ".vm_agent" / "results"
 
@@ -542,17 +569,28 @@ class FilesystemVmAgent(VmAgent):
         tmp_path.rename(final_path)
 
         result_path = self.results_dir / f"{command_id}.json"
-        deadline = time.monotonic() + self.timeout
-        while time.monotonic() < deadline:
-            if result_path.exists():
-                try:
-                    data = json.loads(result_path.read_text(encoding="utf-8"))
-                    result_path.unlink(missing_ok=True)
-                    return data
-                except json.JSONDecodeError:
-                    pass
-            time.sleep(0.05)
-        raise RuntimeError("VM agent timed out waiting for execution result")
+        if self.timeout is None:
+            while True:
+                if result_path.exists():
+                    try:
+                        data = json.loads(result_path.read_text(encoding="utf-8"))
+                        result_path.unlink(missing_ok=True)
+                        return data
+                    except json.JSONDecodeError:
+                        pass
+                time.sleep(0.05)
+        else:
+            deadline = time.monotonic() + self.timeout
+            while time.monotonic() < deadline:
+                if result_path.exists():
+                    try:
+                        data = json.loads(result_path.read_text(encoding="utf-8"))
+                        result_path.unlink(missing_ok=True)
+                        return data
+                    except json.JSONDecodeError:
+                        pass
+                time.sleep(0.05)
+            raise RuntimeError("VM agent timed out waiting for execution result")
 
 
 def get_vm_agent(session_id: str, session) -> VmAgent:
