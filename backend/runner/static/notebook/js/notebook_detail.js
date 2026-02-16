@@ -115,14 +115,87 @@ const notebookDetail = {
         }
     },
 
+    stripPythonStringsAndComments(code) {
+        if (!code) {
+            return '';
+        }
+        const source = String(code);
+        let out = '';
+        let i = 0;
+        let state = 'normal';
+        let quote = '';
+        while (i < source.length) {
+            const ch = source[i];
+            const next = source[i + 1];
+            const next2 = source[i + 2];
+
+            if (state === 'normal') {
+                if (ch === '#') {
+                    while (i < source.length && source[i] !== '\n') {
+                        i += 1;
+                    }
+                    continue;
+                }
+                if (ch === "'" || ch === '"') {
+                    if (ch === next && ch === next2) {
+                        state = 'triple';
+                        quote = ch;
+                        out += '   ';
+                        i += 3;
+                        continue;
+                    }
+                    state = 'single';
+                    quote = ch;
+                    out += ' ';
+                    i += 1;
+                    continue;
+                }
+                out += ch;
+                i += 1;
+                continue;
+            }
+
+            if (state === 'single') {
+                if (ch === '\\' && i + 1 < source.length) {
+                    out += ' ';
+                    i += 2;
+                    continue;
+                }
+                if (ch === quote) {
+                    state = 'normal';
+                    out += ' ';
+                    i += 1;
+                    continue;
+                }
+                out += ch === '\n' ? '\n' : ' ';
+                i += 1;
+                continue;
+            }
+
+            if (state === 'triple') {
+                if (ch === quote && next === quote && next2 === quote) {
+                    state = 'normal';
+                    out += '   ';
+                    i += 3;
+                    continue;
+                }
+                out += ch === '\n' ? '\n' : ' ';
+                i += 1;
+                continue;
+            }
+        }
+        return out;
+    },
+
     requiresInteractiveInput(code) {
         if (!code) {
             return false;
         }
-        const source = String(code);
-        return /\binput\s*\(/.test(source)
-            || /\bsys\.stdin\b/.test(source)
-            || /\bfileinput\b/.test(source);
+        const cleaned = this.stripPythonStringsAndComments(code);
+        return /\binput\s*\(/.test(cleaned)
+            || /\bbuiltins\s*\.\s*input\b/.test(cleaned)
+            || /\bsys\s*\.\s*stdin\b/.test(cleaned)
+            || /\bfileinput\s*\.\s*input\b/.test(cleaned);
     },
 
     getStoredSessionId() {
