@@ -159,8 +159,13 @@ def _prepare_local_python_exec(workdir: Path) -> Path | None:
                         stdout=subprocess.DEVNULL,
                         stderr=subprocess.DEVNULL,
                     )
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug(
+                        "Failed to upgrade pip in virtualenv at %s using %s: %s",
+                        venv_path,
+                        candidate,
+                        exc,
+                    )
             return candidate
     except Exception:
         return None
