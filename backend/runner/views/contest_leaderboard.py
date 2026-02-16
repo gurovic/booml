@@ -456,3 +456,166 @@ def contest_problem_leaderboard(request, contest_id: int):
         },
         status=200,
     )
+
+
+def build_course_leaderboard(course) -> Dict[str, Any]:
+    from ..models import Course
+
+    contests = list(course.contests.filter(is_published=True, approval_status=Contest.ApprovalStatus.APPROVED))
+
+    participants = {
+        participant.user_id: {
+            "user_id": participant.user_id,
+            "username": participant.user.username,
+            "role": participant.role,
+            "is_owner": participant.is_owner,
+        }
+        for participant in CourseParticipant.objects.filter(course=course).select_related("user")
+    }
+
+    student_ids = [pid for pid, p in participants.items() if p.get("role") == CourseParticipant.Role.STUDENT]
+    if not student_ids:
+        return {"course_id": course.id, "contests": [], "entries": []}
+
+    problem_descriptors = {}
+    contest_problems = {}
+    for contest in contests:
+        problems = list(contest.problems.all())
+        contest_problems[contest.id] = problems
+        for problem in problems:
+            if problem.id not in problem_descriptors:
+                descriptor = ProblemDescriptor.objects.filter(problem=problem).first()
+                if descriptor:
+                    metric_name = (descriptor.metric or descriptor.metric_name or "").strip()
+                else:
+                    metric_name = "metric"
+                problem_descriptors[problem.id] = {
+                    "metric": metric_name or "metric",
+                    "lower_is_better": _metric_is_lower_better(metric_name),
+                }
+
+    user_results: Dict[int, Dict[str, Any]] = {uid: {
+        "user_id": uid,
+        "username": participants[uid]["username"],
+        "total_score": 0.0,
+        "contests_completed": 0,
+        "problems_solved": 0,
+        "contest_details": [],
+    } for uid in student_ids}
+
+    for contest in contests:
+        problems = contest_problems.get(contest.id, [])
+        if not problems:
+            continue
+
+        problem_ids = [p.id for p in problems]
+        contest_score_lower_is_better = contest.scoring == Contest.Scoring.ICPC
+
+        for user_id in student_ids:
+            user_results[user_id]["contest_details"].append({
+                "contest_id": contest.id,
+                "contest_title": contest.title,
+                "score": None,
+                "problems_solved": 0,
+                "problems_total": len(problems),
+            })
+
+        last_contest_idx = {uid: len(user_results[uid]["contest_details"]) - 1 for uid in student_ids}
+
+        submissions = Submission.objects.filter(
+            problem_id__in=problem_ids,
+            user_id__in=student_ids,
+            status__in=_VALID_STATUSES,
+        ).values("id", "problem_id", "user_id", "metrics", "submitted_at")
+
+        contest_best: Dict[Tuple[int, int], Dict[str, Any]] = {}
+        for row in submissions.iterator(chunk_size=1000):
+            key = (row["problem_id"], row["user_id"])
+            descriptor = problem_descriptors.get(row["problem_id"])
+            if descriptor is None:
+                continue
+            metric = _extract_metric_value(row["metrics"], descriptor["metric"])
+            if metric is None:
+                continue
+            current = contest_best.get(key)
+            if current is None or _is_better(
+                metric, row["submitted_at"],
+                current["metric"], current["submitted_at"],
+                descriptor["lower_is_better"]
+            ):
+                contest_best[key] = {
+                    "metric": metric,
+                    "submitted_at": row["submitted_at"],
+                }
+
+        for problem in problems:
+            descriptor = problem_descriptors.get(problem.id, {"metric": "metric", "lower_is_better": False})
+            lower_is_better = descriptor["lower_is_better"]
+            for user_id in student_ids:
+                key = (problem.id, user_id)
+                best = contest_best.get(key)
+                if best:
+                    score = best["metric"]
+                    if lower_is_better:
+                        score = -score
+                    contest_entry = user_results[user_id]["contest_details"][last_contest_idx[user_id]]
+                    contest_entry["score"] = contest_entry["score"] or 0 + abs(best["metric"])
+                    contest_entry["problems_solved"] += 1
+                    user_results[user_id]["problems_solved"] += 1
+
+        for user_id in student_ids:
+            contest_entry = user_results[user_id]["contest_details"][last_contest_idx[user_id]]
+            if contest_entry["problems_solved"] > 0:
+                user_results[user_id]["contests_completed"] += 1
+                user_results[user_id]["total_score"] += contest_entry["score"] or 0
+
+    entries = list(user_results.values())
+    entries.sort(key=lambda x: (-x["total_score"], x.get("problems_solved", 0), x.get("contests_completed", 0)), reverse=True)
+
+    rank = 0
+    last_score = None
+    for entry in entries:
+        if entry["total_score"] != last_score:
+            rank += 1
+            last_score = entry["total_score"]
+        entry["rank"] = rank
+        for detail in entry["contest_details"]:
+            if detail.get("best_submitted_at") and isinstance(detail["best_submitted_at"], datetime):
+                detail["best_submitted_at"] = detail["best_submitted_at"].isoformat()
+
+    return {
+        "course_id": course.id,
+        "course_title": course.title,
+        "contests": [
+            {"id": c.id, "title": c.title}
+            for c in contests
+        ],
+        "entries": entries,
+    }
+
+
+@login_required
+def course_leaderboard(request, course_id: int):
+    from ..models import Course
+
+    if request.method != "GET":
+        return JsonResponse({"detail": "Method not allowed"}, status=405)
+
+    course = get_object_or_404(
+        Course.objects.prefetch_related("contests", "participants"),
+        pk=course_id,
+    )
+
+    is_teacher = CourseParticipant.objects.filter(
+        course=course,
+        user=request.user,
+        role=CourseParticipant.Role.TEACHER,
+    ).exists()
+
+    is_owner = course.owner_id == request.user.id
+
+    if not (is_teacher or is_owner or course.is_open):
+        return JsonResponse({"detail": "Forbidden"}, status=403)
+
+    leaderboard = build_course_leaderboard(course)
+    return JsonResponse(leaderboard, status=200)
