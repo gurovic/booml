@@ -85,6 +85,9 @@ def import_notebook(request):
                 else:
                     content = str(source)
                 
+                # ВАЖНО: При импорте вывод НЕ сохраняется - полностью игнорируем outputs из файла
+                # Не извлекаем и не обрабатываем outputs - они не нужны при импорте
+                
                 # Определяем тип ячейки для Booml
                 if source_cell_type == 'code':
                     cell_type = Cell.CODE
@@ -131,19 +134,17 @@ def import_notebook(request):
                             content = content_cleaned[2:-2].strip()
                     else:
                         cell_type = Cell.TEXT
-                    output_json = ''
                 
                 else:
                     # Неизвестный тип - используем код по умолчанию
                     cell_type = Cell.CODE
-                    output_json = ''
                 
-                # Создаем ячейку
+                # Создаем ячейку БЕЗ вывода - вывод всегда пустой при импорте
                 cell = Cell.objects.create(
                     notebook=notebook,
                     cell_type=cell_type,
                     content=content,
-                    output=output_json,
+                    output='',  # Вывод всегда пустой при импорте
                     execution_order=execution_order
                 )
                 created_cells.append(cell.id)
@@ -151,6 +152,11 @@ def import_notebook(request):
                 
             except Exception as e:
                 errors.append(f"Ячейка {idx + 1}: ошибка создания - {str(e)}")
+        
+        # Гарантируем, что все импортированные ячейки имеют пустой вывод
+        # Это защита на случай, если вывод был установлен где-то еще
+        if created_cells:
+            Cell.objects.filter(id__in=created_cells).update(output='')
         
         response_data = {
             'status': 'success',

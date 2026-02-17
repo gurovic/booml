@@ -1014,5 +1014,9 @@ watch(courseId, () => {
   .contest-content {
     padding: 0 24px 48px;
   }
+
+  .course-title {
+    font-size: 32px;
+  }
 }
 </style>
