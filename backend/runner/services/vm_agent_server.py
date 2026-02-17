@@ -24,6 +24,22 @@ _INTERACTIVE_RUNS = {}
 _TRACEBACK_SEPARATOR = "-" * 79
 
 
+def _read_timeout_env(name, default):
+    raw = os.environ.get(name)
+    if raw is None or raw == "":
+        return default
+    normalized = raw.strip().lower()
+    if normalized in {"none", "infinite", "inf", "off", "no"}:
+        return None
+    try:
+        value = float(raw)
+        if value <= 0:
+            return None
+        return max(1.0, value)
+    except ValueError:
+        return default
+
+
 def _format_exception(exc, *, code=None, filename=None):
     exc_type = exc.__class__.__name__
     message = str(exc)
@@ -437,6 +453,7 @@ def build_download_helper(workspace: Path):
 def handle_shell_commands(code: str, workspace: Path, stdout_buffer: io.StringIO, stderr_buffer: io.StringIO) -> str:
     lines = code.split('\n')
     filtered_lines = []
+    shell_timeout = _read_timeout_env("RUNTIME_SHELL_COMMAND_TIMEOUT_SECONDS", None)
     
     for line in lines:
         stripped = line.lstrip()
@@ -449,7 +466,7 @@ def handle_shell_commands(code: str, workspace: Path, stdout_buffer: io.StringIO
                     capture_output=True,
                     text=True,
                     cwd=str(workspace),
-                    timeout=300,
+                    timeout=shell_timeout,
                     env={**os.environ, 'PIP_ROOT_USER_ACTION': 'ignore'}
                 )
                 stdout_buffer.write(result.stdout)
