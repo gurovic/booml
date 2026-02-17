@@ -162,6 +162,19 @@ class ContestLeaderboardViewTests(TestCase):
         user_ids = {entry["user_id"] for entry in entries}
         self.assertEqual(user_ids, {self.bob.id})
 
+    def test_unpublished_problem_is_excluded_from_leaderboards(self):
+        self.problem_accuracy.is_published = False
+        self.problem_accuracy.save(update_fields=["is_published"])
+
+        request = self.factory.get("/")
+        request.user = self.teacher
+        response = contest_problem_leaderboard.__wrapped__(request, contest_id=self.contest.id)
+
+        self.assertEqual(response.status_code, 200)
+        payload = json.loads(response.content.decode())
+        self.assertEqual([row["problem_id"] for row in payload["leaderboards"]], [self.problem_rmse.id])
+        self.assertEqual(payload["overall_leaderboard"]["problems_count"], 1)
+
     def test_overall_leaderboard_ioi_scores(self):
         self._create_submission(self.alice, self.problem_rmse, "rmse", 0.4)
         self._create_submission(self.bob, self.problem_rmse, "rmse", 0.2)

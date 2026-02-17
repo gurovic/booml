@@ -189,7 +189,7 @@ def contest_detail(request, contest_id):
         )
 
     problem_links = (
-        ContestProblem.objects.filter(contest_id=contest.id)
+        ContestProblem.objects.filter(contest_id=contest.id, problem__is_published=True)
         .select_related("problem")
         .order_by("position", "id")
     )
@@ -224,7 +224,7 @@ def contest_detail(request, contest_id):
             "registration_type": contest.registration_type,
             "duration_minutes": contest.duration_minutes,
             "start_time": contest.start_time.isoformat() if contest.start_time else None,
-            "problems_count": contest.problems_count,
+            "problems_count": len(problems),
             "allowed_participants": allowed_participants,
             "problems": problems,
             "leaderboards": leaderboards,
@@ -495,6 +495,11 @@ def add_problem_to_contest(request, contest_id):
     # Keep backwards compatible single-add endpoint by delegating to bulk add.
     # Return the legacy "problem" object in the response (tests + any older callers rely on it).
     problem = get_object_or_404(Problem, pk=problem_id)
+    if not problem.is_published:
+        return JsonResponse(
+            {"detail": "Problem must be published before adding to contest"},
+            status=400,
+        )
     result = _bulk_add_problems(contest, [problem_id])
     added = bool(result["added"])
     return JsonResponse(
@@ -542,6 +547,15 @@ def bulk_add_problems_to_contest(request, contest_id):
         found = {p.id for p in problems}
         missing = sorted(set(problem_ids_int) - found)
         return JsonResponse({"detail": "Some problems not found", "missing": missing}, status=400)
+    unpublished = sorted(p.id for p in problems if not p.is_published)
+    if unpublished:
+        return JsonResponse(
+            {
+                "detail": "Only published problems can be added to a contest",
+                "unpublished": unpublished,
+            },
+            status=400,
+        )
 
     # Preserve caller order.
     result = _bulk_add_problems(contest, problem_ids_int)
