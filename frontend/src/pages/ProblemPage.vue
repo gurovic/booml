@@ -137,7 +137,8 @@ import { normalizeContestProblemLabel, toContestProblemLabel } from '@/utils/con
 
 const md = new MarkdownIt({
   html: false,
-  breaks: true,
+  breaks: false,
+  linkify: true,
 }).use(markdownKatex, { throwOnError: false })
 
 const route = useRoute()
@@ -151,6 +152,29 @@ let fileInputKey = ref(0)
 let isCreatingNotebook = ref(false)
 let notebookMessage = ref(null)
 const contestProblemLabel = ref('')
+
+const stripLeadingH1 = (statement) => {
+  if (typeof statement !== 'string' || !statement) return ''
+
+  const lines = statement.replace(/\r\n?/g, '\n').split('\n')
+  let firstContentLine = 0
+
+  while (firstContentLine < lines.length && !lines[firstContentLine].trim()) {
+    firstContentLine += 1
+  }
+
+  if (firstContentLine >= lines.length) return statement
+  if (!/^#\s+/.test(lines[firstContentLine])) return statement
+
+  lines.splice(firstContentLine, 1)
+  while (firstContentLine < lines.length && !lines[firstContentLine].trim()) {
+    lines.splice(firstContentLine, 1)
+  }
+
+  return lines.join('\n')
+}
+
+const renderStatement = (statement) => md.render(stripLeadingH1(statement))
 
 const queryValue = (raw) => (Array.isArray(raw) ? raw[0] : raw)
 const contestIdFromQuery = computed(() => {
@@ -185,7 +209,7 @@ const loadProblem = async () => {
     console.log(err)
   } finally {
     if (problem.value != null) {
-      problem.value.rendered_statement = md.render(problem.value.statement)
+      problem.value.rendered_statement = renderStatement(problem.value.statement)
       await resolveContestProblemLabel()
     }
   }
@@ -279,7 +303,7 @@ const handleSubmit = async () => {
       const res = await getProblem(route.params.id)
       problem.value = res
       if (problem.value != null) {
-        problem.value.rendered_statement = md.render(problem.value.statement)
+        problem.value.rendered_statement = renderStatement(problem.value.statement)
       }
     } catch (refreshError) {
       console.warn('Failed to refresh submissions after upload:', refreshError)
@@ -397,6 +421,66 @@ const handleCreateNotebook = async () => {
   color: var(--color-text-primary);
 }
 
+.problem__text :deep(a) {
+  color: var(--color-primary);
+  text-decoration: underline;
+  overflow-wrap: anywhere;
+}
+
+.problem__text :deep(a:hover) {
+  opacity: 0.85;
+}
+
+.problem__text :deep(table) {
+  width: 100%;
+  margin: 20px 0 24px;
+  border-collapse: separate;
+  border-spacing: 0;
+  border: 1px solid var(--color-border-default);
+  border-radius: 14px;
+  overflow: hidden;
+  background: linear-gradient(180deg, #ffffff 0%, #fcfbff 100%);
+  box-shadow: 0 10px 24px rgba(39, 52, 106, 0.07);
+}
+
+.problem__text :deep(th),
+.problem__text :deep(td) {
+  padding: 12px 14px;
+  text-align: left;
+  border-bottom: 1px solid var(--color-border-light);
+}
+
+.problem__text :deep(th + th),
+.problem__text :deep(td + td) {
+  border-left: 1px solid var(--color-border-light);
+}
+
+.problem__text :deep(thead th) {
+  font-weight: 600;
+  color: var(--color-title-text);
+  background: linear-gradient(180deg, #f8f6ff 0%, #f0ecff 100%);
+}
+
+.problem__text :deep(tbody tr:nth-child(even)) {
+  background-color: var(--color-bg-muted);
+}
+
+.problem__text :deep(tbody tr:hover) {
+  background-color: var(--color-bg-primary);
+}
+
+.problem__text :deep(tbody tr:last-child td) {
+  border-bottom: none;
+}
+
+@media (max-width: 720px) {
+  .problem__text :deep(table) {
+    display: block;
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+}
+
 .problem__text :deep(p) {
   margin-bottom: 16px;
 }
@@ -467,12 +551,6 @@ const handleCreateNotebook = async () => {
 
 .problem__file, .problem__submission {
   width: 100%;
-}
-
-.problem__file {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
 }
 
 .problem__file-href, .problem__submission-href {
