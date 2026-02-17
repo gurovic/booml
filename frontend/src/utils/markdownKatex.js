@@ -1,5 +1,71 @@
 import katex from 'katex'
 
+function isEscaped(text, pos) {
+  let slashCount = 0
+  for (let idx = pos - 1; idx >= 0 && text[idx] === '\\'; idx -= 1) {
+    slashCount += 1
+  }
+  return slashCount % 2 === 1
+}
+
+function findUnescapedDelimiter(text, delimiter, fromIndex = 0) {
+  let idx = fromIndex
+  while ((idx = text.indexOf(delimiter, idx)) !== -1) {
+    if (!isEscaped(text, idx)) return idx
+    idx += delimiter.length
+  }
+  return -1
+}
+
+function replaceDelimitedMath(text, open, close, formatContent) {
+  if (!text || !text.includes(open)) return text
+
+  let cursor = 0
+  let output = ''
+
+  while (cursor < text.length) {
+    const openPos = findUnescapedDelimiter(text, open, cursor)
+    if (openPos === -1) {
+      output += text.slice(cursor)
+      break
+    }
+
+    const contentStart = openPos + open.length
+    const closePos = findUnescapedDelimiter(text, close, contentStart)
+    if (closePos === -1) {
+      output += text.slice(cursor)
+      break
+    }
+
+    const content = text.slice(contentStart, closePos)
+    const replacement = formatContent(content)
+
+    output += text.slice(cursor, openPos)
+    output += replacement == null ? text.slice(openPos, closePos + close.length) : replacement
+    cursor = closePos + close.length
+  }
+
+  return output
+}
+
+function normalizeMathDelimiters(text) {
+  if (typeof text !== 'string' || !text) return text
+
+  let normalized = text
+
+  normalized = replaceDelimitedMath(normalized, '\\[', '\\]', content => {
+    const trimmed = content.trim()
+    return trimmed ? `\n$$\n${trimmed}\n$$\n` : null
+  })
+
+  normalized = replaceDelimitedMath(normalized, '\\(', '\\)', content => {
+    const trimmed = content.trim()
+    return trimmed ? `$${trimmed}$` : null
+  })
+
+  return normalized
+}
+
 function isValidDelim(state, pos) {
   const max = state.posMax
   const prevChar = pos > 0 ? state.src.charCodeAt(pos - 1) : -1
@@ -138,6 +204,10 @@ function renderMath(latex, displayMode, options) {
 }
 
 export default function markdownKatex(md, options = {}) {
+  md.core.ruler.before('normalize', 'normalize_math_delimiters', state => {
+    state.src = normalizeMathDelimiters(state.src)
+  })
+
   md.inline.ruler.after('escape', 'math_inline', mathInline)
   md.block.ruler.after('blockquote', 'math_block', mathBlock, {
     alt: ['paragraph', 'reference', 'blockquote', 'list'],
@@ -149,5 +219,22 @@ export default function markdownKatex(md, options = {}) {
   md.renderer.rules.math_block = (tokens, idx) => {
     const html = renderMath(tokens[idx].content, true, options)
     return `<div class="math-block">${html}</div>\n`
+  }
+
+  const defaultLinkOpen =
+    md.renderer.rules.link_open ||
+    ((tokens, idx, renderOptions, env, self) => self.renderToken(tokens, idx, renderOptions))
+
+  md.renderer.rules.link_open = (tokens, idx, renderOptions, env, self) => {
+    const token = tokens[idx]
+    const hrefIndex = token.attrIndex('href')
+    const href = hrefIndex >= 0 ? token.attrs[hrefIndex][1] : ''
+
+    if (/^https?:\/\//i.test(href)) {
+      token.attrSet('target', '_blank')
+      token.attrSet('rel', 'noopener noreferrer')
+    }
+
+    return defaultLinkOpen(tokens, idx, renderOptions, env, self)
   }
 }
