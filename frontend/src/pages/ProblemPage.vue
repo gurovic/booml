@@ -54,6 +54,7 @@
           <li class="problem__submit problem__menu-item" v-if="userStore.isAuthenticated">
             <h2 class="problem__submit-title problem__item-title">Отправить решение</h2>
             <div class="problem__submit-form">
+              <p class="problem__submit-hint">Выберите один способ: файл или вставка CSV-текста</p>
               <input 
                 type="file" 
                 :key="fileInputKey"
@@ -66,9 +67,17 @@
                 <span v-if="!selectedFile">Выбрать файл</span>
                 <span v-else>{{ selectedFile.name }}</span>
               </label>
+              <textarea
+                v-model="textSubmission"
+                class="problem__text-input"
+                placeholder="Или вставьте CSV прямо сюда, например:
+id,pred
+1,0.42
+2,0.75"
+              ></textarea>
               <button 
                 @click="handleSubmit"
-                :disabled="!selectedFile || isSubmitting"
+                :disabled="!canSubmit || isSubmitting"
                 class="problem__submit-button button button--primary"
               >
                 <span v-if="!isSubmitting">Отправить</span>
@@ -146,6 +155,7 @@ const userStore = useUserStore()
 
 let problem = ref(null)
 let selectedFile = ref(null)
+let textSubmission = ref('')
 let isSubmitting = ref(false)
 let submitMessage = ref(null)
 let fileInputKey = ref(0)
@@ -228,6 +238,12 @@ const availableFiles = computed(() => {
     })
 })
 
+const canSubmit = computed(() => {
+  const hasFile = selectedFile.value != null
+  const hasText = textSubmission.value.trim().length > 0
+  return hasFile || hasText
+})
+
 const roundMetric = (value) => {
   if (value == null) return '-'
   return value.toFixed(3)
@@ -268,8 +284,16 @@ const clearFileInput = () => {
 }
 
 const handleSubmit = async () => {
-  if (!selectedFile.value) {
-    submitMessage.value = { type: 'error', text: 'Пожалуйста, выберите файл' }
+  const hasFile = selectedFile.value != null
+  const hasText = textSubmission.value.trim().length > 0
+
+  if (!hasFile && !hasText) {
+    submitMessage.value = { type: 'error', text: 'Пожалуйста, выберите файл или вставьте CSV-текст' }
+    return
+  }
+
+  if (hasFile && hasText) {
+    submitMessage.value = { type: 'error', text: 'Используйте только один способ отправки: файл или текст' }
     return
   }
 
@@ -277,8 +301,11 @@ const handleSubmit = async () => {
   submitMessage.value = null
 
   try {
-    await submitSolution(problem.value.id, selectedFile.value)
-    submitMessage.value = { type: 'success', text: 'Файл успешно отправлен на проверку!' }
+    const payload = hasFile
+      ? { file: selectedFile.value }
+      : { rawText: textSubmission.value }
+    await submitSolution(problem.value.id, payload)
+    submitMessage.value = { type: 'success', text: 'Решение успешно отправлено на проверку!' }
     
     // Refresh problem data to show new submission
     try {
@@ -291,15 +318,16 @@ const handleSubmit = async () => {
       console.warn('Failed to refresh submissions after upload:', refreshError)
       submitMessage.value = {
         type: 'success',
-        text: 'Файл отправлен. Не удалось обновить историю посылок — обновите страницу.'
+        text: 'Решение отправлено. Не удалось обновить историю посылок, обновите страницу.'
       }
     }
     
-    // Clear file input for next submission
+    // Clear input for next submission
     clearFileInput()
+    textSubmission.value = ''
   } catch (err) {
     console.error('Submission error:', err)
-    submitMessage.value = { type: 'error', text: err.message || 'Ошибка при отправке файла' }
+    submitMessage.value = { type: 'error', text: err.message || 'Ошибка при отправке решения' }
   } finally {
     isSubmitting.value = false
   }
@@ -594,6 +622,12 @@ const handleCreateNotebook = async () => {
   gap: 10px;
 }
 
+.problem__submit-hint {
+  margin: 0;
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
 .problem__file-input {
   display: none;
 }
@@ -612,6 +646,24 @@ const handleCreateNotebook = async () => {
 
 .problem__file-label:hover {
   opacity: 0.9;
+}
+
+.problem__text-input {
+  min-height: 160px;
+  resize: vertical;
+  border-radius: 10px;
+  border: 1px solid var(--color-border-default);
+  padding: 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--color-text-primary);
+  background-color: #fff;
+}
+
+.problem__text-input:focus {
+  outline: 2px solid rgba(148, 128, 201, 0.25);
+  border-color: #9480c9;
 }
 
 .problem__submit-button {
