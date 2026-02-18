@@ -23,11 +23,122 @@ from .vm_models import VirtualMachine
 _AGENT_CACHE: Dict[str, VmAgent] = {}
 _INTERACTIVE_RUNS: Dict[str, "InteractiveRun"] = {}
 logger = logging.getLogger(__name__)
+_TRACEBACK_SEPARATOR = "-" * 79
 
 
-def _handle_shell_commands(code: str, workdir: Path, stdout_buffer: io.StringIO, stderr_buffer: io.StringIO, python_exec: Path | None = None) -> str:
+def _format_exception(
+    exc: BaseException,
+    *,
+    code: str | None = None,
+    filename: str | None = None,
+) -> str:
+    exc_type = exc.__class__.__name__
+    message = str(exc)
+    traceback_label = "Traceback (most recent call last)"
+    frame = None
+    frames = traceback.extract_tb(exc.__traceback__) if exc.__traceback__ else []
+    if frames:
+        preferred = {"<cell>", "<string>", "<stdin>"}
+        for candidate in reversed(frames):
+            if candidate.filename in preferred or candidate.filename.endswith("main.py"):
+                frame = candidate
+                break
+        if frame is None:
+            frame = frames[-1]
+
+    lineno = None
+    text_line = None
+    if isinstance(exc, SyntaxError):
+        lineno = exc.lineno or (frame.lineno if frame else None)
+        filename = exc.filename or filename or (frame.filename if frame else "<cell>")
+        if exc.text:
+            text_line = exc.text.rstrip("\n")
+    else:
+        lineno = frame.lineno if frame else None
+        filename = filename or (frame.filename if frame else "<cell>")
+
+    lines = code.splitlines() if code else []
+
+    def _line_at(target: int | None) -> str:
+        if target is None or target < 1:
+            return ""
+        if 1 <= target <= len(lines):
+            return lines[target - 1]
+        return ""
+
+    error_line = text_line if text_line is not None else _line_at(lineno)
+    before_line = _line_at(lineno - 1) if lineno else ""
+    after_line = _line_at(lineno + 1) if lineno else ""
+
+    width = len(str(lineno + 1)) if lineno else 1
+    arrow_prefix = "---> "
+    pad_prefix = " " * len(arrow_prefix)
+
+    context: list[str] = []
+    if lineno:
+        if before_line:
+            context.append(f"{pad_prefix}{lineno - 1:>{width}} {before_line}")
+        if error_line:
+            context.append(f"{arrow_prefix}{lineno:>{width}} {error_line}")
+        else:
+            context.append(f"{arrow_prefix}{lineno:>{width}}")
+        if after_line:
+            context.append(f"{pad_prefix}{lineno + 1:>{width}} {after_line}")
+
+    file_line = ""
+    if filename and lineno:
+        file_line = f"{filename} in <cell line: {lineno}>()"
+    elif filename:
+        file_line = f"{filename}"
+
+    header_spaces = len(_TRACEBACK_SEPARATOR) - len(exc_type) - len(traceback_label)
+    if header_spaces >= 1:
+        header_line = f"{exc_type}{' ' * header_spaces}{traceback_label}"
+    else:
+        header_line = f"{exc_type} {traceback_label}"
+
+    parts = [
+        _TRACEBACK_SEPARATOR,
+        header_line,
+    ]
+    if file_line:
+        parts.append(file_line)
+    if context:
+        parts.extend(context)
+    parts.append("")
+    if message:
+        parts.append(f"{exc_type}: {message}")
+    else:
+        parts.append(exc_type)
+    return "\n".join(parts)
+
+
+def _read_timeout_env(name: str, default: float | None) -> float | None:
+    raw = os.environ.get(name)
+    if raw is None or raw == "":
+        return default
+    normalized = raw.strip().lower()
+    if normalized in {"none", "infinite", "inf", "off", "no"}:
+        return None
+    try:
+        value = float(raw)
+        if value <= 0:
+            return None
+        return max(1.0, value)
+    except ValueError:
+        return default
+
+
+def _handle_shell_commands(
+    code: str,
+    workdir: Path,
+    stdout_buffer: io.StringIO,
+    stderr_buffer: io.StringIO,
+    python_exec: Path | None = None,
+) -> str:
     lines = code.split('\n')
     filtered_lines = []
+    shell_timeout = _read_timeout_env("RUNTIME_SHELL_COMMAND_TIMEOUT_SECONDS", None)
     
     for line in lines:
         stripped = line.lstrip()
@@ -40,7 +151,7 @@ def _handle_shell_commands(code: str, workdir: Path, stdout_buffer: io.StringIO,
                     capture_output=True,
                     text=True,
                     cwd=str(workdir),
-                    timeout=300,
+                    timeout=shell_timeout,
                     env={**os.environ, 'PIP_ROOT_USER_ACTION': 'ignore'}
                 )
                 stdout_buffer.write(result.stdout)
@@ -183,10 +294,12 @@ class InteractiveRun:
 
     def wait_for_status(self, since_seq: int | None = None) -> str:
         with self._condition:
-            expected_seq = self._status_seq if since_seq is None else since_seq
             while True:
-                if self.status in {"input_required", "success", "error"} and self._status_seq != expected_seq:
+                if self.status in {"success", "error"}:
                     return self.status
+                if self.status == "input_required":
+                    if since_seq is None or self._status_seq != since_seq:
+                        return self.status
                 self._condition.wait()
 
     def _write_stdout(self, text: str) -> None:
@@ -300,8 +413,8 @@ class InteractiveRun:
                     code = _handle_shell_commands(self.code, self.session.workdir, self.stdout_buffer, self.stderr_buffer, self.session.python_exec)
                     if code.strip():
                         _execute_with_optional_displayhook(code, namespace, display)
-                except Exception:
-                    self.error = traceback.format_exc()
+                except Exception as exc:
+                    self.error = _format_exception(exc, code=self.code, filename="<cell>")
                 else:
                     for item in _capture_matplotlib_figures(self.session):
                         push_output(item)
@@ -451,8 +564,8 @@ class LocalVmAgent(VmAgent):
                 code = _handle_shell_commands(code, self.session.workdir, stdout_buffer, stderr_buffer, self.session.python_exec)
                 if code.strip():
                     _execute_with_optional_displayhook(code, namespace, display)
-            except Exception:
-                error = traceback.format_exc()
+            except Exception as exc:
+                error = _format_exception(exc, code=code, filename="<cell>")
             else:
                 for item in _capture_matplotlib_figures(self.session):
                     push_output(item)
@@ -470,9 +583,13 @@ class LocalVmAgent(VmAgent):
 class FilesystemVmAgent(VmAgent):
     """Communicates with the VM agent via the shared workspace directory."""
 
-    def __init__(self, vm: VirtualMachine, *, timeout: float = 60.0):
+    def __init__(self, vm: VirtualMachine, *, timeout: float | None = None):
         self.vm = vm
-        self.timeout = timeout
+        default_timeout = _read_timeout_env("RUNTIME_VM_AGENT_TIMEOUT_SECONDS", None)
+        if timeout is None:
+            self.timeout = default_timeout
+        else:
+            self.timeout = None if timeout <= 0 else max(1.0, float(timeout))
         self.commands_dir = vm.workspace_path / ".vm_agent" / "commands"
         self.results_dir = vm.workspace_path / ".vm_agent" / "results"
 
@@ -535,17 +652,28 @@ class FilesystemVmAgent(VmAgent):
         tmp_path.rename(final_path)
 
         result_path = self.results_dir / f"{command_id}.json"
-        deadline = time.monotonic() + self.timeout
-        while time.monotonic() < deadline:
-            if result_path.exists():
-                try:
-                    data = json.loads(result_path.read_text(encoding="utf-8"))
-                    result_path.unlink(missing_ok=True)
-                    return data
-                except json.JSONDecodeError:
-                    pass
-            time.sleep(0.05)
-        raise RuntimeError("VM agent timed out waiting for execution result")
+        if self.timeout is None:
+            while True:
+                if result_path.exists():
+                    try:
+                        data = json.loads(result_path.read_text(encoding="utf-8"))
+                        result_path.unlink(missing_ok=True)
+                        return data
+                    except json.JSONDecodeError:
+                        pass
+                time.sleep(0.05)
+        else:
+            deadline = time.monotonic() + self.timeout
+            while time.monotonic() < deadline:
+                if result_path.exists():
+                    try:
+                        data = json.loads(result_path.read_text(encoding="utf-8"))
+                        result_path.unlink(missing_ok=True)
+                        return data
+                    except json.JSONDecodeError:
+                        pass
+                time.sleep(0.05)
+            raise RuntimeError("VM agent timed out waiting for execution result")
 
 
 def get_vm_agent(session_id: str, session) -> VmAgent:

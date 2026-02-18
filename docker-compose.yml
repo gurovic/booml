@@ -56,6 +56,7 @@ services:
     working_dir: /app
     volumes:
       - ./backend:/app
+      - ./problem_data:/problem_data
       - /var/run/docker.sock:/var/run/docker.sock
     ports:
       - "8100:8100"
@@ -82,6 +83,7 @@ services:
       CSRF_TRUSTED_ORIGINS: http://localhost:8101,http://frontend:8101,http://booml.letovo.site,https://booml.letovo.site,http://backend.booml.letovo.site,https://backend.booml.letovo.site
       RUNTIME_EXECUTION_BACKEND: legacy
       RUNTIME_VM_BACKEND: docker
+      PROBLEM_DATA_ROOT: /problem_data/problem_data
       # Host path corresponding to /app inside container; used for Docker VM bind mounts.
       RUNTIME_VM_HOST_ROOT: ${PWD}/backend
       CELERY_BROKER_URL: redis://redis:6379/0
@@ -101,6 +103,7 @@ services:
     working_dir: /app
     volumes:
       - ./backend:/app
+      - ./problem_data:/problem_data
       - /var/run/docker.sock:/var/run/docker.sock
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -120,6 +123,7 @@ services:
       DB_HOST: postgres
       DB_PORT: "5432"
       RUNTIME_VM_BACKEND: docker
+      PROBLEM_DATA_ROOT: /problem_data/problem_data
       # Host path corresponding to /app inside container; used for Docker VM bind mounts.
       RUNTIME_VM_HOST_ROOT: ${PWD}/backend
       CELERY_BROKER_URL: redis://redis:6379/0
