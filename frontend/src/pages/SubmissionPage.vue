@@ -177,7 +177,14 @@ const getPrevalidationStatus = (status) => {
   return statusMap[status] || status
 }
 
-const formatMetrics = (metrics) => {
+const formatSubmissionScore = (submission) => {
+  if (!submission || typeof submission !== 'object') return '-'
+  if (typeof submission.score === 'number') {
+    return submission.score.toFixed(2)
+  }
+  
+  // Fallback to metrics
+  const metrics = submission.metrics
   if (!metrics) return '-'
   if (typeof metrics === 'number') {
     return metrics.toFixed(2)
@@ -199,14 +206,6 @@ const formatMetrics = (metrics) => {
     return JSON.stringify(metrics)
   }
   return String(metrics)
-}
-
-const formatSubmissionScore = (submission) => {
-  if (!submission || typeof submission !== 'object') return '-'
-  if (typeof submission.score === 'number') {
-    return submission.score.toFixed(2)
-  }
-  return formatMetrics(submission.metrics)
 }
 
 const formatFileSize = (bytes) => {
