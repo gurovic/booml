@@ -305,6 +305,18 @@ def build_contest_overall_leaderboard(
     contest: Contest,
     data: Dict[str, Any] | None = None,
 ) -> Dict[str, Any]:
+    """
+    Build the overall leaderboard for a contest.
+    
+    Scoring modes:
+    - IOI: Sums individual problem scores (0-100 each). With N problems,
+           total scores range from 0 to N×100 points.
+    - PARTIAL: Averages problem scores to maintain 0-100 scale.
+    - ICPC: Counts solved problems with time penalties.
+    
+    Note: Individual problem scores are always on a 0-100 scale, but IOI
+    scoring allows totals to exceed 100 as it sums across all problems.
+    """
     data = data or _build_contest_leaderboard_data(contest)
     problems = data["problems"]
     if not problems:
@@ -355,6 +367,7 @@ def build_contest_overall_leaderboard(
                 "_sort_time": last_time or fallback_time,
             }
         else:
+            # IOI or PARTIAL scoring: sum individual problem scores (0-100 each)
             for problem in problems:
                 key = (problem.id, user_id)
                 best = best_results.get(key)
@@ -365,7 +378,9 @@ def build_contest_overall_leaderboard(
                 if best["submitted_at"] is not None:
                     last_time = best["submitted_at"] if last_time is None else max(last_time, best["submitted_at"])
             if contest.scoring == Contest.Scoring.PARTIAL and problems:
+                # PARTIAL mode: average to maintain 0-100 scale
                 total_score = total_score / len(problems)
+            # IOI mode: sum is kept as-is, allowing totals > 100
             total_score_value = total_score if solved_count else None
             entry = {
                 "user_id": user_id,
