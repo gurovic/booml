@@ -13,7 +13,7 @@
             :to="item.route"
             class="problem__selection_item"
             :class="{ 'is-selected': item.isCurrent }"
-            :aria-current="item.isCurrent ? 'true' : undefined"
+            :aria-current="item.isCurrent ? 'page' : undefined"
           >
             {{ item.label }}
           </router-link>
