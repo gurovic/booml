@@ -600,17 +600,27 @@ class SubmissionChecker:
         reference_metric: Optional[float],
     ) -> Dict[str, Any]:
         if isinstance(metric_result_payload, dict):
+            # Start with a shallow copy to avoid mutating the original input.
             payload = dict(metric_result_payload)
         else:
             payload = {}
 
-        payload[metric_name] = float(raw_metric)
-        payload["raw_metric"] = float(raw_metric)
+        # Canonical representation of the raw metric.
+        raw_value = float(raw_metric)
+        payload.setdefault(metric_name, raw_value)
+        payload.setdefault("raw_metric", raw_value)
         payload["raw_metric_name"] = metric_name
-        payload["score_100"] = float(score_100)
-        payload["metric_score"] = float(score_100)
-        payload["score"] = float(score_100)
-        payload["metric"] = float(score_100)
+
+        # Canonical normalized score key.
+        score_value = float(score_100)
+        payload["score_100"] = score_value
+
+        # Legacy aliases for backward compatibility. These mirror score_100
+        # and may be removed in the future. We only populate them if they are
+        # not already present in the incoming payload to avoid overwriting.
+        payload.setdefault("metric_score", score_value)
+        payload.setdefault("score", score_value)
+        payload.setdefault("metric", score_value)
         payload["score_mode"] = score_mode
         if curve_p is not None:
             payload["curve_p"] = float(curve_p)
