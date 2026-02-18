@@ -65,6 +65,15 @@ const _problemLabelFromContest = (problemId) => {
   return normalizeContestProblemLabel(row?.label)
 }
 
+const _problemNameFromContest = (problemId) => {
+  const contestProblems = Array.isArray(fetchedContest.value?.problems)
+    ? fetchedContest.value.problems
+    : []
+  const row = contestProblems.find((item) => Number(item?.id) === Number(problemId))
+  const title = String(row?.title || '').trim()
+  return title || ''
+}
+
 const _pushHome = (list) => {
   list.push({
     key: 'home',
@@ -107,10 +116,14 @@ const _contestTitle = (contestId) => {
 }
 
 const _problemTitle = (problemId) => {
+  const problemName =
+    String(props.problem?.title || '').trim() ||
+    _problemNameFromContest(problemId) ||
+    `Задача ${problemId}`
   const fromQueryLabel = _problemLabelFromQuery()
-  if (fromQueryLabel) return `Problem ${fromQueryLabel}`
+  if (fromQueryLabel) return `${fromQueryLabel}. ${problemName}`
   const fromContestLabel = _problemLabelFromContest(problemId)
-  if (fromContestLabel) return `Problem ${fromContestLabel}`
+  if (fromContestLabel) return `${fromContestLabel}. ${problemName}`
   const fromProp = props.problem?.title
   if (fromProp) return String(fromProp)
   return `Задача ${problemId}`
