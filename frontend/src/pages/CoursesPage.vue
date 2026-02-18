@@ -263,7 +263,7 @@ onMounted(() => {
 .courses-content {
   max-width: 980px;
   margin: 0 auto;
-  padding: 24px 16px 40px;
+  padding: 0 16px 40px;
   display: flex;
   flex-direction: column;
   gap: 12px;

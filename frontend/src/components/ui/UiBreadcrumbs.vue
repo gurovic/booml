@@ -26,6 +26,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { contestApi } from '@/api'
 import { ensureCourseTreeLoaded, getCourseById, getSectionById, getSectionChain } from '@/utils/courseTreeCache'
+import { normalizeContestProblemLabel } from '@/utils/contestProblemLabel'
 
 const props = defineProps({
   section: { type: Object, default: null },
@@ -52,6 +53,25 @@ const _titleFromQuery = (key) => {
   const v = route.query[key]
   const raw = Array.isArray(v) ? v[0] : v
   return raw ? String(raw) : ''
+}
+
+const _problemLabelFromQuery = () => normalizeContestProblemLabel(_titleFromQuery('problem_label'))
+
+const _problemLabelFromContest = (problemId) => {
+  const contestProblems = Array.isArray(fetchedContest.value?.problems)
+    ? fetchedContest.value.problems
+    : []
+  const row = contestProblems.find((item) => Number(item?.id) === Number(problemId))
+  return normalizeContestProblemLabel(row?.label)
+}
+
+const _problemNameFromContest = (problemId) => {
+  const contestProblems = Array.isArray(fetchedContest.value?.problems)
+    ? fetchedContest.value.problems
+    : []
+  const row = contestProblems.find((item) => Number(item?.id) === Number(problemId))
+  const title = String(row?.title || '').trim()
+  return title || ''
 }
 
 const _pushHome = (list) => {
@@ -96,6 +116,14 @@ const _contestTitle = (contestId) => {
 }
 
 const _problemTitle = (problemId) => {
+  const problemName =
+    String(props.problem?.title || '').trim() ||
+    _problemNameFromContest(problemId) ||
+    `Задача ${problemId}`
+  const fromQueryLabel = _problemLabelFromQuery()
+  if (fromQueryLabel) return `${fromQueryLabel}. ${problemName}`
+  const fromContestLabel = _problemLabelFromContest(problemId)
+  if (fromContestLabel) return `${fromContestLabel}. ${problemName}`
   const fromProp = props.problem?.title
   if (fromProp) return String(fromProp)
   return `Задача ${problemId}`
