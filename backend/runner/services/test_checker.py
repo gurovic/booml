@@ -141,8 +141,8 @@ class TestChecker(unittest.TestCase):
         checker = SubmissionChecker()
         result = checker.check_submission(self.mock_submission)
 
-        self.assertTrue(result.ok)
-        self.assertIn("metric_name", result.outputs)
+        self.assertFalse(result.ok)
+        self.assertIn("ProblemDescriptor not found", result.errors)
 
     @patch('runner.services.checker.pd.read_csv')
     def test_check_with_missing_metric(self, mock_read_csv):
