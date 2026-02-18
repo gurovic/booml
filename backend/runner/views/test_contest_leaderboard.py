@@ -176,6 +176,18 @@ class ContestLeaderboardViewTests(TestCase):
         self.assertEqual(payload["overall_leaderboard"]["problems_count"], 1)
 
     def test_overall_leaderboard_ioi_scores(self):
+        # Create submissions with raw metrics that will be converted to 100-point scores
+        # Expected individual problem scores (0-100 scale):
+        # - Bob: rmse=0.2 → ~80 points, accuracy=0.9 → 90 points
+        # - Alice: rmse=0.4 → ~60 points, accuracy=0.9 → 90 points
+        #
+        # IOI scoring sums individual problem scores, so:
+        # - Bob total: 80 + 90 = 170 points (best overall)
+        # - Alice total: 60 + 90 = 150 points
+        #
+        # Note: IOI scoring allows totals to exceed 100 because it sums scores
+        # across all problems. Each problem is scored 0-100, but with N problems,
+        # the maximum total is N×100 points.
         self._create_submission(self.alice, self.problem_rmse, "rmse", 0.4)
         self._create_submission(self.bob, self.problem_rmse, "rmse", 0.2)
         self._create_submission(self.alice, self.problem_accuracy, "accuracy", 0.9)
@@ -184,11 +196,51 @@ class ContestLeaderboardViewTests(TestCase):
         overall = build_contest_overall_leaderboard(self.contest)
         entries = {entry["user_id"]: entry for entry in overall["entries"]}
 
+        # Verify ranking
         self.assertEqual(entries[self.bob.id]["rank"], 1)
         self.assertEqual(entries[self.alice.id]["rank"], 2)
         self.assertIsNone(entries[self.charlie.id]["rank"])
-        self.assertAlmostEqual(entries[self.bob.id]["total_score"], 0.7, places=6)
-        self.assertAlmostEqual(entries[self.alice.id]["total_score"], 0.5, places=6)
+        
+        # Verify total scores (sum of individual problem scores)
+        # Bob: ~80 (rmse) + 90 (accuracy) = ~170
+        # Alice: ~60 (rmse) + 90 (accuracy) = ~150
+        self.assertAlmostEqual(entries[self.bob.id]["total_score"], 170.0, places=1)
+        self.assertAlmostEqual(entries[self.alice.id]["total_score"], 150.0, places=1)
+
+    def test_overall_leaderboard_partial_scores(self):
+        # Create a PARTIAL scoring contest to verify scores stay in 0-100 range
+        partial_contest = Contest.objects.create(
+            title="Partial Contest",
+            course=self.course,
+            created_by=self.teacher,
+            is_published=True,
+            approval_status=Contest.ApprovalStatus.APPROVED,
+            scoring=Contest.Scoring.PARTIAL,
+        )
+        partial_contest.problems.add(self.problem_rmse, self.problem_accuracy)
+        
+        # Same submissions as IOI test
+        # Bob: rmse=0.2 → ~80 points, accuracy=0.9 → 90 points
+        # Alice: rmse=0.4 → ~60 points, accuracy=0.9 → 90 points
+        self._create_submission(self.alice, self.problem_rmse, "rmse", 0.4)
+        self._create_submission(self.bob, self.problem_rmse, "rmse", 0.2)
+        self._create_submission(self.alice, self.problem_accuracy, "accuracy", 0.9)
+        self._create_submission(self.bob, self.problem_accuracy, "accuracy", 0.9)
+
+        overall = build_contest_overall_leaderboard(partial_contest)
+        entries = {entry["user_id"]: entry for entry in overall["entries"]}
+
+        # PARTIAL scoring averages the problem scores, maintaining 0-100 scale
+        # Bob: (80 + 90) / 2 = 85
+        # Alice: (60 + 90) / 2 = 75
+        self.assertAlmostEqual(entries[self.bob.id]["total_score"], 85.0, places=1)
+        self.assertAlmostEqual(entries[self.alice.id]["total_score"], 75.0, places=1)
+        
+        # Verify scores are in 0-100 range
+        for entry in overall["entries"]:
+            if entry["total_score"] is not None:
+                self.assertGreaterEqual(entry["total_score"], 0.0)
+                self.assertLessEqual(entry["total_score"], 100.0)
 
     def test_overall_leaderboard_icpc_penalty(self):
         start_time = timezone.now() - timedelta(hours=2)
