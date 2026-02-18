@@ -128,6 +128,21 @@ class ContestDetailViewTests(TestCase):
         self.assertEqual([row["index"] for row in problems], [0, 1, 2])
         self.assertEqual([row["label"] for row in problems], ["A", "B", "C"])
 
+    def test_unpublished_problems_are_hidden_in_contest_detail(self):
+        p_public = Problem.objects.create(title="Visible", statement="...", is_published=True)
+        p_hidden = Problem.objects.create(title="Hidden", statement="...", is_published=False)
+        ContestProblem.objects.create(contest=self.contest, problem=p_public, position=0)
+        ContestProblem.objects.create(contest=self.contest, problem=p_hidden, position=1)
+
+        request = self.factory.get("/")
+        request.user = self.teacher
+        response = contest_detail(request, contest_id=self.contest.id)
+
+        self.assertEqual(response.status_code, 200)
+        payload = json.loads(response.content.decode())
+        self.assertEqual(payload["problems_count"], 1)
+        self.assertEqual([row["id"] for row in payload["problems"]], [p_public.id])
+
 
 class CourseDetailViewTests(TestCase):
     def setUp(self):

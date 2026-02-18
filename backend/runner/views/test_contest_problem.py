@@ -5,7 +5,11 @@ from django.test import RequestFactory, TestCase
 
 from runner.models import Contest, Course, CourseParticipant, Problem, Section
 from runner.services.section_service import SectionCreateInput, create_section
-from runner.views.contest_draft import add_problem_to_contest, remove_problem_from_contest
+from runner.views.contest_draft import (
+    add_problem_to_contest,
+    bulk_add_problems_to_contest,
+    remove_problem_from_contest,
+)
 
 User = get_user_model()
 
@@ -105,6 +109,47 @@ class AddProblemToContestViewTests(TestCase):
         self.assertEqual(response.status_code, 400)
         payload = json.loads(response.content.decode())
         self.assertIn("problem_id", payload["detail"])
+
+    def test_unpublished_problem_cannot_be_added(self):
+        draft_problem = Problem.objects.create(
+            title="Draft task",
+            statement="...",
+            is_published=False,
+        )
+        request = self.factory.post(
+            "/",
+            data=json.dumps({"problem_id": draft_problem.id}),
+            content_type="application/json",
+        )
+        request.user = self.owner
+
+        response = add_problem_to_contest.__wrapped__(request, contest_id=self.contest.id)
+
+        self.assertEqual(response.status_code, 400)
+        payload = json.loads(response.content.decode())
+        self.assertIn("published", payload["detail"].lower())
+        self.assertFalse(self.contest.problems.filter(pk=draft_problem.id).exists())
+
+    def test_bulk_add_rejects_unpublished_problem(self):
+        draft_problem = Problem.objects.create(
+            title="Draft bulk task",
+            statement="...",
+            is_published=False,
+        )
+        request = self.factory.post(
+            "/",
+            data=json.dumps({"problem_ids": [self.problem.id, draft_problem.id]}),
+            content_type="application/json",
+        )
+        request.user = self.owner
+
+        response = bulk_add_problems_to_contest.__wrapped__(request, contest_id=self.contest.id)
+
+        self.assertEqual(response.status_code, 400)
+        payload = json.loads(response.content.decode())
+        self.assertIn("published", payload["detail"].lower())
+        self.assertIn(draft_problem.id, payload["unpublished"])
+        self.assertFalse(self.contest.problems.exists())
 
 
 class RemoveProblemFromContestViewTests(TestCase):

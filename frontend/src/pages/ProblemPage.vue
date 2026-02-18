@@ -21,13 +21,13 @@
               <li
                 class="problem__file"
                 v-for="file in availableFiles"
-                :key="file.key"
+                :key="`${file.kind}:${file.name}`"
               >
                 <a
                   class="problem__file-href button button--secondary"
                   :href="file.url"
-                  :download="file.downloadName"
-                >{{ file.downloadName }}</a>
+                  :download="file.name"
+                >{{ file.name }}</a>
             </li>
             </ul>
           </li>
@@ -218,14 +218,32 @@ const loadProblem = async () => {
 onMounted(loadProblem)
 
 const availableFiles = computed(() => {
-  if (!problem.value || !problem.value.files) return []
+  if (!problem.value) return []
+
+  if (Array.isArray(problem.value.file_list)) {
+    return problem.value.file_list
+      .filter(file => file && file.url && file.name && file.kind)
+      .map(file => ({
+        kind: String(file.kind),
+        name: String(file.name),
+        url: String(file.url),
+      }))
+  }
+
+  const fallbackCanonicalNames = {
+    train: 'train.csv',
+    test: 'test.csv',
+    sample_submission: 'sample_submission.csv',
+  }
+
+  if (!problem.value.files) return []
   return Object.entries(problem.value.files)
     .filter(([, url]) => url)
-    .map(([key, url]) => {
-      const k = String(key || '')
-      const downloadName = k.toLowerCase().endsWith('.csv') ? k : `${k}.csv`
-      return { key: k, url, downloadName }
-    })
+    .map(([key, url]) => ({
+      kind: String(key || ''),
+      name: String(fallbackCanonicalNames[key] || key || ''),
+      url: String(url),
+    }))
 })
 
 const roundMetric = (value) => {

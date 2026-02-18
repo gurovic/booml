@@ -109,7 +109,7 @@ def _collect_contest_participants(contest: Contest) -> List[Dict[str, Any]]:
 
 
 def _build_contest_leaderboard_data(contest: Contest) -> Dict[str, Any]:
-    problems = list(contest.problems.all())
+    problems = list(contest.problems.filter(is_published=True))
     participants = _collect_contest_participants(contest) if problems else []
     problem_settings: Dict[int, Dict[str, Any]] = {}
 
