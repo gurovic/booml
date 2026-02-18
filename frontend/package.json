@@ -6,7 +6,7 @@
     "serve": "vue-cli-service serve",
     "build": "vue-cli-service build",
     "lint": "vue-cli-service lint",
-    "test:unit": "npx vitest run tests/contestProblemLabel.test.js"
+    "test:unit": "npx vitest run --passWithNoTests"
   },
   "dependencies": {
     "@codemirror/commands": "^6.0.0",

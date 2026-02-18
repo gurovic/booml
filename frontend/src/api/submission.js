@@ -22,15 +22,21 @@ export async function submitSolution(problemId, file) {
       try {
         const errorData = JSON.parse(errorText)
         if (errorData.message || errorData.detail || errorData.errors) {
-          const detail =
-            (typeof errorData.detail === 'string' && errorData.detail.trim()) ||
-            (Array.isArray(errorData.errors) && errorData.errors.length > 0 ? String(errorData.errors[0]) : '')
+          const rawDetail = typeof errorData.detail === 'string' ? errorData.detail : ''
+          const normalizedDetail = rawDetail.trim()
+          const fallbackDetail =
+            !normalizedDetail && Array.isArray(errorData.errors) && errorData.errors.length > 0
+              ? String(errorData.errors[0]).trim()
+              : ''
+          const detail = normalizedDetail || fallbackDetail
           const message = (typeof errorData.message === 'string' ? errorData.message : '').trim()
-          if (message && detail && !message.includes(detail)) {
+          const hasDetail = detail.length > 0
+          const hasMessage = message.length > 0
+          if (hasMessage && hasDetail && !message.includes(detail)) {
             errorMessage = `${message} ${detail}`
-          } else if (detail) {
+          } else if (hasDetail) {
             errorMessage = detail
-          } else if (message) {
+          } else if (hasMessage) {
             errorMessage = message
           }
         } else if (typeof errorData === 'object' && errorData !== null) {

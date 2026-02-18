@@ -194,7 +194,7 @@ class SubmissionChecker:
             if pred_column is None and submission_non_id:
                 pred_column = submission_non_id[0]
 
-        if pred_column and pred_column in ground_truth_df.columns:
+        if pred_column and pred_column in ground_truth_non_id and len(ground_truth_non_id) == 1:
             return pred_column, pred_column
 
         target_keywords = {"label", "target", "answer", "y", "class", "score", "probability", "p_fix"}
@@ -249,7 +249,7 @@ class SubmissionChecker:
 
     def _resolve_file_path(self, file_field) -> Optional[str]:
         path = getattr(file_field, "path", None)
-        if path and os.path.exists(path):
+        if isinstance(path, (str, bytes, os.PathLike)) and os.path.exists(path):
             return path
 
         name = getattr(file_field, "name", None)
@@ -290,8 +290,11 @@ class SubmissionChecker:
                         logger.info("Loaded ground truth CSV '%s' from archive %s", csv_name, zip_path)
                         return df
 
-                with archive.open(csv_names[0], "r") as handle:
-                    return pd.read_csv(handle)
+                logger.info(
+                    "Zip ground truth archive %s contains CSV files, but none has at least 2 columns",
+                    zip_path,
+                )
+                return None
         except Exception:  # pragma: no cover - defensive
             logger.info("Failed to load ground truth from zip archive %s", zip_path)
             return None

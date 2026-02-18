@@ -248,7 +248,20 @@ def run_prevalidation(submission: Submission) -> PreValidation:
     prevalidation.rows_total = len(rows)
     prevalidation.stats["rows_total"] = len(rows)
 
-    effective_output_columns = [col for col in reference_header if col != effective_id_column] if reference_header else [col for col in output_columns if col != effective_id_column]
+    # Prefer descriptor-declared outputs; use reference outputs as fallback.
+    descriptor_output_columns = [col for col in output_columns if col != effective_id_column]
+    reference_output_columns = [col for col in reference_header if col != effective_id_column] if reference_header else []
+    effective_output_columns = descriptor_output_columns or reference_output_columns
+    if reference_output_columns and descriptor_output_columns:
+        missing_in_reference = [col for col in descriptor_output_columns if col not in reference_output_columns]
+        if missing_in_reference:
+            _append_warning(
+                prevalidation,
+                (
+                    "Descriptor output columns are absent in reference header: "
+                    f"{missing_in_reference}. Validation will use descriptor columns."
+                ),
+            )
     type_column = target_column if target_column in effective_output_columns else None
     enforce_type_check = bool(type_column)
     if enforce_type_check and reference_rows:
