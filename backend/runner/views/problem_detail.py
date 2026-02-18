@@ -9,6 +9,13 @@ from ..models.problem_desriptor import ProblemDescriptor
 from ..models.submission import Submission
 from ..models.notebook import Notebook
 from ..services import enqueue_submission_for_evaluation, validation_service
+from ..services.problem_scoring import (
+    default_curve_p,
+    extract_raw_metric,
+    extract_score_100,
+    resolve_score_spec,
+    score_from_raw,
+)
 from .submissions import submission_list, _primary_metric
 from django.http import JsonResponse
 from django.utils import timezone
@@ -32,6 +39,59 @@ def _report_is_valid(report) -> bool:
         return status.lower() not in {"failed", "error"}
 
     return True
+
+
+def _submission_score(submission: Submission) -> float | None:
+    metrics = getattr(submission, "metrics", None)
+    score_100 = extract_score_100(metrics)
+    if score_100 is not None:
+        return float(score_100)
+
+    descriptor = getattr(getattr(submission, "problem", None), "descriptor", None)
+    metric_name = "metric"
+    if isinstance(metrics, dict):
+        raw_metric_name = metrics.get("raw_metric_name")
+        if isinstance(raw_metric_name, str) and raw_metric_name.strip():
+            metric_name = raw_metric_name.strip()
+    if descriptor is not None:
+        descriptor_metric = getattr(descriptor, "metric", "")
+        descriptor_metric_name = getattr(descriptor, "metric_name", "")
+        if isinstance(descriptor_metric, str) and descriptor_metric.strip():
+            metric_name = descriptor_metric.strip()
+        elif isinstance(descriptor_metric_name, str) and descriptor_metric_name.strip():
+            metric_name = descriptor_metric_name.strip()
+
+    raw_metric = extract_raw_metric(metrics, metric_name=metric_name)
+    if raw_metric is None:
+        return _primary_metric(metrics)
+
+    score_spec = resolve_score_spec(
+        metric_name,
+        descriptor_direction=getattr(descriptor, "score_direction", "") if descriptor else "",
+        descriptor_ideal=getattr(descriptor, "score_ideal_metric", None) if descriptor else None,
+    )
+    reference_metric = getattr(descriptor, "score_reference_metric", None) if descriptor else None
+    curve_p = getattr(descriptor, "score_curve_p", None) if descriptor else None
+    nonlinear_reference = (
+        float(reference_metric)
+        if isinstance(reference_metric, (int, float))
+        and abs(float(reference_metric) - float(score_spec.ideal)) > 1e-12
+        else None
+    )
+    nonlinear_curve = (
+        float(curve_p)
+        if isinstance(curve_p, (int, float))
+        else default_curve_p(score_spec.direction)
+    )
+    score_100, _ = score_from_raw(
+        float(raw_metric),
+        metric_name=metric_name,
+        direction=score_spec.direction,
+        ideal=float(score_spec.ideal),
+        reference=nonlinear_reference,
+        curve_p=nonlinear_curve,
+    )
+    return float(score_100)
 
 
 def problem_detail(request, problem_id):
@@ -153,7 +213,7 @@ def problem_detail_api(request):
         )
 
         for submission in raw_submissions:
-            metric_value = _primary_metric(submission.metrics)
+            metric_value = _submission_score(submission)
             submitted = submission.submitted_at
             if submitted:
                 submitted = timezone.localtime(submitted, ZoneInfo("Europe/Moscow"))
@@ -162,6 +222,7 @@ def problem_detail_api(request):
                 "submitted_at": submitted.strftime("%H:%M") if submitted else None,
                 "status": submission.status,
                 "metric": metric_value,
+                "score": metric_value,
                 "metrics": submission.metrics,
             })
         

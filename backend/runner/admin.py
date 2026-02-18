@@ -137,6 +137,8 @@ class ProblemDescriptorAdmin(admin.ModelAdmin):
         "id_column",
         "target_column",
         "metric_name",
+        "score_curve_p",
+        "score_reference_metric",
         "has_custom_metric",
         "check_order",
         "created_at",
@@ -182,7 +184,7 @@ class SiteUpdateAdmin(admin.ModelAdmin):
     list_filter = ("is_published", "created_at")
     search_fields = ("title", "body")
     ordering = ("-created_at",)
-
+    
 @admin.register(Tag)
 class TagAdmin(admin.ModelAdmin):
     list_display = ("id", "name")

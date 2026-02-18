@@ -27,7 +27,7 @@
                 <th>ID</th>
                 <th>Время</th>
                 <th>Статус</th>
-                <th>Метрика</th>
+                <th>Баллы</th>
               </tr>
             </thead>
             <tbody>
@@ -44,7 +44,7 @@
                     {{ getStatusLabel(submission.status) }}
                   </span>
                 </td>
-                <td>{{ formatMetric(submission.metrics) }}</td>
+                <td>{{ formatSubmissionScore(submission) }}</td>
               </tr>
             </tbody>
           </table>
@@ -150,27 +150,33 @@ const formatMetric = (metrics) => {
   
   // If metrics is a number
   if (typeof metrics === 'number') {
-    return metrics.toFixed(3)
+    return metrics.toFixed(2)
   }
   
   // If metrics is an object, try to find the primary metric
   if (typeof metrics === 'object' && metrics !== null) {
-    const keys = ['metric', 'metric_score', 'score', 'accuracy', 'f1', 'auc']
+    const keys = ['score_100', 'metric_score', 'metric', 'score', 'accuracy', 'f1', 'auc']
     for (const key of keys) {
       if (key in metrics && typeof metrics[key] === 'number') {
-        return metrics[key].toFixed(3)
+        return metrics[key].toFixed(2)
       }
     }
     
     // If no known key found, return the first numeric value
     for (const value of Object.values(metrics)) {
       if (typeof value === 'number') {
-        return value.toFixed(3)
+        return value.toFixed(2)
       }
     }
   }
   
   return '-'
+}
+
+const formatSubmissionScore = (submission) => {
+  if (!submission || typeof submission !== 'object') return '-'
+  if (typeof submission.score === 'number') return submission.score.toFixed(2)
+  return formatMetric(submission.metrics)
 }
 
 const getStatusLabel = (status) => {
@@ -366,3 +372,4 @@ onMounted(async () => {
   font-weight: 500;
 }
 </style>
+

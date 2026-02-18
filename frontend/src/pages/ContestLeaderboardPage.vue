@@ -114,7 +114,7 @@ const scoringLabel = computed(() => {
 })
 
 const showPenalty = computed(() => scoringType.value === 'icpc')
-const scoreLabel = computed(() => 'Итог')
+const scoreLabel = computed(() => (showPenalty.value ? 'Решено' : 'Баллы'))
 
 const problemColumns = computed(() => {
   const list = Array.isArray(problemLeaderboards.value)
@@ -139,7 +139,7 @@ const problemResults = computed(() => {
     for (const entry of entries) {
       if (entry?.user_id == null) continue
       if (!map[entry.user_id]) map[entry.user_id] = {}
-      map[entry.user_id][board.problem_id] = entry.best_metric
+      map[entry.user_id][board.problem_id] = entry.best_score ?? entry.best_metric
     }
   }
   return map
@@ -172,14 +172,14 @@ const formatScore = (entry) => {
   }
   const score = entry.total_score
   if (score == null) return '-'
-  return Number(score).toFixed(4)
+  return Number(score).toFixed(2)
 }
 
 const formatMetric = (value) => {
   if (value == null) return '-'
   const numeric = Number(value)
   if (Number.isFinite(numeric)) {
-    return numeric.toFixed(4)
+    return numeric.toFixed(2)
   }
   return String(value)
 }

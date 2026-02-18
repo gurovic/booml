@@ -12,6 +12,13 @@ from ..models.submission import Submission
 from ..models.problem_desriptor import ProblemDescriptor
 from .custom_metric import MetricCodeExecutor, MetricExecutionError
 from .metrics import calculate_metric
+from .problem_scoring import (
+    default_curve_p,
+    extract_raw_metric,
+    infer_curve_p,
+    resolve_score_spec,
+    score_from_raw,
+)
 from .report_service import ReportGenerator
 from .websocket_notifications import broadcast_metric_update
 
@@ -96,17 +103,39 @@ class SubmissionChecker:
         if not metric_result["success"]:
             return CheckResult(False, errors=metric_result.get("error", "Metric calculation failed"))
 
-        metrics_payload = metric_result.get("metrics")
-        if metrics_payload is not None:
-            submission.metrics = metrics_payload
-            submission.save(update_fields=["metrics"])
-
+        raw_metric = float(metric_result["score"])
         metric_for_log = metric_result.get("metric_name", metric_name)
+        score_details = self._calculate_score_100(
+            submission=submission,
+            problem_data=problem_data,
+            descriptor=descriptor,
+            metric_name=metric_for_log,
+            metric_code=metric_code,
+            raw_metric=raw_metric,
+            ground_truth_df=ground_truth_df,
+        )
+        final_score = float(score_details["score_100"])
+
+        metrics_payload = self._merge_score_payload(
+            metric_result.get("metrics"),
+            metric_name=metric_for_log,
+            raw_metric=raw_metric,
+            score_100=final_score,
+            score_mode=score_details["mode"],
+            curve_p=score_details.get("curve_p"),
+            reference_metric=score_details.get("reference_metric"),
+        )
+        submission.metrics = metrics_payload
+        submission.save(update_fields=["metrics"])
+
         report_data = {
-            "metric": metric_result["score"],
+            "metric": final_score,
             "file_name": getattr(getattr(submission, "file", None), "name", "submission.csv"),
             "status": "success",
-            "log": f"Metric {metric_for_log}: {metric_result['score']:.4f}",
+            "log": (
+                f"Raw metric {metric_for_log}: {raw_metric:.6f}; "
+                f"score: {final_score:.3f} (mode={score_details['mode']})"
+            ),
             "errors": "",
             "test_data": {
                 "submission_id": getattr(submission, "id", None),
@@ -120,23 +149,26 @@ class SubmissionChecker:
             metric_to_broadcast = report.metric
         else:
             logger.error("Report object missing 'metric' attribute for submission %s. Using metric_result['score'] as fallback.", getattr(submission, "id", "?"))
-            metric_to_broadcast = metric_result["score"]
+            metric_to_broadcast = final_score
 
         broadcast_metric_update(getattr(submission, "id", None), metric_for_log, metric_to_broadcast)
         
         logger.info(
-            "Check completed for submission %s. Metric %s: %.4f",
+            "Check completed for submission %s. Metric %s raw=%.6f score=%.3f",
             getattr(submission, "id", "?"),
             metric_for_log,
-            metric_result["score"],
+            raw_metric,
+            final_score,
         )
 
         return CheckResult(
             ok=True,
             outputs={
                 "report_id": getattr(report, "id", None),
-                "metric_score": metric_result["score"],
+                "metric_score": final_score,
+                "score_100": final_score,
                 "metric_name": metric_for_log,
+                "raw_metric": raw_metric,
             },
         )
 
@@ -556,11 +588,248 @@ class SubmissionChecker:
             return float(metrics)
         raise ValueError("Cannot extract numeric metric from metric result")
 
+    def _merge_score_payload(
+        self,
+        metric_result_payload: Any,
+        *,
+        metric_name: str,
+        raw_metric: float,
+        score_100: float,
+        score_mode: str,
+        curve_p: Optional[float],
+        reference_metric: Optional[float],
+    ) -> Dict[str, Any]:
+        if isinstance(metric_result_payload, dict):
+            payload = dict(metric_result_payload)
+        else:
+            payload = {}
+
+        payload[metric_name] = float(raw_metric)
+        payload["raw_metric"] = float(raw_metric)
+        payload["raw_metric_name"] = metric_name
+        payload["score_100"] = float(score_100)
+        payload["metric_score"] = float(score_100)
+        payload["score"] = float(score_100)
+        payload["metric"] = float(score_100)
+        payload["score_mode"] = score_mode
+        if curve_p is not None:
+            payload["curve_p"] = float(curve_p)
+        if reference_metric is not None:
+            payload["reference_metric"] = float(reference_metric)
+        return payload
+
+    def _calculate_score_100(
+        self,
+        *,
+        submission: Submission,
+        problem_data,
+        descriptor,
+        metric_name: str,
+        metric_code: str,
+        raw_metric: float,
+        ground_truth_df: pd.DataFrame,
+    ) -> Dict[str, Any]:
+        manual_direction = getattr(descriptor, "score_direction", "") or ""
+        manual_ideal = getattr(descriptor, "score_ideal_metric", None)
+        score_spec = resolve_score_spec(
+            metric_name,
+            descriptor_direction=manual_direction,
+            descriptor_ideal=manual_ideal,
+        )
+
+        default_p = default_curve_p(score_spec.direction)
+        stored_curve_p = getattr(descriptor, "score_curve_p", None)
+        curve_p = float(stored_curve_p) if isinstance(stored_curve_p, (int, float)) else default_p
+        descriptor_pk = getattr(descriptor, "pk", None)
+        has_persistent_descriptor = isinstance(descriptor_pk, int) and descriptor_pk > 0
+
+        reference_metric = self._resolve_reference_metric(
+            problem_data=problem_data,
+            descriptor=descriptor,
+            metric_name=metric_name,
+            metric_code=metric_code,
+            ground_truth_df=ground_truth_df,
+        )
+
+        mode = "linear"
+        if reference_metric is not None and abs(float(reference_metric) - float(score_spec.ideal)) > 1e-12:
+            if has_persistent_descriptor:
+                if not isinstance(stored_curve_p, (int, float)):
+                    inferred = self._infer_problem_curve_p(
+                        problem_id=getattr(submission, "problem_id", None),
+                        metric_name=metric_name,
+                        ideal=score_spec.ideal,
+                        reference_metric=float(reference_metric),
+                        direction=score_spec.direction,
+                        fallback_p=default_p,
+                        current_raw=raw_metric,
+                    )
+                    curve_p = float(inferred)
+                    descriptor.score_curve_p = curve_p
+                    descriptor.save(update_fields=["score_curve_p"])
+            score_100, mode = score_from_raw(
+                raw_metric,
+                metric_name=metric_name,
+                direction=score_spec.direction,
+                ideal=score_spec.ideal,
+                reference=float(reference_metric),
+                curve_p=curve_p,
+            )
+            return {
+                "score_100": float(score_100),
+                "mode": mode,
+                "curve_p": float(curve_p),
+                "reference_metric": float(reference_metric),
+            }
+
+        score_100, mode = score_from_raw(
+            raw_metric,
+            metric_name=metric_name,
+            direction=score_spec.direction,
+            ideal=score_spec.ideal,
+            reference=None,
+            curve_p=None,
+        )
+        return {
+            "score_100": float(score_100),
+            "mode": mode,
+            "curve_p": None,
+            "reference_metric": reference_metric,
+        }
+
+    def _resolve_reference_metric(
+        self,
+        *,
+        problem_data,
+        descriptor,
+        metric_name: str,
+        metric_code: str,
+        ground_truth_df: pd.DataFrame,
+    ) -> Optional[float]:
+        sample_file = getattr(problem_data, "sample_submission_file", None)
+        sample_name = getattr(sample_file, "name", "")
+        if not sample_file or not isinstance(sample_name, str) or not sample_name.strip():
+            return None
+
+        cached_reference = getattr(descriptor, "score_reference_metric", None)
+        if isinstance(cached_reference, (int, float)):
+            return float(cached_reference)
+
+        calculated_reference = self.compute_sample_reference_metric(
+            problem_data=problem_data,
+            descriptor=descriptor,
+            metric_name=metric_name,
+            metric_code=metric_code,
+            ground_truth_df=ground_truth_df,
+        )
+        if calculated_reference is None:
+            return None
+
+        descriptor_pk = getattr(descriptor, "pk", None)
+        has_persistent_descriptor = isinstance(descriptor_pk, int) and descriptor_pk > 0
+        if has_persistent_descriptor:
+            descriptor.score_reference_metric = float(calculated_reference)
+            descriptor.save(update_fields=["score_reference_metric"])
+        return float(calculated_reference)
+
+    def compute_sample_reference_metric(
+        self,
+        *,
+        problem_data,
+        descriptor,
+        metric_name: str,
+        metric_code: str,
+        ground_truth_df: pd.DataFrame | None = None,
+    ) -> Optional[float]:
+        sample_file = getattr(problem_data, "sample_submission_file", None)
+        sample_name = getattr(sample_file, "name", "")
+        if not sample_file or not isinstance(sample_name, str) or not sample_name.strip():
+            return None
+
+        gt_df = ground_truth_df
+        if gt_df is None:
+            ground_truth_file = self._select_ground_truth_file(problem_data)
+            gt_df = self._load_ground_truth(ground_truth_file)
+        if gt_df is None:
+            return None
+
+        sample_df = self._load_submission_file(sample_file)
+        if sample_df is None:
+            logger.warning(
+                "Failed to load sample submission for problem %s",
+                getattr(problem_data, "problem_id", "?"),
+            )
+            return None
+
+        if self._use_csv_match(metric_name, metric_code):
+            result = self._calculate_csv_match(sample_df, gt_df, descriptor, metric_name)
+        else:
+            result = self._calculate_metric(sample_df, gt_df, descriptor, metric_name, metric_code)
+
+        if not result.get("success"):
+            logger.warning(
+                "Failed to compute sample reference metric for problem %s: %s",
+                getattr(problem_data, "problem_id", "?"),
+                result.get("error"),
+            )
+            return None
+        return float(result["score"])
+
+    def _infer_problem_curve_p(
+        self,
+        *,
+        problem_id: Optional[int],
+        metric_name: str,
+        ideal: float,
+        reference_metric: float,
+        direction: str,
+        fallback_p: float,
+        current_raw: Optional[float] = None,
+    ) -> float:
+        if not isinstance(problem_id, int) or problem_id <= 0:
+            return fallback_p
+
+        metrics_rows = Submission.objects.filter(
+            problem_id=problem_id,
+            status__in=(Submission.STATUS_ACCEPTED, Submission.STATUS_VALIDATED),
+        ).values_list("metrics", flat=True)
+
+        raw_values = []
+        for metrics in metrics_rows.iterator(chunk_size=1000):
+            raw = extract_raw_metric(metrics, metric_name=metric_name)
+            if raw is not None:
+                raw_values.append(float(raw))
+        if current_raw is not None:
+            raw_values.append(float(current_raw))
+        if not raw_values:
+            return fallback_p
+
+        return infer_curve_p(
+            raw_values,
+            ideal=float(ideal),
+            reference=float(reference_metric),
+            direction=direction,
+            default_p=float(fallback_p),
+        )
+
     def _metric_config(self, submission, descriptor) -> tuple[Optional[str], str]:
-        descriptor_metric_name = (getattr(descriptor, "metric_name", "") or "").strip()
+        descriptor_metric_name_raw = getattr(descriptor, "metric_name", "")
+        descriptor_metric_name = (
+            descriptor_metric_name_raw.strip()
+            if isinstance(descriptor_metric_name_raw, str)
+            else ""
+        )
+        descriptor_metric_legacy_raw = getattr(descriptor, "metric", "")
+        descriptor_metric_legacy = (
+            descriptor_metric_legacy_raw.strip()
+            if isinstance(descriptor_metric_legacy_raw, str)
+            else ""
+        )
         descriptor_metric_code = getattr(descriptor, "metric_code", "") or ""
         if descriptor_metric_code.strip():
-            return descriptor_metric_name or "custom_metric", descriptor_metric_code
+            return descriptor_metric_name or descriptor_metric_legacy or "custom_metric", descriptor_metric_code
+        if descriptor_metric_legacy and (not descriptor_metric_name or descriptor_metric_name == "rmse"):
+            return descriptor_metric_legacy, ""
         if descriptor_metric_name:
             return descriptor_metric_name, ""
         legacy_name = self._get_metric_name(submission)

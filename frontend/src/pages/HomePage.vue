@@ -300,7 +300,7 @@
                     {{ formatDate(item.last_submitted_at) }}
                   </div>
                   <div v-if="item.last_score != null" class="recent-score">
-                    Скор: {{ formatScore(item.last_score) }}
+                    Баллы: {{ formatScore(item.last_score) }}
                   </div>
                 </div>
               </li>
@@ -427,7 +427,7 @@ const formatScore = (v) => {
   const n = Number(v)
   if (!Number.isFinite(n)) return String(v)
   // Keep it compact, but deterministic.
-  const s = n.toFixed(4).replace(/0+$/, '').replace(/\.$/, '')
+  const s = n.toFixed(2).replace(/0+$/, '').replace(/\.$/, '')
   return s
 }
 

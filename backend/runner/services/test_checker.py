@@ -341,7 +341,7 @@ class TestChecker(unittest.TestCase):
 
         self.assertTrue(result.ok)
         self.assertEqual(result.outputs["metric_name"], "csv_match")
-        self.assertEqual(result.outputs["metric_score"], 1.0)
+        self.assertEqual(result.outputs["metric_score"], 100.0)
         mock_broadcast.assert_called_once_with(1, "csv_match", 1.0)
 
     @patch('runner.services.checker.broadcast_metric_update')
