@@ -145,11 +145,7 @@ class SubmissionChecker:
         }
 
         report = self.report_generator.create_report_from_testing_system(report_data)
-        if hasattr(report, "metric"):
-            metric_to_broadcast = report.metric
-        else:
-            logger.error("Report object missing 'metric' attribute for submission %s. Using metric_result['score'] as fallback.", getattr(submission, "id", "?"))
-            metric_to_broadcast = final_score
+        metric_to_broadcast = final_score
 
         broadcast_metric_update(getattr(submission, "id", None), metric_for_log, metric_to_broadcast)
         

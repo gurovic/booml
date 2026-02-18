@@ -60,9 +60,11 @@ def evaluate_submission(submission_id: int):
         result_outputs = dict(result.outputs or {})
         if result.ok:
             # If the checker has already persisted a rich metrics payload (dict),
-            # treat it as authoritative and avoid re-merging/overwriting its keys.
+            # keep existing keys and only append missing worker/checker outputs.
             if isinstance(submission.metrics, dict) and submission.metrics:
                 metrics_payload = dict(submission.metrics)
+                for key, value in result_outputs.items():
+                    metrics_payload.setdefault(key, value)
             else:
                 if isinstance(submission.metrics, (int, float)):
                     numeric_value = float(submission.metrics)
