@@ -176,6 +176,9 @@ class ContestLeaderboardViewTests(TestCase):
         self.assertEqual(payload["overall_leaderboard"]["problems_count"], 1)
 
     def test_overall_leaderboard_ioi_scores(self):
+        # IOI scoring: each problem scored 0-100, total is sum of all problems
+        # Bob:   RMSE 0.2 → 80.0 points, Accuracy 0.9 → 90.0 points = 170.0 total
+        # Alice: RMSE 0.4 → 60.0 points, Accuracy 0.9 → 90.0 points = 150.0 total
         self._create_submission(self.alice, self.problem_rmse, "rmse", 0.4)
         self._create_submission(self.bob, self.problem_rmse, "rmse", 0.2)
         self._create_submission(self.alice, self.problem_accuracy, "accuracy", 0.9)
@@ -187,8 +190,9 @@ class ContestLeaderboardViewTests(TestCase):
         self.assertEqual(entries[self.bob.id]["rank"], 1)
         self.assertEqual(entries[self.alice.id]["rank"], 2)
         self.assertIsNone(entries[self.charlie.id]["rank"])
-        self.assertAlmostEqual(entries[self.bob.id]["total_score"], 0.7, places=6)
-        self.assertAlmostEqual(entries[self.alice.id]["total_score"], 0.5, places=6)
+        # For IOI contests with 2 problems, max possible score is 200 (100 per problem)
+        self.assertAlmostEqual(entries[self.bob.id]["total_score"], 170.0, places=6)
+        self.assertAlmostEqual(entries[self.alice.id]["total_score"], 150.0, places=6)
 
     def test_overall_leaderboard_icpc_penalty(self):
         start_time = timezone.now() - timedelta(hours=2)

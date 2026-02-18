@@ -305,6 +305,17 @@ def build_contest_overall_leaderboard(
     contest: Contest,
     data: Dict[str, Any] | None = None,
 ) -> Dict[str, Any]:
+    """
+    Build the overall leaderboard for a contest.
+    
+    Scoring systems:
+    - IOI: Each problem is scored 0-100 based on performance. Total score is the sum
+      of all problem scores. For N problems, max score is N*100.
+    - PARTIAL: Each problem is scored 0-100. Total score is the average across all
+      attempted problems (still 0-100 scale).
+    - ICPC: Binary scoring - problems are either solved or not. Total score equals
+      the number of solved problems.
+    """
     data = data or _build_contest_leaderboard_data(contest)
     problems = data["problems"]
     if not problems:
@@ -355,6 +366,7 @@ def build_contest_overall_leaderboard(
                 "_sort_time": last_time or fallback_time,
             }
         else:
+            # IOI or PARTIAL scoring: sum problem scores (each 0-100)
             for problem in problems:
                 key = (problem.id, user_id)
                 best = best_results.get(key)
@@ -365,6 +377,7 @@ def build_contest_overall_leaderboard(
                 if best["submitted_at"] is not None:
                     last_time = best["submitted_at"] if last_time is None else max(last_time, best["submitted_at"])
             if contest.scoring == Contest.Scoring.PARTIAL and problems:
+                # PARTIAL: average score to maintain 0-100 scale
                 total_score = total_score / len(problems)
             total_score_value = total_score if solved_count else None
             entry = {
