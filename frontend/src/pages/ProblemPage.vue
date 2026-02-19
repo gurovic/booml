@@ -457,10 +457,11 @@ const handleCreateNotebook = async () => {
   padding: 10px 20px;
   width: 100%;
   display: grid;
-  grid-template-columns: 80px 140px 1fr 100px;
+  grid-template-columns: 70px 130px minmax(120px, 1fr) 85px;
   align-items: center;
-  gap: 15px;
-  min-height: 60px;
+  gap: 12px;
+  height: 65px;
+  overflow: hidden;
 }
 
 .problem__submission-head {
@@ -481,11 +482,16 @@ const handleCreateNotebook = async () => {
 .problem__submission-href p {
   margin: 0;
   text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .problem__submission-head p:nth-child(3),
 .problem__submission-href p:nth-child(3) {
   overflow-wrap: break-word;
+  line-height: 1.3;
+  max-height: 45px;
+  overflow: hidden;
 }
 
 
@@ -503,7 +509,7 @@ const handleCreateNotebook = async () => {
   align-items: center;
   justify-content: center;
   gap: 2px;
-  min-height: 40px;
+  height: 100%;
 }
 
 .problem__submission-date {
