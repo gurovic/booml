@@ -89,7 +89,7 @@
               </li>
               <li 
                 class="problem__submission"
-                v-for="submission in problem.submissions"
+                v-for="submission in formattedSubmissions"
                 :key="submission.id"
               >
                 <router-link
@@ -98,8 +98,8 @@
                 >
                   <p>{{ submission.id }}</p>
                   <div class="problem__submission-datetime">
-                    <p class="problem__submission-date">{{ formatSubmissionDateTime(submission.submitted_at).date }}</p>
-                    <p class="problem__submission-time">{{ formatSubmissionDateTime(submission.submitted_at).time }}</p>
+                    <p class="problem__submission-date">{{ submission.formattedDateTime.date }}</p>
+                    <p class="problem__submission-time">{{ submission.formattedDateTime.time }}</p>
                   </div>
                   <p>{{ getStatusLabel(submission.status) }}</p>
                   <p>{{ roundMetric(submission.metric) }}</p>
@@ -173,6 +173,14 @@ const availableFiles = computed(() => {
       const downloadName = k.toLowerCase().endsWith('.csv') ? k : `${k}.csv`
       return { key: k, url, downloadName }
     })
+})
+
+const formattedSubmissions = computed(() => {
+  if (!problem.value || !problem.value.submissions) return []
+  return problem.value.submissions.map(submission => ({
+    ...submission,
+    formattedDateTime: formatSubmissionDateTime(submission.submitted_at)
+  }))
 })
 
 const roundMetric = (value) => {
