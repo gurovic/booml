@@ -27,6 +27,7 @@ from .views import (
     SessionFileDownloadView,
     SessionFileUploadView,
     SessionFilePreviewView,
+    SessionFileChartView,
     StopSessionView,
 )
 
@@ -43,6 +44,7 @@ urlpatterns = [
     path("sessions/files/upload/", SessionFileUploadView.as_view(), name="session-file-upload"),
     path("sessions/file/", SessionFileDownloadView.as_view(), name="session-file-download"),
     path("sessions/file/preview/", SessionFilePreviewView.as_view(), name="session-file-preview"),
+    path("sessions/file/chart/", SessionFileChartView.as_view(), name="session-file-chart"),
     path("cells/run/", RunCellView.as_view(), name="run-cell"),
     path("cells/run/input/", RunCellInputView.as_view(), name="run-cell-input"),
     path("cells/run/stream/", RunCellStreamStartView.as_view(), name="run-cell-stream-start"),

@@ -7,6 +7,7 @@ from .sessions import (
     SessionFileDownloadSerializer,
     SessionFileUploadSerializer,
     SessionFilePreviewSerializer,
+    SessionFileChartSerializer,
 )
 from .cells import CellRunSerializer, CellRunStreamStatusSerializer, CellRunInputSerializer
 from .courses import (

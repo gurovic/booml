@@ -48,6 +48,7 @@ const notebookDetail = {
     filesPanel: null,
     filesList: null,
     filesPreview: null,
+    sessionFileChartUrl: null,
     previewRequestId: 0,
 
 
@@ -1046,6 +1047,12 @@ const notebookDetail = {
         downloadButton.textContent = 'Скачать CSV';
         downloadButton.addEventListener('click', () => this.downloadTableCsv(table));
 
+        const chartButton = document.createElement('button');
+        chartButton.type = 'button';
+        chartButton.className = 'dataframe-chart';
+        chartButton.textContent = 'Chart';
+        chartButton.addEventListener('click', () => this.buildTableChart(table, chartButton));
+
         const infoButton = document.createElement('button');
         infoButton.type = 'button';
         infoButton.className = 'dataframe-info-toggle';
@@ -1056,6 +1063,7 @@ const notebookDetail = {
         toolbar.appendChild(toggleButton);
         toolbar.appendChild(copyButton);
         toolbar.appendChild(downloadButton);
+        toolbar.appendChild(chartButton);
         toolbar.appendChild(infoButton);
         this.attachDataframeInfo(container, table, toolbar, infoButton);
         return toolbar;
@@ -1240,6 +1248,413 @@ const notebookDetail = {
             const cells = Array.from(row.querySelectorAll('th, td'));
             return cells.map((cell) => escapeCell(cell.textContent)).join(',');
         }).join('\n');
+    },
+
+    async buildTableChart(table, button) {
+        if (!this.sessionFileUploadUrl || !this.sessionFileChartUrl) {
+            return;
+        }
+
+        const csv = this.tableToCsv(table);
+        if (!csv) {
+            return;
+        }
+
+        let sessionId = await this.ensureSession();
+        if (!sessionId) {
+            try {
+                sessionId = await this.createSession();
+            } catch (error) {
+                console.error('Не удалось создать сессию для построения графика:', error);
+                return;
+            }
+        }
+
+        const originalLabel = button?.textContent || 'Chart';
+        if (button) {
+            button.disabled = true;
+            button.textContent = 'Chart...';
+        }
+
+        try {
+            const tempPath = `.charts/table_${Date.now()}.csv`;
+            await this.uploadChartCsv(sessionId, tempPath, csv);
+
+            const recommendation = await this.fetchChartPayload({
+                session_id: sessionId,
+                path: tempPath,
+            });
+            const panel = this.getOrCreateChartConfigPanel(table);
+            panel.hidden = false;
+            panel.dataset.sessionId = sessionId;
+            panel.dataset.path = tempPath;
+            this.populateChartConfigurator(panel, recommendation);
+            this.setChartConfiguratorStatus(panel, 'Выберите тип графика и колонки, затем нажмите "Построить".');
+        } catch (error) {
+            console.error('Не удалось построить график:', error);
+            const panel = this.getOrCreateChartConfigPanel(table);
+            panel.hidden = false;
+            this.setChartConfiguratorStatus(panel, error?.message || 'Не удалось подготовить график.', true);
+        } finally {
+            if (button) {
+                button.disabled = false;
+                button.textContent = originalLabel;
+            }
+        }
+    },
+
+    async uploadChartCsv(sessionId, path, csvText) {
+        const blob = new Blob([csvText], { type: 'text/csv;charset=utf-8' });
+        const formData = new FormData();
+        formData.append('session_id', sessionId);
+        formData.append('path', path);
+        formData.append('file', blob, 'table.csv');
+
+        const response = await fetch(this.sessionFileUploadUrl, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': this.config.csrfToken
+            },
+            body: formData
+        });
+
+        let data = null;
+        try {
+            data = await response.json();
+        } catch (_error) {
+            data = null;
+        }
+        if (!response.ok) {
+            const message = data?.detail || data?.message || 'Не удалось загрузить таблицу для графика.';
+            throw new Error(message);
+        }
+    },
+
+    async fetchChartPayload(payload) {
+        const response = await fetch(this.sessionFileChartUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': this.config.csrfToken
+            },
+            body: JSON.stringify(payload)
+        });
+        let data = null;
+        try {
+            data = await response.json();
+        } catch (_error) {
+            data = null;
+        }
+        if (!response.ok) {
+            const message = data?.detail || data?.message || 'Ошибка построения графика.';
+            throw new Error(message);
+        }
+        return data;
+    },
+
+    getOrCreateChartConfigPanel(table) {
+        const container = table?.closest('.dataframe-container');
+        if (!container) {
+            return null;
+        }
+        if (container._chartConfigPanel && container._chartConfigPanel.isConnected) {
+            return container._chartConfigPanel;
+        }
+        const panel = document.createElement('div');
+        panel.className = 'dataframe-info';
+        panel.hidden = true;
+        panel.innerHTML = `
+            <div><strong>Chart settings</strong></div>
+            <div>
+                <label>Тип:
+                    <select data-chart-field="type">
+                        <option value="line">line</option>
+                        <option value="bar">bar</option>
+                        <option value="scatter">scatter</option>
+                        <option value="hist">hist</option>
+                        <option value="box">box</option>
+                    </select>
+                </label>
+                <label data-chart-wrap="x"> X:
+                    <select data-chart-field="x"></select>
+                </label>
+                <label data-chart-wrap="y"> Y:
+                    <select data-chart-field="y"></select>
+                </label>
+                <label data-chart-wrap="agg"> agg:
+                    <select data-chart-field="agg">
+                        <option value="mean">mean</option>
+                        <option value="sum">sum</option>
+                        <option value="median">median</option>
+                        <option value="min">min</option>
+                        <option value="max">max</option>
+                        <option value="count">count</option>
+                    </select>
+                </label>
+                <label data-chart-wrap="bins"> bins:
+                    <input data-chart-field="bins" type="number" min="2" max="200" value="20" />
+                </label>
+                <button type="button" data-chart-action="build">Построить</button>
+                <button type="button" data-chart-action="hide">Скрыть</button>
+            </div>
+            <div data-chart-status></div>
+        `;
+        container.insertAdjacentElement('beforebegin', panel);
+
+        const typeSelect = panel.querySelector('[data-chart-field="type"]');
+        typeSelect?.addEventListener('change', () => this.syncChartConfiguratorFields(panel));
+        panel.querySelector('[data-chart-action="build"]')?.addEventListener('click', () => this.submitChartFromConfigurator(table, panel));
+        panel.querySelector('[data-chart-action="hide"]')?.addEventListener('click', () => {
+            panel.hidden = true;
+        });
+
+        container._chartConfigPanel = panel;
+        return panel;
+    },
+
+    populateChartConfigurator(panel, recommendationResponse) {
+        if (!panel) {
+            return;
+        }
+        const schema = recommendationResponse?.schema || {};
+        const recommended = recommendationResponse?.recommended || {};
+        panel._chartSchema = schema;
+        panel._chartRecommended = recommended;
+        const typeSelect = panel.querySelector('[data-chart-field="type"]');
+        if (typeSelect) {
+            typeSelect.value = recommended.chart_type || 'hist';
+        }
+        this.syncChartConfiguratorFields(panel);
+    },
+
+    syncChartConfiguratorFields(panel) {
+        if (!panel) {
+            return;
+        }
+        const isUnnamedColumn = (name) => /^unnamed:\s*\d+$/i.test(String(name || '').trim());
+        const sanitizeColumns = (values) => (
+            Array.isArray(values)
+                ? values.filter((name) => !!name && !isUnnamedColumn(name))
+                : []
+        );
+        const schema = panel._chartSchema || {};
+        const recommended = panel._chartRecommended || {};
+        const numeric = sanitizeColumns(schema.numeric_columns);
+        const categorical = sanitizeColumns(schema.categorical_columns);
+        const datetimeCols = sanitizeColumns(schema.datetime_columns);
+        const allColumns = Array.isArray(schema.columns)
+            ? sanitizeColumns(schema.columns.map((item) => item?.name).filter(Boolean))
+            : [];
+
+        const createOptions = (values, includeEmpty = false, emptyLabel = '—') => {
+            const seen = new Set();
+            const result = [];
+            if (includeEmpty) {
+                result.push({ value: '', label: emptyLabel });
+            }
+            (values || []).forEach((value) => {
+                if (!value || seen.has(value)) {
+                    return;
+                }
+                seen.add(value);
+                result.push({ value, label: value });
+            });
+            return result;
+        };
+        const applyOptions = (select, options, preferred) => {
+            if (!select) {
+                return;
+            }
+            select.innerHTML = '';
+            options.forEach((optionItem) => {
+                const option = document.createElement('option');
+                option.value = optionItem.value;
+                option.textContent = optionItem.label;
+                select.appendChild(option);
+            });
+            const fallback = options.length ? options[0].value : '';
+            select.value = options.some((item) => item.value === preferred) ? preferred : fallback;
+        };
+
+        const typeSelect = panel.querySelector('[data-chart-field="type"]');
+        const xSelect = panel.querySelector('[data-chart-field="x"]');
+        const ySelect = panel.querySelector('[data-chart-field="y"]');
+        const aggSelect = panel.querySelector('[data-chart-field="agg"]');
+        const binsInput = panel.querySelector('[data-chart-field="bins"]');
+        const xWrap = panel.querySelector('[data-chart-wrap="x"]');
+        const yWrap = panel.querySelector('[data-chart-wrap="y"]');
+        const aggWrap = panel.querySelector('[data-chart-wrap="agg"]');
+        const binsWrap = panel.querySelector('[data-chart-wrap="bins"]');
+
+        const chartType = typeSelect?.value || 'hist';
+        const recommendedY = Array.isArray(recommended.y) && recommended.y.length ? recommended.y[0] : '';
+
+        if (chartType === 'line') {
+            xWrap.hidden = false;
+            yWrap.hidden = false;
+            aggWrap.hidden = true;
+            binsWrap.hidden = true;
+            applyOptions(xSelect, createOptions([...datetimeCols, ...allColumns]), recommended.x || datetimeCols[0] || allColumns[0] || '');
+            applyOptions(ySelect, createOptions(numeric), recommendedY || numeric[0] || '');
+            return;
+        }
+        if (chartType === 'scatter') {
+            xWrap.hidden = false;
+            yWrap.hidden = false;
+            aggWrap.hidden = true;
+            binsWrap.hidden = true;
+            applyOptions(xSelect, createOptions(numeric), recommended.x || numeric[0] || '');
+            applyOptions(ySelect, createOptions(numeric), recommendedY || numeric[1] || numeric[0] || '');
+            return;
+        }
+        if (chartType === 'bar') {
+            xWrap.hidden = false;
+            yWrap.hidden = false;
+            aggWrap.hidden = false;
+            binsWrap.hidden = true;
+            applyOptions(xSelect, createOptions([...categorical, ...datetimeCols, ...allColumns]), recommended.x || categorical[0] || allColumns[0] || '');
+            applyOptions(ySelect, createOptions(numeric, true, 'count (без Y)'), recommendedY || '');
+            if (aggSelect) {
+                aggSelect.value = recommended.agg || 'mean';
+            }
+            return;
+        }
+        if (chartType === 'hist') {
+            xWrap.hidden = true;
+            yWrap.hidden = false;
+            aggWrap.hidden = true;
+            binsWrap.hidden = false;
+            applyOptions(ySelect, createOptions(numeric), recommendedY || numeric[0] || '');
+            if (binsInput) {
+                binsInput.value = String(recommended.bins || 20);
+            }
+            return;
+        }
+
+        xWrap.hidden = true;
+        yWrap.hidden = false;
+        aggWrap.hidden = true;
+        binsWrap.hidden = true;
+        applyOptions(ySelect, createOptions(numeric), recommendedY || numeric[0] || '');
+    },
+
+    readChartConfiguratorPayload(panel) {
+        const typeSelect = panel.querySelector('[data-chart-field="type"]');
+        const xSelect = panel.querySelector('[data-chart-field="x"]');
+        const ySelect = panel.querySelector('[data-chart-field="y"]');
+        const aggSelect = panel.querySelector('[data-chart-field="agg"]');
+        const binsInput = panel.querySelector('[data-chart-field="bins"]');
+        const xWrap = panel.querySelector('[data-chart-wrap="x"]');
+        const yWrap = panel.querySelector('[data-chart-wrap="y"]');
+        const aggWrap = panel.querySelector('[data-chart-wrap="agg"]');
+        const binsWrap = panel.querySelector('[data-chart-wrap="bins"]');
+
+        const payload = {
+            chart_type: typeSelect?.value || 'hist',
+        };
+        if (!xWrap.hidden && xSelect?.value) {
+            payload.x = xSelect.value;
+        }
+        if (!yWrap.hidden && ySelect?.value) {
+            payload.y = [ySelect.value];
+        }
+        if (!aggWrap.hidden && aggSelect?.value) {
+            payload.agg = aggSelect.value;
+        }
+        if (!binsWrap.hidden && binsInput) {
+            const bins = Number(binsInput.value);
+            if (Number.isFinite(bins) && bins >= 2 && bins <= 200) {
+                payload.bins = Math.round(bins);
+            }
+        }
+        return payload;
+    },
+
+    setChartConfiguratorStatus(panel, message, isError = false) {
+        const status = panel?.querySelector('[data-chart-status]');
+        if (!status) {
+            return;
+        }
+        const text = (message || '').trim();
+        status.textContent = isError && text ? `Ошибка: ${text}` : text;
+    },
+
+    async submitChartFromConfigurator(table, panel) {
+        if (!panel) {
+            return;
+        }
+        const sessionId = panel.dataset.sessionId || '';
+        const path = panel.dataset.path || '';
+        if (!sessionId || !path) {
+            this.setChartConfiguratorStatus(panel, 'Сначала нажмите Chart для подготовки данных.', true);
+            return;
+        }
+        const payload = this.readChartConfiguratorPayload(panel);
+        const buildButton = panel.querySelector('[data-chart-action="build"]');
+        if (buildButton) {
+            buildButton.disabled = true;
+        }
+        this.setChartConfiguratorStatus(panel, 'Строю график...');
+        try {
+            const result = await this.fetchChartPayload({
+                session_id: sessionId,
+                path,
+                ...payload,
+            });
+            this.showChartResult(table, result);
+            this.setChartConfiguratorStatus(panel, 'График построен.');
+        } catch (error) {
+            console.error('Не удалось построить график:', error);
+            this.setChartConfiguratorStatus(panel, error?.message || 'Не удалось построить график.', true);
+        } finally {
+            if (buildButton) {
+                buildButton.disabled = false;
+            }
+        }
+    },
+
+    showChartResult(table, chartResponse) {
+        if (!table) {
+            return;
+        }
+        const container = table.closest('.dataframe-container');
+        if (!container) {
+            return;
+        }
+
+        let panel = (container._chartResultPanel && container._chartResultPanel.isConnected)
+            ? container._chartResultPanel
+            : null;
+        if (!panel) {
+            panel = document.createElement('div');
+            panel.className = 'dataframe-info';
+            const configPanel = (container._chartConfigPanel && container._chartConfigPanel.isConnected)
+                ? container._chartConfigPanel
+                : null;
+            if (configPanel) {
+                configPanel.insertAdjacentElement('afterend', panel);
+            } else {
+                container.insertAdjacentElement('beforebegin', panel);
+            }
+            container._chartResultPanel = panel;
+        }
+
+        const chart = chartResponse?.chart || {};
+        const image = chartResponse?.chart_image || '';
+        const schema = chartResponse?.schema || {};
+        const seriesCount = Array.isArray(chart.series) ? chart.series.length : 0;
+        const rows = Number.isFinite(schema.rows) ? schema.rows : '—';
+
+        panel.innerHTML = `
+            <div><strong>Chart:</strong> ${NotebookUtils.escapeHtml(chart.type || 'unknown')}</div>
+            <div><strong>Rows:</strong> ${NotebookUtils.escapeHtml(String(rows))} · <strong>Series:</strong> ${NotebookUtils.escapeHtml(String(seriesCount))}</div>
+            <div><button type="button" data-chart-action="hide-result">Скрыть график</button></div>
+            ${image ? `<div><img src="${image}" alt="chart"></div>` : '<div>Изображение графика не получено</div>'}
+        `;
+        panel.hidden = false;
+        panel.querySelector('[data-chart-action="hide-result"]')?.addEventListener('click', () => {
+            panel.hidden = true;
+        });
     },
 
     initActivityTracking() {
@@ -1552,6 +1967,7 @@ async handleImportFile(file) {
         this.sessionFileUploadUrl = this.sanitizeUrl(config.sessionFileUploadUrl) || this.sanitizeUrl(this.notebookElement?.dataset.sessionFileUploadUrl);
         this.sessionFileDownloadUrl = this.sanitizeUrl(config.sessionFileDownloadUrl) || this.sanitizeUrl(this.notebookElement?.dataset.sessionFileDownloadUrl);
         this.sessionFilePreviewUrl = this.sanitizeUrl(config.sessionFilePreviewUrl) || this.sanitizeUrl(this.notebookElement?.dataset.sessionFilePreviewUrl);
+        this.sessionFileChartUrl = this.sanitizeUrl(config.sessionFileChartUrl) || this.sanitizeUrl(this.notebookElement?.dataset.sessionFileChartUrl);
         this.sessionStopUrl = this.sanitizeUrl(config.sessionStopUrl) || this.sanitizeUrl(this.notebookElement?.dataset.sessionStopUrl);
         const rawInactivityMode = config.inactivityMode ?? this.notebookElement?.dataset.inactivityMode;
         this.inactivityMode = this.normalizeInactivityMode(rawInactivityMode);

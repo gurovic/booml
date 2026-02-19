@@ -66,3 +66,29 @@ class SessionFilePreviewSerializer(serializers.Serializer):
     max_rows = serializers.IntegerField(min_value=1, required=False, allow_null=True)
     max_cols = serializers.IntegerField(min_value=1, required=False, allow_null=True)
     delimiter = serializers.CharField(max_length=10, required=False, allow_blank=True, allow_null=True)
+
+
+class SessionFileChartSerializer(serializers.Serializer):
+    CHART_TYPE_CHOICES = ("line", "bar", "scatter", "hist", "box")
+    AGGREGATION_CHOICES = ("mean", "sum", "median", "min", "max", "count")
+
+    session_id = serializers.CharField(max_length=255, allow_blank=False)
+    path = serializers.CharField(max_length=1000, allow_blank=False)
+    chart_type = serializers.ChoiceField(
+        choices=CHART_TYPE_CHOICES,
+        required=False,
+        allow_null=True,
+    )
+    x = serializers.CharField(max_length=255, required=False, allow_blank=True, allow_null=True)
+    y = serializers.JSONField(required=False, allow_null=True)
+    agg = serializers.ChoiceField(
+        choices=AGGREGATION_CHOICES,
+        required=False,
+        allow_null=True,
+    )
+    bins = serializers.IntegerField(min_value=2, max_value=200, required=False, allow_null=True)
+    row_limit = serializers.IntegerField(min_value=1, max_value=50000, required=False, allow_null=True)
+    max_points = serializers.IntegerField(min_value=10, max_value=5000, required=False, allow_null=True)
+    top_n = serializers.IntegerField(min_value=1, max_value=200, required=False, allow_null=True)
+    delimiter = serializers.CharField(max_length=10, required=False, allow_blank=True, allow_null=True)
+    render_image = serializers.BooleanField(required=False, default=True)
