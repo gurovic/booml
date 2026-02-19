@@ -204,29 +204,27 @@ const formatSubmissionDateTime = (dateTimeString) => {
   if (!dateTimeString) return { date: '-', time: '-' }
   
   try {
-    // Parse the datetime string and convert to Moscow timezone (UTC+3)
     const date = new Date(dateTimeString)
     
     // Check if date is valid
-    if (isNaN(date.getTime())) {
+    if (Number.isNaN(date.getTime())) {
       console.error('Invalid date:', dateTimeString)
       return { date: '-', time: '-' }
     }
     
-    // Format date as DD.MM.YYYY
-    const dateFormatted = date.toLocaleDateString('ru-RU', {
-      day: '2-digit',
-      month: '2-digit',
+    // Use formatToParts for more reliable formatting in MSK timezone
+    const parts = new Intl.DateTimeFormat('ru-RU', {
+      timeZone: 'Europe/Moscow',
       year: 'numeric',
-      timeZone: 'Europe/Moscow'
-    })
-    
-    // Format time as HH:MM
-    const timeFormatted = date.toLocaleTimeString('ru-RU', {
+      month: '2-digit',
+      day: '2-digit',
       hour: '2-digit',
       minute: '2-digit',
-      timeZone: 'Europe/Moscow'
-    })
+    }).formatToParts(date)
+    
+    const byType = Object.fromEntries(parts.map(p => [p.type, p.value]))
+    const dateFormatted = `${byType.day}.${byType.month}.${byType.year}`
+    const timeFormatted = `${byType.hour}:${byType.minute}`
     
     return { date: dateFormatted, time: timeFormatted }
   } catch (error) {
@@ -459,9 +457,9 @@ const handleCreateNotebook = async () => {
   padding: 10px 20px;
   width: 100%;
   display: grid;
-  grid-template-columns: 70px 120px minmax(0, 1fr) 90px;
+  grid-template-columns: 80px 140px 1fr 100px;
   align-items: center;
-  gap: 10px;
+  gap: 15px;
 }
 
 .problem__submission-head {
@@ -486,7 +484,6 @@ const handleCreateNotebook = async () => {
 
 .problem__submission-head p:nth-child(3),
 .problem__submission-href p:nth-child(3) {
-  word-break: break-word;
   overflow-wrap: break-word;
 }
 
