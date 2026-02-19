@@ -142,7 +142,7 @@ class TestChecker(unittest.TestCase):
         result = checker.check_submission(self.mock_submission)
 
         self.assertTrue(result.ok)
-        self.assertIn("metric_score", result.outputs)
+        self.assertIn("metric_name", result.outputs)
 
     @patch('runner.services.checker.pd.read_csv')
     def test_check_with_missing_metric(self, mock_read_csv):
