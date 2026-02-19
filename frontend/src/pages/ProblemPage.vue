@@ -457,7 +457,7 @@ const handleCreateNotebook = async () => {
   padding: 10px 20px;
   width: 100%;
   display: grid;
-  grid-template-columns: 70px 130px minmax(120px, 1fr) 85px;
+  grid-template-columns: 70px 130px minmax(120px, 1fr) 95px;
   align-items: center;
   gap: 12px;
   height: 65px;
@@ -482,8 +482,13 @@ const handleCreateNotebook = async () => {
 .problem__submission-href p {
   margin: 0;
   text-align: center;
+}
+
+.problem__submission-head p:nth-child(1),
+.problem__submission-href p:nth-child(1) {
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .problem__submission-head p:nth-child(3),
