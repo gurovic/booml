@@ -301,7 +301,10 @@
          data-save-output-url-template="{% url 'runner:save_cell_output' notebook.id 0 %}"
          data-export-notebook-url="{% url 'runner:export_notebook' notebook.id %}"
          data-import-notebook-url="{% url 'runner:import_notebook' %}"
-         data-notebook-url-template="{% url 'runner:notebook_detail' 0 %}">
+         data-notebook-url-template="{% url 'runner:notebook_detail' 0 %}"
+         data-inactivity-mode="{% if notebook.problem_id %}prompt{% else %}off{% endif %}"
+         data-inactivity-prompt-minutes="{{ inactivity_prompt_minutes|default:'30' }}"
+         data-inactivity-ban-minutes="{{ inactivity_ban_minutes|default:'10' }}">
 
         <div class="notebook-header">
             <div class="notebook-header-title">
@@ -365,6 +368,7 @@
         </aside>
 
         <div class="notebook-actions">
+            <button type="button" data-action="toggle-inactivity-mode">Debug · Остановка сессии: ...</button>
             <form id="delete-notebook-form"
                   class="delete-notebook-form"
                   method="post"

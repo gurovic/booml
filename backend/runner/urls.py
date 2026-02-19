@@ -1,7 +1,7 @@
 from django.urls import path
 from .views.submissions import submission_list, submission_detail, submission_compare, recent_submissions
 from .views.main_page import main_page
-from .views.problem_detail import problem_detail, problem_detail_api
+from .views.problem_detail import problem_detail, problem_detail_api, problem_file_download_api
 from .views.authorization import register_view, login_view, logout_view, backend_register, backend_login, \
     backend_logout, backend_current_user, backend_check_auth, get_csrf_token
 from .views.problems import problem_list
@@ -52,7 +52,14 @@ from .views.list_of_problems_polygon import problem_list_polygon
 from .views.create_problem_polygon import create_problem_polygon
 from .views.edit_problem_polygon import edit_problem_polygon
 from .views.publish_problem_polygon import publish_problem_polygon
-from .views.polygon_api import polygon_problems_api, create_polygon_problem_api
+from .views.polygon_api import (
+    polygon_problems_api, 
+    create_polygon_problem_api,
+    get_polygon_problem_api,
+    update_polygon_problem_api,
+    upload_polygon_problem_file_api,
+    publish_polygon_problem_api,
+)
 from .views.api import start_api
 
 
@@ -120,10 +127,15 @@ urlpatterns = [
     path('polygon/problem/<int:problem_id>/', edit_problem_polygon, name='polygon_edit_problem'),
     path('polygon/problem/<int:problem_id>/publish/', publish_problem_polygon, name='polygon_publish_problem'),
 
-    path('backend/problem/', problem_detail_api),
+    path('backend/problem/', problem_detail_api, name='backend_problem_detail'),
+    path('backend/problem/<int:problem_id>/file/', problem_file_download_api, name='backend_problem_file_download'),
     path('backend/start/', start_api),
     path('backend/polygon/problems', polygon_problems_api),
     path('backend/polygon/problems/create', create_polygon_problem_api),
+    path('backend/polygon/problems/<int:problem_id>', get_polygon_problem_api),
+    path('backend/polygon/problems/<int:problem_id>/update', update_polygon_problem_api),
+    path('backend/polygon/problems/<int:problem_id>/upload', upload_polygon_problem_file_api),
+    path('backend/polygon/problems/<int:problem_id>/publish', publish_polygon_problem_api),
     path('backend/course/<int:course_id>/', course_detail, name='backend_course_detail'),
     path('backend/contest/', list_contests, name='backend_contest_list'),
     path('backend/contest/<int:contest_id>/', contest_detail, name='backend_contest_detail'),

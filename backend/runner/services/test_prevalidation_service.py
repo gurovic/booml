@@ -224,3 +224,42 @@ class RunPrevalidationTestCase(TestCase):
         self.assertEqual(preval.status, "failed")
         self.assertTrue(any("Too many columns at line 2" in err for err in preval.errors))
         self.assertTrue(any("Not enough columns at line 3" in err for err in preval.errors))
+
+    @override_settings(MEDIA_ROOT=tempfile.gettempdir())
+    def test_sample_header_takes_priority_over_descriptor_columns(self):
+        submission = self._create_submission(
+            "id,pred\n1,10\n2,20\n",
+            sample_csv="id,pred\n1,10\n2,20\n",
+            target_column="prediction",
+            target_type="float",
+        )
+        preval = run_prevalidation(submission)
+        self.assertEqual(preval.status, "passed")
+        self.assertEqual(preval.errors_count, 0)
+
+    @override_settings(MEDIA_ROOT=tempfile.gettempdir())
+    def test_exact_sample_submission_with_empty_values_passes(self):
+        sample_csv = "id,pred\n1,\n2,\n"
+        submission = self._create_submission(
+            sample_csv,
+            sample_csv=sample_csv,
+            target_column="prediction",
+            target_type="float",
+        )
+        preval = run_prevalidation(submission)
+        self.assertEqual(preval.status, "passed")
+        self.assertEqual(preval.errors_count, 0)
+
+    @override_settings(MEDIA_ROOT=tempfile.gettempdir())
+    def test_descriptor_id_fallback_to_first_column_when_schema_file_missing(self):
+        submission = self._create_submission(
+            "person,value\nu1,10\nu2,20\n",
+            sample_csv=None,
+            id_column="id",
+            target_column="value",
+            target_type="int",
+        )
+        preval = run_prevalidation(submission)
+        self.assertEqual(preval.status, "warnings")
+        self.assertEqual(preval.errors_count, 0)
+        self.assertGreaterEqual(preval.warnings_count, 1)

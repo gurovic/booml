@@ -6,8 +6,21 @@
   <div class="problem">
     <div class="container">
       <div v-if="problem != null" class="problem__inner">
+        <nav v-if="contestProblemItems.length > 0" class="problem__selection_menu" aria-label="Выбор задачи">
+          <router-link
+            v-for="item in contestProblemItems"
+            :key="item.id"
+            :to="item.route"
+            class="problem__selection_item"
+            :class="{ 'is-selected': item.isCurrent }"
+            :aria-current="item.isCurrent ? 'page' : undefined"
+          >
+            {{ item.label }}
+          </router-link>
+        </nav>
         <div class="problem__content">
           <h1 class="problem__name">
+            <span v-if="contestProblemLabel" class="problem__contest-label">Задача {{ contestProblemLabel }}</span>
             <span class="problem__title-text">{{ problem.title }}</span>
             <UiIdPill v-if="problem?.id" class="problem__id" :id="problem.id" title="ID задачи" />
           </h1>
@@ -20,13 +33,13 @@
               <li
                 class="problem__file"
                 v-for="file in availableFiles"
-                :key="file.key"
+                :key="`${file.kind}:${file.name}`"
               >
                 <a
                   class="problem__file-href button button--secondary"
                   :href="file.url"
-                  :download="file.downloadName"
-                >{{ file.downloadName }}</a>
+                  :download="file.name"
+                >{{ file.name }}</a>
             </li>
             </ul>
           </li>
@@ -102,7 +115,7 @@
                     <p class="problem__submission-time">{{ submission.formattedDateTime.time }}</p>
                   </div>
                   <p>{{ getStatusLabel(submission.status) }}</p>
-                  <p>{{ roundMetric(submission.metric) }}</p>
+                  <p>{{ formatSubmissionMetric(submission) }}</p>
                 </router-link>
               </li>
             </ul>
@@ -123,22 +136,25 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
+import { contestApi } from '@/api'
 import { getProblem } from '@/api/problem'
 import { submitSolution } from '@/api/submission'
 import { createNotebook } from '@/api/notebook'
 import { useUserStore } from '@/stores/UserStore'
 import MarkdownIt from 'markdown-it'
-import mkKatex from 'markdown-it-katex'
+import markdownKatex from '@/utils/markdownKatex'
 import UiHeader from '@/components/ui/UiHeader.vue'
 import UiBreadcrumbs from '@/components/ui/UiBreadcrumbs.vue'
 import UiIdPill from '@/components/ui/UiIdPill.vue'
+import { normalizeContestProblemLabel, toContestProblemLabel } from '@/utils/contestProblemLabel'
 
 const md = new MarkdownIt({
   html: false,
-  breaks: true,
-}).use(mkKatex)
+  breaks: false,
+  linkify: true,
+}).use(markdownKatex, { throwOnError: false })
 
 const route = useRoute()
 const userStore = useUserStore()
@@ -150,8 +166,86 @@ let submitMessage = ref(null)
 let fileInputKey = ref(0)
 let isCreatingNotebook = ref(false)
 let notebookMessage = ref(null)
+const contestProblemLabel = ref('')
+const contestProblems = ref([])
 
-onMounted(async () => {
+const stripLeadingH1 = (statement) => {
+  if (typeof statement !== 'string' || !statement) return ''
+
+  const lines = statement.replace(/\r\n?/g, '\n').split('\n')
+  let firstContentLine = 0
+
+  while (firstContentLine < lines.length && !lines[firstContentLine].trim()) {
+    firstContentLine += 1
+  }
+
+  if (firstContentLine >= lines.length) return statement
+  if (!/^#\s+/.test(lines[firstContentLine])) return statement
+
+  lines.splice(firstContentLine, 1)
+  while (firstContentLine < lines.length && !lines[firstContentLine].trim()) {
+    lines.splice(firstContentLine, 1)
+  }
+
+  return lines.join('\n')
+}
+
+const renderStatement = (statement) => md.render(stripLeadingH1(statement))
+
+const queryValue = (raw) => (Array.isArray(raw) ? raw[0] : raw)
+const contestIdFromQuery = computed(() => {
+  const parsed = Number(queryValue(route.query.contest))
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null
+})
+const queryProblemLabel = computed(() => normalizeContestProblemLabel(queryValue(route.query.problem_label)))
+const currentProblemId = computed(() => Number(route.params.id))
+
+const contestProblemItems = computed(() => {
+  const problems = Array.isArray(contestProblems.value) ? contestProblems.value : []
+  const contestId = contestIdFromQuery.value
+
+  return problems
+    .filter(row => row?.id != null)
+    .map((row, idx) => {
+      const ordinal = Number.isInteger(row?.index) && row.index >= 0 ? row.index : idx
+      const label = normalizeContestProblemLabel(row?.label) || toContestProblemLabel(ordinal)
+      return {
+        id: row.id,
+        label,
+        isCurrent: Number(row.id) === currentProblemId.value,
+        route: {
+          name: 'problem',
+          params: { id: row.id },
+          query: { contest: contestId, problem_label: label },
+        },
+      }
+    })
+})
+
+const resolveContestProblemLabel = async () => {
+  contestProblemLabel.value = queryProblemLabel.value
+  contestProblems.value = []
+
+  if (!problem.value?.id || !contestIdFromQuery.value) return
+
+  try {
+    const contestData = await contestApi.getContest(contestIdFromQuery.value)
+    const problems = Array.isArray(contestData?.problems) ? contestData.problems : []
+    contestProblems.value = problems
+    if (contestProblemLabel.value) return
+
+    const idx = problems.findIndex(row => Number(row?.id) === Number(problem.value.id))
+    if (idx < 0) return
+
+    contestProblemLabel.value =
+      normalizeContestProblemLabel(problems[idx]?.label) || toContestProblemLabel(idx)
+  } catch (err) {
+    console.warn('Failed to resolve contest problem label:', err)
+  }
+}
+
+const loadProblem = async () => {
+  contestProblemLabel.value = ''
   try {
     const res = await getProblem(route.params.id)
     problem.value = res
@@ -159,20 +253,50 @@ onMounted(async () => {
     console.log(err)
   } finally {
     if (problem.value != null) {
-      problem.value.rendered_statement = md.render(problem.value.statement)
+      problem.value.rendered_statement = renderStatement(problem.value.statement)
+      await resolveContestProblemLabel()
     }
   }
-})
+}
+
+onMounted(loadProblem)
+
+watch(
+  () => route.params.id,
+  (nextId, prevId) => {
+    if (nextId !== prevId) {
+      loadProblem()
+    }
+  }
+)
 
 const availableFiles = computed(() => {
-  if (!problem.value || !problem.value.files) return []
+  if (!problem.value) return []
+
+  if (Array.isArray(problem.value.file_list)) {
+    return problem.value.file_list
+      .filter(file => file && file.url && file.name && file.kind)
+      .map(file => ({
+        kind: String(file.kind),
+        name: String(file.name),
+        url: String(file.url),
+      }))
+  }
+
+  const fallbackCanonicalNames = {
+    train: 'train.csv',
+    test: 'test.csv',
+    sample_submission: 'sample_submission.csv',
+  }
+
+  if (!problem.value.files) return []
   return Object.entries(problem.value.files)
     .filter(([, url]) => url)
-    .map(([key, url]) => {
-      const k = String(key || '')
-      const downloadName = k.toLowerCase().endsWith('.csv') ? k : `${k}.csv`
-      return { key: k, url, downloadName }
-    })
+    .map(([key, url]) => ({
+      kind: String(key || ''),
+      name: String(fallbackCanonicalNames[key] || key || ''),
+      url: String(url),
+    }))
 })
 
 const formattedSubmissions = computed(() => {
@@ -186,6 +310,32 @@ const formattedSubmissions = computed(() => {
 const roundMetric = (value) => {
   if (value == null) return '-'
   return value.toFixed(3)
+}
+
+const extractMetricValue = (submission) => {
+  if (!submission || typeof submission !== 'object') return null
+  const metrics = submission.metrics
+  if (typeof metrics === 'number') return metrics
+  if (metrics && typeof metrics === 'object') {
+    const keys = ['metric', 'metric_score', 'score', 'accuracy', 'f1', 'auc']
+    for (const key of keys) {
+      if (typeof metrics[key] === 'number') {
+        return metrics[key]
+      }
+    }
+    for (const value of Object.values(metrics)) {
+      if (typeof value === 'number') {
+        return value
+      }
+    }
+  }
+  if (typeof submission.metric === 'number') return submission.metric
+  return null
+}
+
+const formatSubmissionMetric = (submission) => {
+  const metricValue = extractMetricValue(submission)
+  return roundMetric(metricValue)
 }
 
 const getStatusLabel = (status) => {
@@ -273,7 +423,7 @@ const handleSubmit = async () => {
       const res = await getProblem(route.params.id)
       problem.value = res
       if (problem.value != null) {
-        problem.value.rendered_statement = md.render(problem.value.statement)
+        problem.value.rendered_statement = renderStatement(problem.value.statement)
       }
     } catch (refreshError) {
       console.warn('Failed to refresh submissions after upload:', refreshError)
@@ -336,6 +486,63 @@ const handleCreateNotebook = async () => {
   gap: 15px;
 }
 
+.problem__selection_menu {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.problem__selection_item {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #ffffff;
+  color: #111827;
+  font-weight: 700;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  user-select: none;
+  text-decoration: none;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease,
+    transform 0.05s ease,
+    box-shadow 0.15s ease;
+}
+
+.problem__selection_item:hover {
+  background: #f3f4f6;
+}
+
+.problem__selection_item:active {
+  transform: translateY(1px);
+}
+
+.problem__selection_item.is-selected,
+.problem__selection_item[aria-current='true'] {
+  background: var(--color-button-secondary);
+  border: #9480C9 1px solid;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
+  color: var(--color-primary);
+}
+
+.problem__selection_item:focus {
+  outline: 3px solid rgba(139, 92, 246, 0.35);
+  outline-offset: 2px;
+}
+
+.problem__selection_item:focus-visible {
+  outline: 3px solid rgba(139, 92, 246, 0.35);
+  outline-offset: 2px;
+}
+
 .problem__content {
   position: relative;
   z-index: 1;
@@ -377,6 +584,13 @@ const handleCreateNotebook = async () => {
   display: inline;
 }
 
+.problem__contest-label {
+  display: block;
+  font-size: 22px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
 .problem__text {
   font-family: var(--font-default);
   font-size: 16px;
@@ -384,8 +598,83 @@ const handleCreateNotebook = async () => {
   color: var(--color-text-primary);
 }
 
+.problem__text :deep(a) {
+  color: var(--color-primary);
+  text-decoration: underline;
+  overflow-wrap: anywhere;
+}
+
+.problem__text :deep(a:hover) {
+  opacity: 0.85;
+}
+
+.problem__text :deep(table) {
+  width: 100%;
+  margin: 20px 0 24px;
+  border-collapse: separate;
+  border-spacing: 0;
+  border: 1px solid var(--color-border-default);
+  border-radius: 14px;
+  overflow: hidden;
+  background: linear-gradient(180deg, #ffffff 0%, #fcfbff 100%);
+  box-shadow: 0 10px 24px rgba(39, 52, 106, 0.07);
+}
+
+.problem__text :deep(th),
+.problem__text :deep(td) {
+  padding: 12px 14px;
+  text-align: left;
+  border-bottom: 1px solid var(--color-border-light);
+}
+
+.problem__text :deep(th + th),
+.problem__text :deep(td + td) {
+  border-left: 1px solid var(--color-border-light);
+}
+
+.problem__text :deep(thead th) {
+  font-weight: 600;
+  color: var(--color-title-text);
+  background: linear-gradient(180deg, #f8f6ff 0%, #f0ecff 100%);
+}
+
+.problem__text :deep(tbody tr:nth-child(even)) {
+  background-color: var(--color-bg-muted);
+}
+
+.problem__text :deep(tbody tr:hover) {
+  background-color: var(--color-bg-primary);
+}
+
+.problem__text :deep(tbody tr:last-child td) {
+  border-bottom: none;
+}
+
+@media (max-width: 720px) {
+  .problem__text :deep(table) {
+    display: block;
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+}
+
 .problem__text :deep(p) {
   margin-bottom: 16px;
+}
+
+.problem__text :deep(.math-block) {
+  margin: 16px 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.problem__text :deep(.math-block .katex-display) {
+  margin: 0;
+  text-align: center;
+}
+
+.problem__text :deep(.math-block .katex-display > .katex) {
+  white-space: nowrap;
 }
 
 .problem__text :deep(h2) {

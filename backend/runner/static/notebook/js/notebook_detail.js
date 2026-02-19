@@ -18,6 +18,13 @@ const notebookDetail = {
         ban: null,
     },
     inactivityOverlay: null,
+    inactivityMode: 'prompt',
+    inactivityPromptMs: 15 * 60 * 1000,
+    inactivityBanMs: 10 * 60 * 1000,
+    activityTrackingEnabled: false,
+    activityHandler: null,
+    activityEvents: ['click', 'keydown', 'mousemove', 'scroll', 'touchstart'],
+    streamPollTimeoutMs: null,
     lastActivityTs: null,
     filesRequestId: 0,
     sessionState: 'idle',
@@ -35,6 +42,7 @@ const notebookDetail = {
     computeDeviceHint: null,
     updateDeviceUrl: null,
     currentComputeDevice: 'cpu',
+    inactivityToggleButton: null,
     clipboardCellId: null,
     clipboardIndicator: null,
     filesPanel: null,
@@ -113,6 +121,167 @@ const notebookDetail = {
         } catch (error) {
             console.warn('Не удалось очистить localStorage', error);
         }
+    },
+
+    normalizeInactivityMode(value) {
+        if (!value) {
+            return 'prompt';
+        }
+        const normalized = String(value).trim().toLowerCase();
+        if (['off', 'none', 'disabled', 'unlimited', 'false', '0'].includes(normalized)) {
+            return 'off';
+        }
+        return 'prompt';
+    },
+
+    parseMinutes(value, fallbackMs) {
+        if (value === undefined || value === null || value === '') {
+            return fallbackMs;
+        }
+        const numeric = Number(value);
+        if (!Number.isFinite(numeric) || numeric <= 0) {
+            return 0;
+        }
+        return numeric * 60 * 1000;
+    },
+
+    updateInactivityToggle() {
+        if (!this.inactivityToggleButton) {
+            return;
+        }
+        if (this.inactivityMode === 'off') {
+            this.inactivityToggleButton.textContent = 'Debug · Остановка сессии: без ограничений';
+            return;
+        }
+        const minutes = this.inactivityPromptMs
+            ? Math.max(1, Math.round(this.inactivityPromptMs / 60000))
+            : 0;
+        this.inactivityToggleButton.textContent = minutes
+            ? `Debug · Остановка сессии: спрашивать через ${minutes} мин`
+            : 'Debug · Остановка сессии: спрашивать';
+    },
+
+    clearInactivityTimers() {
+        if (this.inactivityTimers.prompt) {
+            clearTimeout(this.inactivityTimers.prompt);
+            this.inactivityTimers.prompt = null;
+        }
+        if (this.inactivityTimers.ban) {
+            clearTimeout(this.inactivityTimers.ban);
+            this.inactivityTimers.ban = null;
+        }
+    },
+
+    disableActivityTracking() {
+        if (!this.activityTrackingEnabled) {
+            return;
+        }
+        if (this.activityHandler) {
+            this.activityEvents.forEach((evt) => {
+                document.removeEventListener(evt, this.activityHandler);
+            });
+        }
+        this.activityTrackingEnabled = false;
+    },
+
+    toggleInactivityMode() {
+        if (this.inactivityMode === 'off') {
+            this.inactivityMode = 'prompt';
+            this.initActivityTracking();
+            this.markActivity();
+        } else {
+            this.inactivityMode = 'off';
+            this.clearInactivityTimers();
+            this.hideInactivityPrompt();
+            this.disableActivityTracking();
+        }
+        if (this.notebookElement) {
+            this.notebookElement.dataset.inactivityMode = this.inactivityMode;
+        }
+        this.updateInactivityToggle();
+    },
+
+    stripPythonStringsAndComments(code) {
+        if (!code) {
+            return '';
+        }
+        const source = String(code);
+        let out = '';
+        let i = 0;
+        let state = 'normal';
+        let quote = '';
+        while (i < source.length) {
+            const ch = source[i];
+            const next = source[i + 1];
+            const next2 = source[i + 2];
+
+            if (state === 'normal') {
+                if (ch === '#') {
+                    while (i < source.length && source[i] !== '\n') {
+                        i += 1;
+                    }
+                    continue;
+                }
+                if (ch === "'" || ch === '"') {
+                    if (ch === next && ch === next2) {
+                        state = 'triple';
+                        quote = ch;
+                        out += '   ';
+                        i += 3;
+                        continue;
+                    }
+                    state = 'single';
+                    quote = ch;
+                    out += ' ';
+                    i += 1;
+                    continue;
+                }
+                out += ch;
+                i += 1;
+                continue;
+            }
+
+            if (state === 'single') {
+                if (ch === '\\' && i + 1 < source.length) {
+                    out += ' ';
+                    i += 2;
+                    continue;
+                }
+                if (ch === quote) {
+                    state = 'normal';
+                    out += ' ';
+                    i += 1;
+                    continue;
+                }
+                out += ch === '\n' ? '\n' : ' ';
+                i += 1;
+                continue;
+            }
+
+            if (state === 'triple') {
+                if (ch === quote && next === quote && next2 === quote) {
+                    state = 'normal';
+                    out += '   ';
+                    i += 3;
+                    continue;
+                }
+                out += ch === '\n' ? '\n' : ' ';
+                i += 1;
+                continue;
+            }
+        }
+        return out;
+    },
+
+    requiresInteractiveInput(code) {
+        if (!code) {
+            return false;
+        }
+        const cleaned = this.stripPythonStringsAndComments(code);
+        return /\binput\s*\(/.test(cleaned)
+            || /\bbuiltins\s*\.\s*input\b/.test(cleaned)
+            || /\bsys\s*\.\s*stdin\b/.test(cleaned)
+            || /\bfileinput\s*\.\s*input\b/.test(cleaned);
     },
 
     getStoredSessionId() {
@@ -467,7 +636,14 @@ const notebookDetail = {
         const startedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
 
         try {
-            if (runCellStreamStartUrl && runCellStreamStatusUrl) {
+            const needsInput = this.requiresInteractiveInput(code);
+            const canStream = Boolean(runCellStreamStartUrl && runCellStreamStatusUrl);
+            const useStreaming = canStream && !needsInput;
+            if (needsInput && !runCellUrl) {
+                throw new Error('Интерактивный ввод недоступен');
+            }
+
+            if (useStreaming) {
                 await this.executeQueueJobStreaming({
                     job,
                     cellId,
@@ -578,7 +754,7 @@ const notebookDetail = {
             }
             console.error('Ошибка выполнения ячейки:', error);
             const message = error?.message || 'Не удалось выполнить ячейку';
-            const errorHtml = `<div class="output-error"><strong>Ошибка:</strong> ${NotebookUtils.escapeHtml(message)}</div>`;
+            const errorHtml = `<div class="output-error">${NotebookUtils.escapeHtml(message)}</div>`;
             outputElement.innerHTML = errorHtml;
             outputElement.className = 'output error';
             this.renderArtifacts(cellId, []);
@@ -633,16 +809,36 @@ const notebookDetail = {
         let stdoutNode = null;
         let stderrNode = null;
 
-        const ensureStreamNodes = () => {
-            if (stdoutNode && stderrNode) {
+        const clearLoading = () => {
+            if (outputElement.querySelector('.output-loading')) {
+                outputElement.innerHTML = '';
+            }
+        };
+
+        const ensureStdoutNode = () => {
+            if (stdoutNode) {
                 return;
             }
-            outputElement.innerHTML = `
-                <div class="output-text"><pre data-stream-stdout></pre></div>
-                <div class="output-stderr"><strong>STDERR:</strong><pre data-stream-stderr></pre></div>
-            `;
-            stdoutNode = outputElement.querySelector('[data-stream-stdout]');
-            stderrNode = outputElement.querySelector('[data-stream-stderr]');
+            clearLoading();
+            const wrapper = document.createElement('div');
+            wrapper.className = 'output-text';
+            stdoutNode = document.createElement('pre');
+            stdoutNode.setAttribute('data-stream-stdout', '');
+            wrapper.appendChild(stdoutNode);
+            outputElement.appendChild(wrapper);
+        };
+
+        const ensureStderrNode = () => {
+            if (stderrNode) {
+                return;
+            }
+            clearLoading();
+            const wrapper = document.createElement('div');
+            wrapper.className = 'output-stderr';
+            stderrNode = document.createElement('pre');
+            stderrNode.setAttribute('data-stream-stderr', '');
+            wrapper.appendChild(stderrNode);
+            outputElement.appendChild(wrapper);
         };
 
         const appendText = (node, text) => {
@@ -652,12 +848,12 @@ const notebookDetail = {
             node.appendChild(document.createTextNode(text));
         };
 
-        const maxPollMs = 5 * 60 * 1000;
+        const maxPollMs = this.streamPollTimeoutMs;
         while (true) {
             const nowMs = (typeof performance !== 'undefined' && performance.now)
                 ? performance.now()
                 : Date.now();
-            if (nowMs - startedAt > maxPollMs) {
+            if (maxPollMs && nowMs - startedAt > maxPollMs) {
                 const error = new Error('Превышено время ожидания выполнения');
                 error.status = 408;
                 throw error;
@@ -679,11 +875,11 @@ const notebookDetail = {
             }
 
             if (statusData.stdout) {
-                ensureStreamNodes();
+                ensureStdoutNode();
                 appendText(stdoutNode, statusData.stdout);
             }
             if (statusData.stderr) {
-                ensureStreamNodes();
+                ensureStderrNode();
                 appendText(stderrNode, statusData.stderr);
             }
             const stdoutNext = Number(statusData.stdout_offset);
@@ -1047,12 +1243,18 @@ const notebookDetail = {
     },
 
     initActivityTracking() {
+        if (this.inactivityMode === 'off' || !this.inactivityPromptMs) {
+            this.disableActivityTracking();
+            return;
+        }
         this.lastActivityTs = Date.now();
-        const events = ['click', 'keydown', 'mousemove', 'scroll', 'touchstart'];
-        this.activityHandler = this.markActivity.bind(this);
-        events.forEach((evt) => {
-            document.addEventListener(evt, this.activityHandler, { passive: true });
-        });
+        if (!this.activityTrackingEnabled) {
+            this.activityHandler = this.markActivity.bind(this);
+            this.activityEvents.forEach((evt) => {
+                document.addEventListener(evt, this.activityHandler, { passive: true });
+            });
+            this.activityTrackingEnabled = true;
+        }
         this.scheduleInactivityPrompt();
     },
 
@@ -1061,7 +1263,7 @@ const notebookDetail = {
     // Методы будут вызываться из обработчиков событий
     },
 
-    exportNotebook() {
+    async exportNotebook() {
     /** Экспортирует текущий ноутбук в формате .ipynb */
     if (!this.config.notebookId) {
         alert('ID ноутбука не найден');
@@ -1074,13 +1276,64 @@ const notebookDetail = {
         return;
     }
     
-    // Открываем ссылку для скачивания
-    const link = document.createElement('a');
-    link.href = `${exportUrl}?notebook_id=${this.config.notebookId}`;
-    link.download = '';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    try {
+        // Получаем файл через fetch, чтобы иметь контроль над именем файла
+        const response = await fetch(exportUrl);
+        if (!response.ok) {
+            throw new Error('Ошибка при экспорте блокнота');
+        }
+        
+        // Получаем имя файла из заголовка Content-Disposition
+        const contentDisposition = response.headers.get('Content-Disposition');
+        let filename = null;
+        
+        if (contentDisposition) {
+            // Пытаемся извлечь имя файла из разных форматов заголовка
+            // Формат 1: filename="название.ipynb"
+            let match = contentDisposition.match(/filename="([^"]+)"/);
+            if (match && match[1]) {
+                filename = match[1];
+            } else {
+                // Формат 2: filename*=UTF-8''название.ipynb
+                match = contentDisposition.match(/filename\*=UTF-8''([^;]+)/);
+                if (match && match[1]) {
+                    filename = decodeURIComponent(match[1]);
+                } else {
+                    // Формат 3: filename=название.ipynb (без кавычек)
+                    match = contentDisposition.match(/filename=([^;]+)/);
+                    if (match && match[1]) {
+                        filename = match[1].trim();
+                    }
+                }
+            }
+        }
+        
+        // Если имя файла не получено из заголовка, используем название блокнота из DOM
+        if (!filename || filename === 'notebook.ipynb' || !filename.endsWith('.ipynb')) {
+            const notebookTitle = document.querySelector('#notebook-title')?.textContent?.trim() || 'notebook';
+            // Очищаем название от недопустимых символов
+            const safeTitle = notebookTitle
+                .replace(/[<>:"/\\|?*]/g, '_')
+                .replace(/\s+/g, '_')
+                .replace(/_+/g, '_')
+                .replace(/^_+|_+$/g, '');
+            filename = safeTitle ? `${safeTitle}.ipynb` : 'notebook.ipynb';
+        }
+        
+        // Создаем blob и скачиваем файл с правильным именем
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename; // Явно указываем имя файла с расширением .ipynb
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
+    } catch (error) {
+        console.error('Ошибка экспорта:', error);
+        alert('Ошибка при экспорте блокнота: ' + error.message);
+    }
     },
 
     triggerImportFileSelect() {
@@ -1160,30 +1413,39 @@ async handleImportFile(file) {
 
     buildNotebookUrl(notebookId) {
     /** Строит URL для ноутбука */
-    const template = this.notebookElement?.dataset.notebookUrlTemplate;
-    if (!template || !notebookId) {
+    if (!notebookId) {
         return null;
     }
-    return template.replace('{id}', notebookId);
+    // Строим URL напрямую, так как шаблон может содержать 0 вместо плейсхолдера
+    return `/notebook/${notebookId}/`;
     },
 
     markActivity() {
+        if (this.inactivityMode === 'off' || !this.inactivityPromptMs) {
+            return;
+        }
         this.lastActivityTs = Date.now();
         this.hideInactivityPrompt();
         this.scheduleInactivityPrompt();
     },
 
     scheduleInactivityPrompt() {
+        if (this.inactivityMode === 'off' || !this.inactivityPromptMs) {
+            return;
+        }
         if (this.inactivityTimers.prompt) {
             clearTimeout(this.inactivityTimers.prompt);
         }
         this.inactivityTimers.prompt = window.setTimeout(
             () => this.showInactivityPrompt(),
-            30 * 60 * 1000,
+            this.inactivityPromptMs,
         );
     },
 
     showInactivityPrompt() {
+        if (this.inactivityMode === 'off') {
+            return;
+        }
         if (!this.inactivityOverlay) {
             this.inactivityOverlay = this.buildInactivityOverlay();
             document.body.appendChild(this.inactivityOverlay);
@@ -1192,10 +1454,14 @@ async handleImportFile(file) {
         if (this.inactivityTimers.ban) {
             clearTimeout(this.inactivityTimers.ban);
         }
-        this.inactivityTimers.ban = window.setTimeout(
-            () => this.banSession(),
-            10 * 60 * 1000,
-        );
+        if (this.inactivityBanMs) {
+            this.inactivityTimers.ban = window.setTimeout(
+                () => this.banSession(),
+                this.inactivityBanMs,
+            );
+        } else {
+            this.inactivityTimers.ban = null;
+        }
     },
 
     hideInactivityPrompt() {
@@ -1231,17 +1497,25 @@ async handleImportFile(file) {
         title.style.marginTop = '0';
 
         const text = document.createElement('p');
-        text.textContent = 'Сессия будет перезапущена через 10 минут бездействия.';
-
-        const button = document.createElement('button');
-        button.textContent = 'Да, продолжаю';
-        button.style.marginTop = '12px';
-        button.addEventListener('click', () => this.handlePresenceConfirm());
+        const helper = document.createElement('p');
+        if (this.inactivityBanMs) {
+            const minutes = Math.max(1, Math.round(this.inactivityBanMs / 60000));
+            text.textContent = `Сессия будет перезапущена через ${minutes} минут бездействия.`;
+        } else {
+            text.textContent = 'Сессия будет перезапущена при длительном бездействии.';
+        }
+        helper.textContent = 'Кликните в любом месте, чтобы продолжить.';
+        helper.style.marginTop = '12px';
+        helper.style.fontSize = '13px';
+        helper.style.color = '#555';
 
         modal.appendChild(title);
         modal.appendChild(text);
-        modal.appendChild(button);
+        modal.appendChild(helper);
         overlay.appendChild(modal);
+        overlay.addEventListener('click', () => {
+            this.handlePresenceConfirm();
+        });
         overlay.hidden = true;
         return overlay;
     },
@@ -1279,6 +1553,20 @@ async handleImportFile(file) {
         this.sessionFileDownloadUrl = this.sanitizeUrl(config.sessionFileDownloadUrl) || this.sanitizeUrl(this.notebookElement?.dataset.sessionFileDownloadUrl);
         this.sessionFilePreviewUrl = this.sanitizeUrl(config.sessionFilePreviewUrl) || this.sanitizeUrl(this.notebookElement?.dataset.sessionFilePreviewUrl);
         this.sessionStopUrl = this.sanitizeUrl(config.sessionStopUrl) || this.sanitizeUrl(this.notebookElement?.dataset.sessionStopUrl);
+        const rawInactivityMode = config.inactivityMode ?? this.notebookElement?.dataset.inactivityMode;
+        this.inactivityMode = this.normalizeInactivityMode(rawInactivityMode);
+        this.inactivityPromptMs = this.parseMinutes(
+            config.inactivityPromptMinutes ?? this.notebookElement?.dataset.inactivityPromptMinutes,
+            15 * 60 * 1000,
+        );
+        this.inactivityBanMs = this.parseMinutes(
+            config.inactivityBanMinutes ?? this.notebookElement?.dataset.inactivityBanMinutes,
+            10 * 60 * 1000,
+        );
+        this.streamPollTimeoutMs = this.parseMinutes(
+            config.streamPollTimeoutMinutes ?? this.notebookElement?.dataset.streamPollTimeoutMinutes,
+            0,
+        ) || null;
         this.sessionStatusElement = this.notebookElement?.querySelector('[data-session-status]') || null;
         this.sessionButtons = {
             create: this.notebookElement?.querySelector('[data-action="create-session"]') || null,
@@ -1293,6 +1581,8 @@ async handleImportFile(file) {
         if (this.computeDeviceSelect) {
             this.computeDeviceSelect.value = this.currentComputeDevice;
         }
+        this.inactivityToggleButton = this.notebookElement?.querySelector('[data-action="toggle-inactivity-mode"]') || null;
+        this.updateInactivityToggle();
         this.clipboardCellId = null;
         this.clipboardIndicator = this.notebookElement?.querySelector('[data-clipboard-indicator]') || null;
         this.filesPanel = document.querySelector('[data-files-panel]');
@@ -1433,6 +1723,9 @@ async handleImportFile(file) {
         if (action === 'delete-notebook') {
             e.preventDefault();
             this.deleteNotebook(actionTarget);
+        }
+        else if (action === 'toggle-inactivity-mode') {
+            this.toggleInactivityMode();
         }
         else if (action === 'create-cell') {
             this.createCell();

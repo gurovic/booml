@@ -30,144 +30,19 @@
               </button>
             </div>
 
-            <ul v-if="isSectionOpen(section.id)" class="course-list">
-              <li
+            <ul v-if="isSectionOpen(section.id)" class="course-list course-list--tree">
+              <CourseTreeNode
                 v-for="child in orderedChildren(section)"
                 :key="child.id"
-                class="course-item"
-              >
-                <template v-if="hasChildren(child)">
-                  <div class="nested-header-row">
-                    <button
-                      type="button"
-                      class="section-toggle section-toggle--nested"
-                      :disabled="!(child.children || []).length"
-                      @click="toggleNested(child.id)"
-                      :aria-expanded="isNestedOpen(child.id)"
-                      aria-label="Раскрыть/свернуть"
-                    >
-                      <span class="triangle triangle--nested" :class="{ 'triangle--open': isNestedOpen(child.id) }"></span>
-                    </button>
-                    <button type="button" class="course-link course-link--section" @click="goToCourse(child)" :title="child.title">
-                      <span class="item-icon item-icon--section" aria-hidden="true">
-                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" xmlns="http://www.w3.org/2000/svg">
-                          <path
-                            d="M3 7.5c0-1.1.9-2 2-2h5l2 2h7c1.1 0 2 .9 2 2v8.5c0 1.1-.9 2-2 2H5c-1.1 0-2-.9-2-2V7.5Z"
-                            stroke="currentColor"
-                            stroke-width="2"
-                            stroke-linejoin="round"
-                          />
-                        </svg>
-                      </span>
-                      <span class="item-text">{{ child.title }}</span>
-                    </button>
-                  </div>
-                  <div v-if="isNestedOpen(child.id) && (child.children || []).length" class="badge-list">
-                    <div v-for="grand in child.children" :key="grand.id" class="badge-row">
-                      <button
-                        type="button"
-                        :class="grand.type === 'course' ? 'badge' : 'course-link course-link--section'"
-                        @click="goToCourse(grand)"
-                        :title="grand.title"
-                      >
-                        <span
-                          class="item-icon"
-                          :class="grand.type === 'course' ? 'item-icon--course' : 'item-icon--section'"
-                          aria-hidden="true"
-                        >
-                          <svg v-if="grand.type !== 'course'" viewBox="0 0 24 24" width="18" height="18" fill="none" xmlns="http://www.w3.org/2000/svg">
-                            <path
-                              d="M3 7.5c0-1.1.9-2 2-2h5l2 2h7c1.1 0 2 .9 2 2v8.5c0 1.1-.9 2-2 2H5c-1.1 0-2-.9-2-2V7.5Z"
-                              stroke="currentColor"
-                              stroke-width="2"
-                              stroke-linejoin="round"
-                            />
-                          </svg>
-                          <svg v-else viewBox="0 0 24 24" width="18" height="18" fill="none" xmlns="http://www.w3.org/2000/svg">
-                            <path
-                              d="M6 3h11a2 2 0 0 1 2 2v14.5a1.5 1.5 0 0 1-2.34 1.25L12 17.7l-4.66 3.05A1.5 1.5 0 0 1 5 19.5V5a2 2 0 0 1 1-2Z"
-                              stroke="currentColor"
-                              stroke-width="2"
-                              stroke-linejoin="round"
-                            />
-                          </svg>
-                        </span>
-                        <span class="item-text">{{ grand.title }}</span>
-                      </button>
-                      <button
-                        v-if="isAuthorized && grand.type === 'course'"
-                        type="button"
-                        class="star-btn"
-                        :class="{ 'star-btn--on': isFavorite(grand.id) }"
-                        :title="isFavorite(grand.id) ? 'Убрать из избранного' : 'Добавить в избранное'"
-                        @click.stop.prevent="toggleFavorite(grand)"
-                      >
-                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" xmlns="http://www.w3.org/2000/svg">
-                          <path
-                            d="M12 17.27 18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21 12 17.27Z"
-                            stroke="currentColor"
-                            stroke-width="1.8"
-                            stroke-linejoin="round"
-                            :fill="isFavorite(grand.id) ? 'currentColor' : 'transparent'"
-                          />
-                        </svg>
-                      </button>
-                    </div>
-                  </div>
-                </template>
-                <template v-else>
-                  <div class="course-row">
-                    <button
-                      type="button"
-                      :class="child.type === 'course' ? 'badge' : 'course-link course-link--section'"
-                      @click="goToCourse(child)"
-                      :title="child.title"
-                    >
-                      <span
-                        class="item-icon"
-                        :class="child.type === 'course' ? 'item-icon--course' : 'item-icon--section'"
-                        aria-hidden="true"
-                      >
-                        <svg v-if="child.type !== 'course'" viewBox="0 0 24 24" width="18" height="18" fill="none" xmlns="http://www.w3.org/2000/svg">
-                          <path
-                            d="M3 7.5c0-1.1.9-2 2-2h5l2 2h7c1.1 0 2 .9 2 2v8.5c0 1.1-.9 2-2 2H5c-1.1 0-2-.9-2-2V7.5Z"
-                            stroke="currentColor"
-                            stroke-width="2"
-                            stroke-linejoin="round"
-                          />
-                        </svg>
-                        <svg v-else viewBox="0 0 24 24" width="18" height="18" fill="none" xmlns="http://www.w3.org/2000/svg">
-                          <path
-                            d="M6 3h11a2 2 0 0 1 2 2v14.5a1.5 1.5 0 0 1-2.34 1.25L12 17.7l-4.66 3.05A1.5 1.5 0 0 1 5 19.5V5a2 2 0 0 1 1-2Z"
-                            stroke="currentColor"
-                            stroke-width="2"
-                            stroke-linejoin="round"
-                          />
-                        </svg>
-                      </span>
-                      <span class="item-text">{{ child.title }}</span>
-                    </button>
-                    <button
-                      v-if="isAuthorized && child.type === 'course'"
-                      type="button"
-                      class="star-btn"
-                      :class="{ 'star-btn--on': isFavorite(child.id) }"
-                      :title="isFavorite(child.id) ? 'Убрать из избранного' : 'Добавить в избранное'"
-                      @click.stop.prevent="toggleFavorite(child)"
-                    >
-                      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path
-                          d="M12 17.27 18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21 12 17.27Z"
-                          stroke="currentColor"
-                          stroke-width="1.8"
-                          stroke-linejoin="round"
-                          :fill="isFavorite(child.id) ? 'currentColor' : 'transparent'"
-                        />
-                      </svg>
-                    </button>
-                  </div>
-                </template>
-              </li>
+                :node="child"
+                :level="0"
+                :open-state="openNested"
+                :show-favorite="isAuthorized"
+                :is-favorite="isFavoriteNode"
+                @toggle-section="toggleNested"
+                @navigate="goToCourse"
+                @toggle-favorite="toggleFavorite"
+              />
             </ul>
           </div>
 
@@ -187,42 +62,18 @@
                 <h2 class="section-title">Курсы без раздела</h2>
               </div>
             </div>
-            <ul v-if="standaloneOpen" class="course-list">
-              <li v-for="course in standalone" :key="course.id" class="course-item">
-                <div class="course-row">
-                  <button type="button" class="badge" @click="goToCourse(course)" :title="course.title">
-                    <span class="item-icon item-icon--course" aria-hidden="true">
-                      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path
-                          d="M6 3h11a2 2 0 0 1 2 2v14.5a1.5 1.5 0 0 1-2.34 1.25L12 17.7l-4.66 3.05A1.5 1.5 0 0 1 5 19.5V5a2 2 0 0 1 1-2Z"
-                          stroke="currentColor"
-                          stroke-width="2"
-                          stroke-linejoin="round"
-                        />
-                      </svg>
-                    </span>
-                    <span class="item-text">{{ course.title }}</span>
-                  </button>
-                  <button
-                    v-if="isAuthorized && course.type === 'course'"
-                    type="button"
-                    class="star-btn"
-                    :class="{ 'star-btn--on': isFavorite(course.id) }"
-                    :title="isFavorite(course.id) ? 'Убрать из избранного' : 'Добавить в избранное'"
-                    @click.stop.prevent="toggleFavorite(course)"
-                  >
-                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <path
-                        d="M12 17.27 18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21 12 17.27Z"
-                        stroke="currentColor"
-                        stroke-width="1.8"
-                        stroke-linejoin="round"
-                        :fill="isFavorite(course.id) ? 'currentColor' : 'transparent'"
-                      />
-                    </svg>
-                  </button>
-                </div>
-              </li>
+            <ul v-if="standaloneOpen" class="course-list course-list--tree">
+              <CourseTreeNode
+                v-for="course in standalone"
+                :key="course.id"
+                :node="course"
+                :level="0"
+                :open-state="openNested"
+                :show-favorite="isAuthorized"
+                :is-favorite="isFavoriteNode"
+                @navigate="goToCourse"
+                @toggle-favorite="toggleFavorite"
+              />
             </ul>
           </div>
 
@@ -333,6 +184,7 @@ import { useRouter } from 'vue-router'
 import { courseApi, homeApi } from '@/api'
 import UiHeader from '@/components/ui/UiHeader.vue'
 import UiIdPill from '@/components/ui/UiIdPill.vue'
+import CourseTreeNode from '@/components/ui/CourseTreeNode.vue'
 import { useUserStore } from '@/stores/UserStore'
 import { formatDateTimeMsk } from '@/utils/datetime'
 import { arrayMove } from '@/utils/arrayMove'
@@ -384,7 +236,6 @@ const toggleSection = id => {
   openSections.value = { ...openSections.value, [key]: !openSections.value[key] }
 }
 
-const isNestedOpen = id => !!openNested.value[String(id)]
 const toggleNested = id => {
   const key = String(id)
   openNested.value = { ...openNested.value, [key]: !openNested.value[key] }
@@ -435,6 +286,7 @@ const isFavorite = (courseId) => {
   const cid = Number(courseId)
   return favorites.value.some(x => Number(x.course_id) === cid)
 }
+const isFavoriteNode = (item) => isFavorite(item?.id)
 
 const loadSidebar = async () => {
   if (!isAuthorized.value) {
@@ -602,7 +454,7 @@ onMounted(loadSidebar)
 .home__content {
   max-width: 1200px;
   margin: 0 auto;
-  padding: 24px 16px 0;
+  padding: 10px 16px 0;
 }
 
 .home__layout {
@@ -757,7 +609,13 @@ onMounted(loadSidebar)
   display: flex;
   flex-direction: column;
   gap: 10px;
-  margin-top: 8px;
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 0;
+}
+
+.course-list--tree {
+  gap: 8px;
 }
 
 .course-item {
@@ -1148,7 +1006,7 @@ onMounted(loadSidebar)
 }
 
 @media (min-width: 900px) {
-  .home__content { padding: 28px 32px 0; }
+  .home__content { padding: 10px 32px 0; }
 }
 
 @media (max-width: 960px) {

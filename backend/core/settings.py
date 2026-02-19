@@ -198,6 +198,12 @@ USE_TZ = True
 STATIC_URL = 'static/'
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
+PROBLEM_DATA_ROOT = Path(
+    os.environ.get(
+        "PROBLEM_DATA_ROOT",
+        str(BASE_DIR.parent / "problem_data" / "problem_data"),
+    )
+)
 RUNTIME_SANDBOX_ROOT = BASE_DIR / "media" / "notebook_sessions"
 RUNTIME_VM_BACKEND = os.environ.get("RUNTIME_VM_BACKEND", "auto")
 RUNTIME_VM_IMAGE = os.environ.get("RUNTIME_VM_IMAGE", "runner-vm:latest")
