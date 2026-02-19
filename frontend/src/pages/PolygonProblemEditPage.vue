@@ -83,8 +83,9 @@
                 placeholder="800"
                 min="800"
                 max="3000"
+                step="100"
               />
-              <div class="form-help">От 800 до 3000</div>
+              <div class="form-help">От 800 до 3000, шаг 100</div>
               <div v-if="errors.rating" class="form-error">{{ errors.rating }}</div>
             </div>
           </div>
