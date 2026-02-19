@@ -1,3 +1,5 @@
+import { toApiError } from './error'
+
 // const API_BASE_RAW = process.env.VUE_APP_API_BASE || '/api'
 // Normalize base and strip trailing slash to avoid double slashes.
 // const API_BASE = API_BASE_RAW.replace(/\/+$/, '')
@@ -11,17 +13,22 @@ const buildUrl = (endpoint, params = {}) => {
 export async function apiGet(endpoint, params = {}) {
   const url = buildUrl(endpoint, params)
 
-  const res = await fetch(url, {
-    method: 'GET',
-    headers: {
-      'Content-Type': 'application/json'
-    },
-    credentials: 'include',
-  })
+  let res
+  try {
+    res = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      credentials: 'include',
+    })
+  } catch (_) {
+    throw new Error('Не удалось связаться с сервером. Проверьте соединение и попробуйте снова.')
+  }
 
   if (!res.ok) {
     const errorText = await res.text()
-    throw new Error(`API Error: ${res.status} — ${errorText}`)
+    throw toApiError(res.status, errorText)
   }
 
   return await res.json()
@@ -74,24 +81,28 @@ export { getCookie, ensureCsrfToken };
 export async function apiPost(endpoint, data = {}) {
   const csrftoken = await ensureCsrfToken();
   const url = buildUrl(endpoint)
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(csrftoken ? { 'X-CSRFToken': csrftoken } : {})
-    },
-    body: JSON.stringify({
-      ...data
-    }),
-    credentials: 'include'
-  })
+  let res
+  try {
+    res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(csrftoken ? { 'X-CSRFToken': csrftoken } : {})
+      },
+      body: JSON.stringify({
+        ...data
+      }),
+      credentials: 'include'
+    })
+  } catch (_) {
+    throw new Error('Не удалось связаться с сервером. Проверьте соединение и попробуйте снова.')
+  }
 
   if (!res.ok) {
     const errorText = await res.text()
-    throw new Error(`API Error: ${res.status} — ${errorText}`)
+    throw toApiError(res.status, errorText)
   }
 
   const result = await res.json();
-  console.log(result);
   return result;
 }
