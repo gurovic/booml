@@ -499,9 +499,10 @@ const handleCreateNotebook = async () => {
 .problem__submission-head > :nth-child(3),
 .problem__submission-href > :nth-child(3) {
   overflow-wrap: break-word;
-  line-height: 1.3;
-  max-height: 45px;
-  overflow: hidden;
+  word-wrap: break-word;
+  hyphens: auto;
+  line-height: 1.2;
+  font-size: 13px;
 }
 
 
