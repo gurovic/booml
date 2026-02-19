@@ -16,7 +16,7 @@ def _course_is_teacher(course: Course, user) -> bool:
         return False
     if is_platform_admin(user):
         return True
-    if user.is_staff or user.is_superuser:
+    if user.is_staff:
         return True
     if course.owner_id == user.id:
         return True
@@ -30,7 +30,7 @@ def _course_is_member(course: Course, user) -> bool:
         return False
     if is_platform_admin(user):
         return True
-    if user.is_staff or user.is_superuser:
+    if user.is_staff:
         return True
     if course.owner_id == user.id:
         return True
@@ -47,7 +47,7 @@ def course_detail(request, course_id):
         Course.objects.select_related("section", "owner").prefetch_related("participants__user"),
         pk=course_id,
     )
-    is_admin = bool(is_platform_admin(request.user) or request.user.is_staff or request.user.is_superuser)
+    is_admin = bool(is_platform_admin(request.user) or request.user.is_staff)
     is_owner = course.owner_id == request.user.id
     is_teacher = _course_is_teacher(course, request.user)
     is_member = _course_is_member(course, request.user)
@@ -95,7 +95,7 @@ def course_contests(request, course_id):
         Course.objects.select_related("section", "owner").prefetch_related("participants__user"),
         pk=course_id,
     )
-    is_admin = bool(is_platform_admin(request.user) or request.user.is_staff or request.user.is_superuser)
+    is_admin = bool(is_platform_admin(request.user) or request.user.is_staff)
     is_member = _course_is_member(course, request.user)
     if not (is_admin or is_member or course.is_open):
         return JsonResponse({"detail": "Forbidden"}, status=403)
@@ -189,7 +189,7 @@ def update_course(request, course_id):
         return JsonResponse({"detail": "Method not allowed"}, status=405)
 
     course = get_object_or_404(Course, pk=course_id)
-    is_admin = bool(is_platform_admin(request.user) or request.user.is_staff or request.user.is_superuser)
+    is_admin = bool(is_platform_admin(request.user) or request.user.is_staff)
     if not (is_admin or course.owner_id == request.user.id):
         return JsonResponse({"detail": "Only course owner can update course"}, status=403)
 
@@ -231,7 +231,7 @@ def delete_course(request, course_id):
         return JsonResponse({"detail": "Method not allowed"}, status=405)
 
     course = get_object_or_404(Course, pk=course_id)
-    is_admin = bool(is_platform_admin(request.user) or request.user.is_staff or request.user.is_superuser)
+    is_admin = bool(is_platform_admin(request.user) or request.user.is_staff)
     if not (is_admin or course.owner_id == request.user.id):
         return JsonResponse({"detail": "Only course owner can delete course"}, status=403)
 
@@ -245,7 +245,7 @@ def update_course_participants(request, course_id):
         return JsonResponse({"detail": "Method not allowed"}, status=405)
 
     course = get_object_or_404(Course.objects.prefetch_related("participants__user"), pk=course_id)
-    is_admin = bool(is_platform_admin(request.user) or request.user.is_staff or request.user.is_superuser)
+    is_admin = bool(is_platform_admin(request.user) or request.user.is_staff)
     if not (is_admin or course.owner_id == request.user.id):
         return JsonResponse({"detail": "Only course owner can manage participants"}, status=403)
 
@@ -310,7 +310,7 @@ def remove_course_participants(request, course_id):
         return JsonResponse({"detail": "Method not allowed"}, status=405)
 
     course = get_object_or_404(Course, pk=course_id)
-    is_admin = bool(is_platform_admin(request.user) or request.user.is_staff or request.user.is_superuser)
+    is_admin = bool(is_platform_admin(request.user) or request.user.is_staff)
     if not (is_admin or course.owner_id == request.user.id):
         return JsonResponse({"detail": "Only course owner can manage participants"}, status=403)
 
