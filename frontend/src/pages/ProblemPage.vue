@@ -460,6 +460,7 @@ const handleCreateNotebook = async () => {
   grid-template-columns: 80px 140px 1fr 100px;
   align-items: center;
   gap: 15px;
+  min-height: 60px;
 }
 
 .problem__submission-head {
@@ -500,7 +501,9 @@ const handleCreateNotebook = async () => {
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   gap: 2px;
+  min-height: 40px;
 }
 
 .problem__submission-date {

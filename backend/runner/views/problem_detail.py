@@ -155,11 +155,10 @@ def problem_detail_api(request):
         for submission in raw_submissions:
             metric_value = _primary_metric(submission.metrics)
             submitted = submission.submitted_at
-            if submitted:
-                submitted = timezone.localtime(submitted, ZoneInfo("Europe/Moscow"))
+            # Send full ISO format datetime for frontend to format
             submissions.append({
                 "id": submission.id,
-                "submitted_at": submitted.strftime("%H:%M") if submitted else None,
+                "submitted_at": submitted.isoformat() if submitted else None,
                 "status": submission.status,
                 "metric": metric_value,
                 "metrics": submission.metrics,
