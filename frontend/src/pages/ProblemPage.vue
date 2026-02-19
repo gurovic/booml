@@ -454,12 +454,12 @@ const handleCreateNotebook = async () => {
 .problem__submission-head,
 .problem__submission-href {
   border-radius: 10px;
-  padding: 10px 20px;
+  padding: 10px 15px;
   width: 100%;
   display: grid;
-  grid-template-columns: 70px 130px minmax(120px, 1fr) 95px;
+  grid-template-columns: 55px 110px 1fr 75px;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   height: 65px;
   overflow: hidden;
 }
