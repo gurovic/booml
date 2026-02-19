@@ -17,11 +17,8 @@ export function updatePolygonProblem(problemId, data) {
 }
 
 export function uploadPolygonProblemFiles(problemId, formData) {
-    return apiPost(`backend/polygon/problems/${problemId}/upload`, formData, {
-        headers: {
-            'Content-Type': 'multipart/form-data'
-        }
-    })
+    // Don't set Content-Type header - browser will set it with boundary automatically
+    return apiPost(`backend/polygon/problems/${problemId}/upload`, formData)
 }
 
 export function publishPolygonProblem(problemId) {

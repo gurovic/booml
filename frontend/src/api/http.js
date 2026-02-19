@@ -98,8 +98,17 @@ export async function apiPost(endpoint, data = {}, options = {}) {
   })
 
   if (!res.ok) {
-    const errorText = await res.text()
-    throw new Error(`API Error: ${res.status} — ${errorText}`)
+    let errorData = null
+    try {
+      errorData = await res.json()
+    } catch {
+      const errorText = await res.text()
+      throw new Error(`API Error: ${res.status} — ${errorText}`)
+    }
+    // Throw error with structured data
+    const error = new Error(`API Error: ${res.status}`)
+    error.response = { status: res.status, data: errorData }
+    throw error
   }
 
   const result = await res.json();
@@ -121,8 +130,17 @@ export async function apiPut(endpoint, data = {}) {
   })
 
   if (!res.ok) {
-    const errorText = await res.text()
-    throw new Error(`API Error: ${res.status} — ${errorText}`)
+    let errorData = null
+    try {
+      errorData = await res.json()
+    } catch {
+      const errorText = await res.text()
+      throw new Error(`API Error: ${res.status} — ${errorText}`)
+    }
+    // Throw error with structured data
+    const error = new Error(`API Error: ${res.status}`)
+    error.response = { status: res.status, data: errorData }
+    throw error
   }
 
   return await res.json();
@@ -142,8 +160,17 @@ export async function apiPatch(endpoint, data = {}) {
   })
 
   if (!res.ok) {
-    const errorText = await res.text()
-    throw new Error(`API Error: ${res.status} — ${errorText}`)
+    let errorData = null
+    try {
+      errorData = await res.json()
+    } catch {
+      const errorText = await res.text()
+      throw new Error(`API Error: ${res.status} — ${errorText}`)
+    }
+    // Throw error with structured data
+    const error = new Error(`API Error: ${res.status}`)
+    error.response = { status: res.status, data: errorData }
+    throw error
   }
 
   return await res.json();

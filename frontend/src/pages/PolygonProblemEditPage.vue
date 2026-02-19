@@ -556,22 +556,11 @@ const saveProblem = async () => {
   } catch (err) {
     console.error('Failed to save problem', err)
     
-    // Try to parse error response
-    try {
-      const errorText = err.message || String(err)
-      const match = errorText.match(/\{.*\}/)
-      if (match) {
-        const errorData = JSON.parse(match[0])
-        if (errorData.errors) {
-          Object.assign(errors, errorData.errors)
-          errorMessage.value = 'Проверьте правильность заполнения полей'
-        } else {
-          errorMessage.value = 'Не удалось сохранить задачу'
-        }
-      } else {
-        errorMessage.value = 'Не удалось сохранить задачу'
-      }
-    } catch {
+    // Handle structured error response
+    if (err.response && err.response.data && err.response.data.errors) {
+      Object.assign(errors, err.response.data.errors)
+      errorMessage.value = 'Проверьте правильность заполнения полей'
+    } else {
       errorMessage.value = 'Не удалось сохранить задачу'
     }
   } finally {
@@ -634,21 +623,14 @@ const publishProblem = async () => {
   } catch (err) {
     console.error('Failed to publish problem', err)
     
-    // Try to parse error response
-    try {
-      const errorText = err.message || String(err)
-      const match = errorText.match(/\{.*\}/)
-      if (match) {
-        const errorData = JSON.parse(match[0])
-        if (errorData.errors && Array.isArray(errorData.errors)) {
-          errorMessage.value = errorData.errors.join('; ')
-        } else {
-          errorMessage.value = 'Не удалось опубликовать задачу'
-        }
+    // Handle structured error response
+    if (err.response && err.response.data && err.response.data.errors) {
+      if (Array.isArray(err.response.data.errors)) {
+        errorMessage.value = err.response.data.errors.join('; ')
       } else {
         errorMessage.value = 'Не удалось опубликовать задачу'
       }
-    } catch {
+    } else {
       errorMessage.value = 'Не удалось опубликовать задачу'
     }
   } finally {

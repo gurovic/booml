@@ -133,8 +133,7 @@ def get_polygon_problem_api(request, problem_id):
     descriptor = ProblemDescriptor.objects.filter(problem=problem).first()
     problem_data = ProblemData.objects.filter(problem=problem).first()
     
-    # Serialize descriptor
-    descriptor_data = None
+    # Serialize descriptor - return default values if not exists
     if descriptor:
         descriptor_data = {
             'id_column': descriptor.id_column,
@@ -144,6 +143,17 @@ def get_polygon_problem_api(request, problem_id):
             'check_order': descriptor.check_order,
             'metric_name': descriptor.metric_name,
             'metric_code': descriptor.metric_code,
+        }
+    else:
+        # Return default descriptor values
+        descriptor_data = {
+            'id_column': 'id',
+            'target_column': 'prediction',
+            'id_type': 'int',
+            'target_type': 'float',
+            'check_order': False,
+            'metric_name': 'rmse',
+            'metric_code': '',
         }
     
     # Serialize problem data files
