@@ -484,15 +484,20 @@ const handleCreateNotebook = async () => {
   text-align: center;
 }
 
-.problem__submission-head p:nth-child(1),
-.problem__submission-href p:nth-child(1) {
+.problem__submission-head > *,
+.problem__submission-href > * {
+  overflow: visible;
+}
+
+.problem__submission-head > :nth-child(1),
+.problem__submission-href > :nth-child(1) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.problem__submission-head p:nth-child(3),
-.problem__submission-href p:nth-child(3) {
+.problem__submission-head > :nth-child(3),
+.problem__submission-href > :nth-child(3) {
   overflow-wrap: break-word;
   line-height: 1.3;
   max-height: 45px;
