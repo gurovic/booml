@@ -632,7 +632,7 @@ const publishProblem = async () => {
     // Handle structured error response
     if (err.response && err.response.data && err.response.data.errors) {
       if (Array.isArray(err.response.data.errors)) {
-        errorMessage.value = err.response.data.errors.join('; ')
+        errorMessage.value = err.response.data.errors.join('. ')
       } else {
         errorMessage.value = 'Не удалось опубликовать задачу'
       }
