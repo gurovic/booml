@@ -10,25 +10,34 @@ const buildUrl = (endpoint, params = {}) => {
   return `/${cleanEndpoint}${queryString ? `?${queryString}` : ''}`
 }
 
+const NETWORK_ERROR_MESSAGE = 'Не удалось связаться с сервером. Проверьте соединение и попробуйте снова.'
+
+async function guardedFetch(url, init) {
+  try {
+    return await fetch(url, init)
+  } catch (_) {
+    throw new Error(NETWORK_ERROR_MESSAGE)
+  }
+}
+
+async function throwApiError(res) {
+  const errorText = await res.text()
+  throw toApiError(res.status, errorText)
+}
+
 export async function apiGet(endpoint, params = {}) {
   const url = buildUrl(endpoint, params)
 
-  let res
-  try {
-    res = await fetch(url, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      credentials: 'include',
-    })
-  } catch (_) {
-    throw new Error('Не удалось связаться с сервером. Проверьте соединение и попробуйте снова.')
-  }
+  const res = await guardedFetch(url, {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    credentials: 'include',
+  })
 
   if (!res.ok) {
-    const errorText = await res.text()
-    throw toApiError(res.status, errorText)
+    await throwApiError(res)
   }
 
   return await res.json()
@@ -78,31 +87,65 @@ async function ensureCsrfToken() {
 
 export { getCookie, ensureCsrfToken };
 
-export async function apiPost(endpoint, data = {}) {
-  const csrftoken = await ensureCsrfToken();
+async function apiWrite(method, endpoint, data = {}, options = {}) {
+  const csrftoken = await ensureCsrfToken()
   const url = buildUrl(endpoint)
-  let res
-  try {
-    res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(csrftoken ? { 'X-CSRFToken': csrftoken } : {})
-      },
-      body: JSON.stringify({
-        ...data
-      }),
-      credentials: 'include'
-    })
-  } catch (_) {
-    throw new Error('Не удалось связаться с сервером. Проверьте соединение и попробуйте снова.')
+  const isFormData = data instanceof FormData
+  const headers = {
+    ...(csrftoken ? { 'X-CSRFToken': csrftoken } : {}),
+    ...(options.headers || {}),
   }
+  const hasContentType = Object.keys(headers).some(k => k.toLowerCase() === 'content-type')
+  if (!isFormData && !hasContentType) {
+    headers['Content-Type'] = 'application/json'
+  }
+
+  const res = await guardedFetch(url, {
+    ...options,
+    method,
+    headers,
+    body: isFormData ? data : JSON.stringify(data),
+    credentials: options.credentials || 'include',
+  })
 
   if (!res.ok) {
-    const errorText = await res.text()
-    throw toApiError(res.status, errorText)
+    await throwApiError(res)
   }
 
-  const result = await res.json();
-  return result;
+  return await res.json()
+}
+
+export async function apiPost(endpoint, data = {}, options = {}) {
+  return await apiWrite('POST', endpoint, data, options)
+}
+
+export async function apiPut(endpoint, data = {}, options = {}) {
+  return await apiWrite('PUT', endpoint, data, options)
+}
+
+export async function apiPatch(endpoint, data = {}, options = {}) {
+  return await apiWrite('PATCH', endpoint, data, options)
+}
+
+export async function apiDelete(endpoint, data = {}, options = {}) {
+  const hasBody = data != null && (!(typeof data === 'object') || Object.keys(data).length > 0)
+  if (!hasBody) {
+    const csrftoken = await ensureCsrfToken()
+    const url = buildUrl(endpoint)
+    const headers = {
+      ...(csrftoken ? { 'X-CSRFToken': csrftoken } : {}),
+      ...(options.headers || {}),
+    }
+    const res = await guardedFetch(url, {
+      ...options,
+      method: 'DELETE',
+      headers,
+      credentials: options.credentials || 'include',
+    })
+    if (!res.ok) await throwApiError(res)
+    if (res.status === 204) return null
+    return await res.json()
+  }
+  // Keep one consistent error/CSRF/json path when body is provided.
+  return await apiWrite('DELETE', endpoint, data, options)
 }
