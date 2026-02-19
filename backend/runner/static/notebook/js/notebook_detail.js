@@ -1050,7 +1050,7 @@ const notebookDetail = {
         const chartButton = document.createElement('button');
         chartButton.type = 'button';
         chartButton.className = 'dataframe-chart';
-        chartButton.textContent = 'Chart';
+        chartButton.textContent = 'График';
         chartButton.addEventListener('click', () => this.buildTableChart(table, chartButton));
 
         const infoButton = document.createElement('button');
@@ -1270,10 +1270,10 @@ const notebookDetail = {
             }
         }
 
-        const originalLabel = button?.textContent || 'Chart';
+        const originalLabel = button?.textContent || 'График';
         if (button) {
             button.disabled = true;
-            button.textContent = 'Chart...';
+            button.textContent = 'График...';
         }
 
         try {
@@ -1364,7 +1364,7 @@ const notebookDetail = {
         panel.className = 'dataframe-info';
         panel.hidden = true;
         panel.innerHTML = `
-            <div><strong>Chart settings</strong></div>
+            <div><strong>Настройки графика</strong></div>
             <div>
                 <label>Тип:
                     <select data-chart-field="type">
@@ -1586,7 +1586,7 @@ const notebookDetail = {
         const sessionId = panel.dataset.sessionId || '';
         const path = panel.dataset.path || '';
         if (!sessionId || !path) {
-            this.setChartConfiguratorStatus(panel, 'Сначала нажмите Chart для подготовки данных.', true);
+            this.setChartConfiguratorStatus(panel, 'Сначала нажмите «График» для подготовки данных.', true);
             return;
         }
         const payload = this.readChartConfiguratorPayload(panel);
@@ -1646,8 +1646,8 @@ const notebookDetail = {
         const rows = Number.isFinite(schema.rows) ? schema.rows : '—';
 
         panel.innerHTML = `
-            <div><strong>Chart:</strong> ${NotebookUtils.escapeHtml(chart.type || 'unknown')}</div>
-            <div><strong>Rows:</strong> ${NotebookUtils.escapeHtml(String(rows))} · <strong>Series:</strong> ${NotebookUtils.escapeHtml(String(seriesCount))}</div>
+            <div><strong>Тип графика:</strong> ${NotebookUtils.escapeHtml(chart.type || 'неизвестно')}</div>
+            <div><strong>Строк:</strong> ${NotebookUtils.escapeHtml(String(rows))} · <strong>Серий:</strong> ${NotebookUtils.escapeHtml(String(seriesCount))}</div>
             <div><button type="button" data-chart-action="hide-result">Скрыть график</button></div>
             ${image ? `<div><img src="${image}" alt="chart"></div>` : '<div>Изображение графика не получено</div>'}
         `;
