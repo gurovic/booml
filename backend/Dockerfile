@@ -29,7 +29,9 @@ RUN apt-get update -o Acquire::Retries=3 && apt-get install -y --no-install-reco
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt /tmp/requirements.txt
-RUN uv pip install --system -r /tmp/requirements.txt && rm /tmp/requirements.txt
+RUN python -m pip install --upgrade --no-cache-dir pip \
+    && uv pip install --system -r /tmp/requirements.txt \
+    && rm /tmp/requirements.txt
 
 # Application source is bind-mounted by docker compose, so we do not copy it here.
 

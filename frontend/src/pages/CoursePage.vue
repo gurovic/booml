@@ -553,7 +553,7 @@ watch(courseId, () => {
 .contest-content {
   max-width: 960px;
   margin: 0 auto;
-  padding: 24px 16px 40px;
+  padding: 0 16px 40px;
 }
 
 .contest-panel {
@@ -1012,7 +1012,11 @@ watch(courseId, () => {
 
 @media (min-width: 900px) {
   .contest-content {
-    padding: 28px 24px 48px;
+    padding: 0 24px 48px;
+  }
+
+  .course-title {
+    font-size: 32px;
   }
 }
 </style>

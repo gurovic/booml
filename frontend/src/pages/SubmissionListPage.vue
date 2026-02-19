@@ -155,7 +155,7 @@ const formatMetric = (metrics) => {
   
   // If metrics is an object, try to find the primary metric
   if (typeof metrics === 'object' && metrics !== null) {
-    const keys = ['metric', 'score', 'accuracy', 'f1', 'auc']
+    const keys = ['metric', 'metric_score', 'score', 'accuracy', 'f1', 'auc']
     for (const key of keys) {
       if (key in metrics && typeof metrics[key] === 'number') {
         return metrics[key].toFixed(3)

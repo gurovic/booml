@@ -29,7 +29,8 @@
           v-if="item.idPill != null"
           class="menu-list__id"
           :id="item.idPill"
-          title="ID задачи"
+          :prefix="item.idPillPrefix ?? '#'"
+          :title="item.idPillTitle || 'ID задачи'"
         />
         <router-link :to="item.route" class="menu-list__link">
           {{ item.text }}
