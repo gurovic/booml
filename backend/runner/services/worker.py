@@ -57,10 +57,26 @@ def evaluate_submission(submission_id: int):
 
         # --- Обработка результата ---
         status = Submission.STATUS_ACCEPTED if result.ok else Submission.STATUS_FAILED
-        metrics_payload = dict(result.outputs or {})
+        result_outputs = dict(result.outputs or {})
         if result.ok:
-            if "metric" not in metrics_payload and "metric_score" in metrics_payload:
-                metrics_payload["metric"] = metrics_payload["metric_score"]
+            # Checker may already persist a rich metrics payload; keep it and merge worker outputs.
+            if isinstance(submission.metrics, dict):
+                metrics_payload = dict(submission.metrics or {})
+            elif isinstance(submission.metrics, (int, float)):
+                numeric_value = float(submission.metrics)
+                metrics_payload = {
+                    "metric": numeric_value,
+                    "metric_score": numeric_value,
+                }
+            elif isinstance(submission.metrics, str):
+                metrics_payload = {"metric": submission.metrics}
+            else:
+                metrics_payload = {}
+            metrics_payload.update(result_outputs)
+            metric_score = metrics_payload.get("metric_score")
+            if isinstance(metric_score, (int, float)):
+                # Keep metric aligned with latest checker output.
+                metrics_payload["metric"] = float(metric_score)
         else:
             error_value = result.errors or "Unknown evaluation error"
             if isinstance(error_value, (list, tuple)):

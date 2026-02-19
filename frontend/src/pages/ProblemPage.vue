@@ -112,7 +112,7 @@
                   <p>{{ submission.id }}</p>
                   <p>{{ submission.submitted_at }}</p>
                   <p>{{ getStatusLabel(submission.status) }}</p>
-                  <p>{{ roundMetric(submission.metric) }}</p>
+                  <p>{{ formatSubmissionMetric(submission) }}</p>
                 </router-link>
               </li>
             </ul>
@@ -299,6 +299,32 @@ const availableFiles = computed(() => {
 const roundMetric = (value) => {
   if (value == null) return '-'
   return value.toFixed(3)
+}
+
+const extractMetricValue = (submission) => {
+  if (!submission || typeof submission !== 'object') return null
+  const metrics = submission.metrics
+  if (typeof metrics === 'number') return metrics
+  if (metrics && typeof metrics === 'object') {
+    const keys = ['metric', 'metric_score', 'score', 'accuracy', 'f1', 'auc']
+    for (const key of keys) {
+      if (typeof metrics[key] === 'number') {
+        return metrics[key]
+      }
+    }
+    for (const value of Object.values(metrics)) {
+      if (typeof value === 'number') {
+        return value
+      }
+    }
+  }
+  if (typeof submission.metric === 'number') return submission.metric
+  return null
+}
+
+const formatSubmissionMetric = (submission) => {
+  const metricValue = extractMetricValue(submission)
+  return roundMetric(metricValue)
 }
 
 const getStatusLabel = (status) => {
