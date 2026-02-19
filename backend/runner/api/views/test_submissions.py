@@ -59,6 +59,34 @@ class SubmissionAPITests(TestCase):
 
     @override_settings(MEDIA_ROOT=tempfile.gettempdir())
     @patch("runner.api.views.submissions.enqueue_submission_for_evaluation")
+    def test_submit_raw_text(self, mock_enqueue):
+        raw_text = "id,pred\n1,0.1\n2,0.2\n"
+        resp = self.client.post(
+            self.url,
+            {"problem_id": self.problem.id, "raw_text": raw_text},
+        )
+
+        self.assertEqual(resp.status_code, 201)
+        submission = Submission.objects.get(problem=self.problem, user=self.user)
+        self.assertEqual(submission.source, Submission.SOURCE_TEXT)
+        self.assertEqual(submission.raw_text, raw_text)
+        self.assertTrue(bool(submission.file))
+        self.assertTrue(str(submission.file.name).endswith(".csv"))
+        self.assertTrue(mock_enqueue.called)
+
+    @override_settings(MEDIA_ROOT=tempfile.gettempdir())
+    def test_reject_file_and_raw_text_together(self):
+        f = SimpleUploadedFile("preds.csv", b"id,pred\n1,0.1\n", content_type="text/csv")
+        resp = self.client.post(
+            self.url,
+            {"problem_id": self.problem.id, "file": f, "raw_text": "id,pred\n1,0.1\n"},
+        )
+
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("non_field_errors", resp.json())
+
+    @override_settings(MEDIA_ROOT=tempfile.gettempdir())
+    @patch("runner.api.views.submissions.enqueue_submission_for_evaluation")
     @patch("runner.services.validation_service.run_pre_validation")
     def test_enqueue_only_if_valid(self, mock_validate, mock_enqueue):
         mock_preval = mock.Mock()

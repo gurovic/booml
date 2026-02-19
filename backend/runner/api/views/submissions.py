@@ -41,7 +41,7 @@ def build_descriptor_from_problem(problem) -> dict:
 class SubmissionCreateView(generics.CreateAPIView):
     """
     POST /api/submissions/
-    multipart/form-data: { problem_id, file: <csv> }
+    multipart/form-data / JSON: { problem_id, file: <csv> } или { problem_id, raw_text: "<csv>" }
     1) создаём Submission (pending)
     2) синхронно запускаем pre-validation
     3) при успехе ставим в очередь основную обработку, отвечаем 201
@@ -50,7 +50,7 @@ class SubmissionCreateView(generics.CreateAPIView):
     queryset = Submission.objects.all()
     serializer_class = SubmissionCreateSerializer
     permission_classes = [permissions.IsAuthenticated]
-    parser_classes = [parsers.MultiPartParser, parsers.FormParser]
+    parser_classes = [parsers.MultiPartParser, parsers.FormParser, parsers.JSONParser]
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
