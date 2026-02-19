@@ -481,13 +481,10 @@ const hasSelectedFiles = computed(() => {
 const clearMessages = () => {
   successMessage.value = null
   errorMessage.value = null
-  Object.keys(errors).forEach(key => {
-    if (typeof errors[key] === 'object') {
-      errors[key] = {}
-    } else {
-      errors[key] = null
-    }
-  })
+  errors.title = null
+  errors.rating = null
+  errors.statement = null
+  errors.descriptor = {}
 }
 
 const loadProblem = async () => {
@@ -558,7 +555,16 @@ const saveProblem = async () => {
     
     // Handle structured error response
     if (err.response && err.response.data && err.response.data.errors) {
-      Object.assign(errors, err.response.data.errors)
+      const responseErrors = err.response.data.errors
+      
+      // Assign errors but avoid empty objects
+      if (responseErrors.title) errors.title = responseErrors.title
+      if (responseErrors.rating) errors.rating = responseErrors.rating
+      if (responseErrors.statement) errors.statement = responseErrors.statement
+      if (responseErrors.descriptor && Object.keys(responseErrors.descriptor).length > 0) {
+        errors.descriptor = responseErrors.descriptor
+      }
+      
       errorMessage.value = 'Проверьте правильность заполнения полей'
     } else {
       errorMessage.value = 'Не удалось сохранить задачу'
