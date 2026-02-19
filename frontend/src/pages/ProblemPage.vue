@@ -83,7 +83,7 @@
             <ul class="problem__submissions-list">
               <li class="problem__submission-head">
                 <p>ID</p>
-                <p>Время</p>
+                <p>Дата и время</p>
                 <p>Статус</p>
                 <p>Метрика</p>
               </li>
@@ -97,7 +97,10 @@
                   class="problem__submission-href"
                 >
                   <p>{{ submission.id }}</p>
-                  <p>{{ submission.submitted_at }}</p>
+                  <div class="problem__submission-datetime">
+                    <p class="problem__submission-date">{{ formatSubmissionDateTime(submission.submitted_at).date }}</p>
+                    <p class="problem__submission-time">{{ formatSubmissionDateTime(submission.submitted_at).time }}</p>
+                  </div>
                   <p>{{ getStatusLabel(submission.status) }}</p>
                   <p>{{ roundMetric(submission.metric) }}</p>
                 </router-link>
@@ -187,6 +190,35 @@ const getStatusLabel = (status) => {
     'validated': '✅ Валидировано'
   }
   return statusMap[status] || status
+}
+
+const formatSubmissionDateTime = (dateTimeString) => {
+  if (!dateTimeString) return { date: '-', time: '-' }
+  
+  try {
+    // Parse the datetime string and convert to Moscow timezone (UTC+3)
+    const date = new Date(dateTimeString)
+    
+    // Format date as DD.MM.YYYY
+    const dateFormatted = date.toLocaleDateString('ru-RU', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      timeZone: 'Europe/Moscow'
+    })
+    
+    // Format time as HH:MM
+    const timeFormatted = date.toLocaleTimeString('ru-RU', {
+      hour: '2-digit',
+      minute: '2-digit',
+      timeZone: 'Europe/Moscow'
+    })
+    
+    return { date: dateFormatted, time: timeFormatted }
+  } catch (error) {
+    console.error('Error formatting date:', error)
+    return { date: '-', time: '-' }
+  }
 }
 
 const handleFileChange = (event) => {
@@ -444,6 +476,23 @@ const handleCreateNotebook = async () => {
 
 .problem__submission-href p {
   color: #9480C9;
+}
+
+.problem__submission-datetime {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.problem__submission-date {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.problem__submission-time {
+  font-size: 12px;
+  opacity: 0.8;
 }
 
 .problem__submission {
