@@ -207,6 +207,12 @@ const formatSubmissionDateTime = (dateTimeString) => {
     // Parse the datetime string and convert to Moscow timezone (UTC+3)
     const date = new Date(dateTimeString)
     
+    // Check if date is valid
+    if (isNaN(date.getTime())) {
+      console.error('Invalid date:', dateTimeString)
+      return { date: '-', time: '-' }
+    }
+    
     // Format date as DD.MM.YYYY
     const dateFormatted = date.toLocaleDateString('ru-RU', {
       day: '2-digit',
@@ -453,8 +459,9 @@ const handleCreateNotebook = async () => {
   padding: 10px 20px;
   width: 100%;
   display: grid;
-  grid-template-columns: 0.5fr 1.5fr 1fr 1fr;
+  grid-template-columns: 70px 120px minmax(0, 1fr) 90px;
   align-items: center;
+  gap: 10px;
 }
 
 .problem__submission-head {
@@ -475,6 +482,12 @@ const handleCreateNotebook = async () => {
 .problem__submission-href p {
   margin: 0;
   text-align: center;
+}
+
+.problem__submission-head p:nth-child(3),
+.problem__submission-href p:nth-child(3) {
+  word-break: break-word;
+  overflow-wrap: break-word;
 }
 
 
