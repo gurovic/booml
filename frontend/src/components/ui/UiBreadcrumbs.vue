@@ -33,6 +33,7 @@ const props = defineProps({
   course: { type: Object, default: null },
   contest: { type: Object, default: null },
   problem: { type: Object, default: null },
+  profile: { type: Object, default: null },
 })
 
 const route = useRoute()
@@ -145,6 +146,17 @@ const refresh = async () => {
 
   const list = []
   _pushHome(list)
+
+  if (name === 'profile') {
+    list.push({
+      key: 'profile',
+      label: 'Профиль',
+      title: 'Профиль пользователя',
+      to: null,
+    })
+    items.value = list
+    return
+  }
 
   if (name === 'courses') {
     list.push({

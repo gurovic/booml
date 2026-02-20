@@ -95,3 +95,47 @@ export async function apiPost(endpoint, data = {}) {
   console.log(result);
   return result;
 }
+
+export async function apiPatch(endpoint, data = {}) {
+    const csrftoken = await ensureCsrfToken()
+    const url = buildUrl(endpoint)
+
+    const res = await fetch(url, {
+        method: 'PATCH',
+        headers: {
+            'Content-Type': 'application/json',
+            ...(csrftoken ? { 'X-CSRFToken': csrftoken } : {})
+        },
+        body: JSON.stringify(data),
+        credentials: 'include'
+    })
+
+    if (!res.ok) {
+        const errorText = await res.text()
+        throw new Error(`API Error: ${res.status} — ${errorText}`)
+    }
+
+    return await res.json()
+}
+
+export async function apiDelete(endpoint, data = {}) {
+    const csrftoken = await ensureCsrfToken()
+    const url = buildUrl(endpoint)
+
+    const res = await fetch(url, {
+        method: 'DELETE',
+        headers: {
+            'Content-Type': 'application/json',
+            ...(csrftoken ? { 'X-CSRFToken': csrftoken } : {})
+        },
+        body: JSON.stringify(data),
+        credentials: 'include'
+    })
+
+    if (!res.ok) {
+        const errorText = await res.text()
+        throw new Error(`API Error: ${res.status} — ${errorText}`)
+    }
+
+    return await res.json()
+}
