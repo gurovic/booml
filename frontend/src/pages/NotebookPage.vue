@@ -55,6 +55,9 @@
                 v-for="action in toolbarActions"
                 :key="action.id"
                 :class="['toolbar-pill', 'toolbar-pill--' + action.id]"
+                role="button"
+                tabindex="0"
+                @click="createNotebookCell(action.id)"
               >
                 <span class="toolbar-label">{{ action.label }}</span>
               </div>
@@ -80,9 +83,12 @@
               :key="cell.id"
               class="cell-stack"
             >
-              <div class="cell-row">
-                <article class="cell-card">
-                  <div class="cell-body">
+              <div class="cell-row" :class="{ 'cell-row--selected': selectedCellId === cell.id }">
+                <article class="cell-card" @click="selectCell(cell.id)">
+                  <div
+                    class="cell-body"
+                    :class="{ 'cell-body--text': cell.cell_type === 'text' }"
+                  >
                     <button
                       v-if="cell.cell_type === 'code'"
                       class="cell-run-button"
@@ -103,7 +109,14 @@
                     </div>
 
                       <div v-else class="text-block">
-                        {{ cell.content || ' ' }}
+                        <textarea
+                          v-model="cell.content"
+                          class="text-editor"
+                          placeholder="Введите текст..."
+                          @focus="selectCell(cell.id)"
+                          @input="() => scheduleSave(cell)"
+                          @blur="() => flushSave(cell)"
+                        ></textarea>
                       </div>
                     </div>
                   </div>
@@ -128,16 +141,32 @@
                 </div>
                 </article>
 
-                <div class="cell-actions">
+                <div v-if="selectedCellId === cell.id" class="cell-actions">
                     <button
-                      v-for="action in cellActions"
-                      :key="action.id"
                       type="button"
                       class="cell-action-btn"
-                      disabled
-                      :title="action.title"
+                      :title="'Переместить вверх'"
+                      :disabled="isCellFirst(cell)"
+                      @click.stop="shiftCell(cell, -1)"
                     >
-                      <span class="material-symbols-rounded" aria-hidden="true">{{ action.icon }}</span>
+                      <span class="material-symbols-rounded" aria-hidden="true">arrow_upward</span>
+                    </button>
+                    <button
+                      type="button"
+                      class="cell-action-btn"
+                      :title="'Переместить вниз'"
+                      :disabled="isCellLast(cell)"
+                      @click.stop="shiftCell(cell, 1)"
+                    >
+                      <span class="material-symbols-rounded" aria-hidden="true">arrow_downward</span>
+                    </button>
+                    <button
+                      type="button"
+                      class="cell-action-btn cell-action-btn--danger"
+                      :title="'Удалить ячейку'"
+                      @click.stop="removeCell(cell)"
+                    >
+                      <span class="material-symbols-rounded" aria-hidden="true">delete</span>
                     </button>
                 </div>
               </div>
@@ -149,7 +178,7 @@
                     :key="`${cell.id}-${action.id}`"
                     type="button"
                     class="footer-pill"
-                    disabled
+                    @click="createNotebookCell(action.id)"
                   >
                     {{ action.label }}
                   </button>
@@ -164,17 +193,25 @@
 </template>
 
 <script setup>
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import UiHeader from '@/components/ui/UiHeader.vue'
 import NotebookCodeEditor from '@/components/NotebookCodeEditor.vue'
-import { getNotebook, saveCodeCell, saveTextCell } from '@/api/notebook'
+import {
+  createCell,
+  deleteCell,
+  getNotebook,
+  moveCell,
+  saveCodeCell,
+  saveTextCell,
+} from '@/api/notebook'
 
 const route = useRoute()
 
 const notebook = ref(null)
 const state = ref('idle')
 const stateMessage = ref('')
+const selectedCellId = ref(null)
 const saveTimers = new Map()
 const lastSavedContent = new Map()
 
@@ -211,18 +248,10 @@ const files = computed(() => {
 const toolbarActions = [
   { id: 'code', label: '+ Код', variant: 'primary' },
   { id: 'text', label: '+ Текст', variant: 'primary' },
-  { id: 'run', label: 'Выполнить всё', variant: 'primary' },
 ]
 const footerActions = [
   { id: 'code', label: '+ Код' },
   { id: 'text', label: '+ Текст' },
-]
-
-const cellActions = [
-  { id: 'up', title: 'Вверх', icon: 'arrow_upward' },
-  { id: 'down', title: 'Вниз', icon: 'arrow_downward' },
-  { id: 'delete', title: 'Удалить', icon: 'delete' },
-  { id: 'more', title: 'Еще', icon: 'more_horiz' },
 ]
 
 const seedSavedContent = (cells) => {
@@ -273,6 +302,96 @@ const flushSave = (cell) => {
   saveCellContent(cell)
 }
 
+const clearCellTimer = (cellId) => {
+  const timer = saveTimers.get(cellId)
+  if (timer) {
+    clearTimeout(timer)
+    saveTimers.delete(cellId)
+  }
+}
+
+const selectCell = (cellId) => {
+  selectedCellId.value = cellId
+}
+
+const createNotebookCell = async (type) => {
+  if (!hasValidId.value || !['code', 'text'].includes(type)) return
+  try {
+    const response = await createCell(notebookId.value, type)
+    const created = response?.cell
+    if (!created || !notebook.value) {
+      await loadNotebook()
+      return
+    }
+    if (!Array.isArray(notebook.value.cells)) {
+      notebook.value.cells = []
+    }
+    notebook.value.cells.push(created)
+    lastSavedContent.set(created.id, typeof created.content === 'string' ? created.content : '')
+    selectedCellId.value = created.id
+  } catch (error) {
+    console.warn('Failed to create cell', error)
+  }
+}
+
+const getCellIndex = (cellId) => {
+  return orderedCells.value.findIndex((item) => item.id === cellId)
+}
+
+const isCellFirst = (cell) => getCellIndex(cell.id) <= 0
+
+const isCellLast = (cell) => {
+  const index = getCellIndex(cell.id)
+  return index === -1 || index === orderedCells.value.length - 1
+}
+
+const applyCellOrder = (order) => {
+  if (!Array.isArray(order) || !Array.isArray(notebook.value?.cells)) return
+  const nextOrder = new Map(order.map((item) => [item.id, item.execution_order]))
+  notebook.value.cells.forEach((cell) => {
+    if (nextOrder.has(cell.id)) {
+      cell.execution_order = nextOrder.get(cell.id)
+    }
+  })
+}
+
+const shiftCell = async (cell, direction) => {
+  if (!cell?.id || !hasValidId.value) return
+  const currentIndex = getCellIndex(cell.id)
+  if (currentIndex < 0) return
+  const targetIndex = currentIndex + direction
+  if (targetIndex < 0 || targetIndex >= orderedCells.value.length) return
+
+  try {
+    const response = await moveCell(notebookId.value, cell.id, targetIndex)
+    applyCellOrder(response?.order)
+  } catch (error) {
+    console.warn('Failed to move cell', cell.id, error)
+  }
+}
+
+const removeCell = async (cell) => {
+  if (!cell?.id || !hasValidId.value || !notebook.value) return
+
+  try {
+    await deleteCell(notebookId.value, cell.id)
+    clearCellTimer(cell.id)
+    lastSavedContent.delete(cell.id)
+
+    const list = Array.isArray(notebook.value.cells) ? notebook.value.cells : []
+    notebook.value.cells = list.filter((item) => item.id !== cell.id)
+    orderedCells.value.forEach((item, index) => {
+      item.execution_order = index
+    })
+
+    if (selectedCellId.value === cell.id) {
+      selectedCellId.value = null
+    }
+  } catch (error) {
+    console.warn('Failed to delete cell', cell.id, error)
+  }
+}
+
 const isErrorOutput = (output) => {
   if (!output || typeof output !== 'string') return false
   const text = output.toLowerCase()
@@ -289,6 +408,7 @@ const loadNotebook = async () => {
 
   state.value = 'loading'
   stateMessage.value = ''
+  selectedCellId.value = null
   try {
     notebook.value = await getNotebook(notebookId.value)
     if (Array.isArray(notebook.value?.cells)) {
@@ -306,6 +426,11 @@ const loadNotebook = async () => {
 watch(notebookId, () => {
   loadNotebook()
 }, { immediate: true })
+
+onBeforeUnmount(() => {
+  saveTimers.forEach((timer) => clearTimeout(timer))
+  saveTimers.clear()
+})
 </script>
 
 <style scoped>
@@ -314,6 +439,7 @@ watch(notebookId, () => {
   background: var(--color-bg-default);
   font-family: var(--font-default);
   color: var(--color-text-primary);
+  --cell-delete-bg-color: #d9534f;
 }
 
 .notebook-main {
@@ -472,12 +598,9 @@ watch(notebookId, () => {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  cursor: not-allowed;
-  opacity: 0.9;
-}
-.toolbar-pill--run::before {
-  content: "\25B6";
-  font-size: 12px;
+  cursor: pointer;
+  opacity: 1;
+  user-select: none;
 }
 
 .toolbar-session-dot {
@@ -507,6 +630,10 @@ watch(notebookId, () => {
   transition: padding-right 0.15s ease;
 }
 
+.cell-row--selected {
+  padding-right: 52px;
+}
+
 .cells-empty {
   padding: 14px;
   background: var(--color-bg-card);
@@ -521,6 +648,11 @@ watch(notebookId, () => {
   padding: 10px;
   border: 1px solid var(--color-border-light);
   box-shadow: 0 0 10px rgba(0, 0, 0, 0.25);
+  transition: border-color 0.15s ease;
+}
+
+.cell-row--selected .cell-card {
+  border-color: var(--color-border-primary, #6b8df7);
 }
 
 .cell-body {
@@ -528,6 +660,10 @@ watch(notebookId, () => {
   grid-template-columns: auto 1fr;
   gap: 10px;
   align-items: start;
+}
+
+.cell-body--text {
+  grid-template-columns: 1fr;
 }
 
 .cell-run-button {
@@ -564,10 +700,26 @@ watch(notebookId, () => {
 .text-block {
   background: var(--color-bg-primary);
   border-radius: 10px;
+  padding: 0;
+}
+
+.text-editor {
+  width: 100%;
+  height: 40px;
+  min-height: 30px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
   padding: 10px;
+  resize: vertical;
+  font: inherit;
   font-size: 14px;
   color: var(--color-text-primary);
-  white-space: pre-wrap;
+  line-height: 1.45;
+}
+
+.text-editor:focus {
+  outline: 1px solid var(--color-border-primary, #6b8df7);
 }
 
 .cell-actions {
@@ -583,18 +735,6 @@ watch(notebookId, () => {
   top: 0;
   right: 0;
   z-index: 3;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.15s ease;
-}
-
-.cell-row:hover .cell-actions {
-  opacity: 1;
-  pointer-events: auto;
-}
-
-.cell-row:hover {
-  padding-right: 50px;
 }
 
 .cell-insert-zone {
@@ -640,10 +780,24 @@ watch(notebookId, () => {
   background: var(--color-button-primary);
   color: #fff;
   font-size: 18px;
-  cursor: not-allowed;
+  cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.cell-action-btn .material-symbols-rounded {
+  color: #fff;
+  font-variation-settings: 'FILL' 1, 'wght' 500, 'GRAD' 0, 'opsz' 20;
+}
+
+.cell-action-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.cell-action-btn--danger {
+  background: var(--cell-delete-bg-color);
 }
 
 .cell-output {
@@ -717,7 +871,7 @@ watch(notebookId, () => {
   background: var(--color-button-primary);
   color: #fff;
   font-size: 16px;
-  cursor: not-allowed;
+  cursor: pointer;
   box-shadow: none;
 }
 
@@ -736,8 +890,9 @@ watch(notebookId, () => {
 }
 
 @media (max-width: 720px) {
-  .cell-row {
-    grid-template-columns: 1fr;
+  .cell-row,
+  .cell-row--selected {
+    padding-right: 0;
   }
 
   .cell-body {
@@ -747,6 +902,8 @@ watch(notebookId, () => {
   .cell-actions {
     flex-direction: row;
     justify-content: flex-end;
+    position: static;
+    margin-top: 8px;
   }
 
   .cell-content {
@@ -754,13 +911,5 @@ watch(notebookId, () => {
   }
 }
 </style>
-
-
-
-
-
-
-
-
 
 

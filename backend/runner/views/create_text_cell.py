@@ -1,4 +1,5 @@
 from django.core.exceptions import PermissionDenied
+from django.http import JsonResponse
 from django.shortcuts import render, get_object_or_404
 from django.views.decorators.http import require_http_methods
 from ..models import Notebook, Cell
@@ -22,5 +23,17 @@ def create_text_cell(request, notebook_id):
         content='',
         execution_order=new_order,
     )
-    
+
+    if request.content_type and 'application/json' in request.content_type:
+        return JsonResponse({
+            'status': 'success',
+            'cell': {
+                'id': cell.id,
+                'cell_type': cell.cell_type,
+                'content': cell.content,
+                'output': cell.output,
+                'execution_order': cell.execution_order,
+            },
+        })
+
     return render(request, 'notebook/cell.html', {'cell': cell, 'notebook': notebook})
