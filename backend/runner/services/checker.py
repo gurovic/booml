@@ -1,13 +1,24 @@
 # runner/services/checker.py
 import logging
+import os
+import zipfile
+from types import SimpleNamespace
 from typing import Any, Dict, Optional
 
 import pandas as pd
+from django.conf import settings
 
 from ..models.submission import Submission
 from ..models.problem_desriptor import ProblemDescriptor
 from .custom_metric import MetricCodeExecutor, MetricExecutionError
 from .metrics import calculate_metric
+from .problem_scoring import (
+    default_curve_p,
+    extract_raw_metric,
+    infer_curve_p,
+    resolve_score_spec,
+    score_from_raw,
+)
 from .report_service import ReportGenerator
 from .websocket_notifications import broadcast_metric_update
 
@@ -42,11 +53,8 @@ class SubmissionChecker:
             return CheckResult(False, errors="Problem not found for this submission")
 
         problem_data = getattr(problem, "data", None)
-        descriptor = getattr(problem, "descriptor", None)
         if not problem_data:
             return CheckResult(False, errors="ProblemData not found for this task")
-        if not descriptor:
-            return CheckResult(False, errors="ProblemDescriptor not found for this task")
 
         submission_df = self._load_submission_file(submission.file)
         if submission_df is None:
@@ -56,6 +64,22 @@ class SubmissionChecker:
         ground_truth_df = self._load_ground_truth(ground_truth_file)
         if ground_truth_df is None:
             return CheckResult(False, errors="Failed to load ground truth from problem data")
+
+        descriptor = getattr(problem, "descriptor", None)
+        if not descriptor:
+            descriptor = self._build_fallback_descriptor(submission_df, ground_truth_df)
+            if not descriptor:
+                return CheckResult(
+                    False,
+                    errors="ProblemDescriptor not found and cannot infer schema from data files",
+                )
+            logger.warning(
+                "ProblemDescriptor missing for problem %s; using inferred schema (id=%s, target=%s, metric=%s)",
+                getattr(problem, "id", "?"),
+                getattr(descriptor, "id_column", None),
+                getattr(descriptor, "target_column", None),
+                getattr(descriptor, "metric_name", None),
+            )
 
         metric_name, metric_code = self._metric_config(submission, descriptor)
         if not metric_name and not metric_code:
@@ -79,17 +103,39 @@ class SubmissionChecker:
         if not metric_result["success"]:
             return CheckResult(False, errors=metric_result.get("error", "Metric calculation failed"))
 
-        metrics_payload = metric_result.get("metrics")
-        if metrics_payload is not None:
-            submission.metrics = metrics_payload
-            submission.save(update_fields=["metrics"])
-
+        raw_metric = float(metric_result["score"])
         metric_for_log = metric_result.get("metric_name", metric_name)
+        score_details = self._calculate_score_100(
+            submission=submission,
+            problem_data=problem_data,
+            descriptor=descriptor,
+            metric_name=metric_for_log,
+            metric_code=metric_code,
+            raw_metric=raw_metric,
+            ground_truth_df=ground_truth_df,
+        )
+        final_score = float(score_details["score_100"])
+
+        metrics_payload = self._merge_score_payload(
+            metric_result.get("metrics"),
+            metric_name=metric_for_log,
+            raw_metric=raw_metric,
+            score_100=final_score,
+            score_mode=score_details["mode"],
+            curve_p=score_details.get("curve_p"),
+            reference_metric=score_details.get("reference_metric"),
+        )
+        submission.metrics = metrics_payload
+        submission.save(update_fields=["metrics"])
+
         report_data = {
-            "metric": metric_result["score"],
+            "metric": final_score,
             "file_name": getattr(getattr(submission, "file", None), "name", "submission.csv"),
             "status": "success",
-            "log": f"Metric {metric_for_log}: {metric_result['score']:.4f}",
+            "log": (
+                f"Raw metric {metric_for_log}: {raw_metric:.6f}; "
+                f"score: {final_score:.3f} (mode={score_details['mode']})"
+            ),
             "errors": "",
             "test_data": {
                 "submission_id": getattr(submission, "id", None),
@@ -99,29 +145,100 @@ class SubmissionChecker:
         }
 
         report = self.report_generator.create_report_from_testing_system(report_data)
-        if hasattr(report, "metric"):
-            metric_to_broadcast = report.metric
-        else:
-            logger.error("Report object missing 'metric' attribute for submission %s. Using metric_result['score'] as fallback.", getattr(submission, "id", "?"))
-            metric_to_broadcast = metric_result["score"]
+        metric_to_broadcast = final_score
 
         broadcast_metric_update(getattr(submission, "id", None), metric_for_log, metric_to_broadcast)
         
         logger.info(
-            "Check completed for submission %s. Metric %s: %.4f",
+            "Check completed for submission %s. Metric %s raw=%.6f score=%.3f",
             getattr(submission, "id", "?"),
             metric_for_log,
-            metric_result["score"],
+            raw_metric,
+            final_score,
         )
 
         return CheckResult(
             ok=True,
             outputs={
                 "report_id": getattr(report, "id", None),
-                "metric_score": metric_result["score"],
+                "metric_score": final_score,
+                "score_100": final_score,
                 "metric_name": metric_for_log,
+                "raw_metric": raw_metric,
             },
         )
+
+    def _build_fallback_descriptor(self, submission_df: pd.DataFrame, ground_truth_df: pd.DataFrame):
+        submission_cols = list(submission_df.columns)
+        ground_truth_cols = list(ground_truth_df.columns)
+        common_cols = [col for col in ground_truth_cols if col in submission_cols]
+        if not common_cols:
+            return None
+
+        id_column = "id" if "id" in common_cols else common_cols[0]
+        target_column, pred_column = self._infer_target_columns(submission_df, ground_truth_df, id_column)
+
+        if target_column is None:
+            metric_name = "csv_match"
+            target_type = "str"
+        else:
+            target_series = ground_truth_df[target_column]
+            pred_series = submission_df[pred_column] if pred_column in submission_df.columns else None
+            unique_target = set(pd.Series(target_series).dropna().unique().tolist())
+            is_binary_target = bool(unique_target) and unique_target.issubset({0, 1, 0.0, 1.0, "0", "1"})
+            if is_binary_target and pred_series is not None and pd.api.types.is_numeric_dtype(pred_series):
+                target_type = "float"
+                metric_name = "auc"
+            elif pd.api.types.is_integer_dtype(target_series) or pd.api.types.is_bool_dtype(target_series):
+                target_type = "int"
+                metric_name = "accuracy"
+            elif pd.api.types.is_numeric_dtype(target_series):
+                target_type = "float"
+                metric_name = "rmse"
+            else:
+                target_type = "str"
+                metric_name = "accuracy"
+
+        return SimpleNamespace(
+            id_column=id_column,
+            target_column=target_column,
+            pred_column=pred_column,
+            target_type=target_type,
+            check_order=False,
+            metric_name=metric_name,
+            metric_code="",
+        )
+
+    def _infer_target_columns(self, submission_df: pd.DataFrame, ground_truth_df: pd.DataFrame, id_column: str):
+        submission_non_id = [col for col in submission_df.columns if col != id_column]
+        ground_truth_non_id = [col for col in ground_truth_df.columns if col != id_column]
+
+        pred_column = submission_non_id[0] if len(submission_non_id) == 1 else None
+        if pred_column is None:
+            for col in submission_non_id:
+                if pd.api.types.is_numeric_dtype(submission_df[col]):
+                    pred_column = col
+                    break
+            if pred_column is None and submission_non_id:
+                pred_column = submission_non_id[0]
+
+        if pred_column and pred_column in ground_truth_non_id and len(ground_truth_non_id) == 1:
+            return pred_column, pred_column
+
+        target_keywords = {"label", "target", "answer", "y", "class", "score", "probability", "p_fix"}
+        target_column = None
+        for col in ground_truth_non_id:
+            if col.lower() in target_keywords:
+                target_column = col
+                break
+        if target_column is None:
+            numeric_cols = [col for col in ground_truth_non_id if pd.api.types.is_numeric_dtype(ground_truth_df[col])]
+            if numeric_cols:
+                target_column = numeric_cols[0]
+            elif ground_truth_non_id:
+                target_column = ground_truth_non_id[-1]
+
+        return target_column, pred_column
 
     def _load_submission_file(self, file_field) -> Optional[pd.DataFrame]:
         """Загружаем файл submission"""
@@ -133,27 +250,81 @@ class SubmissionChecker:
             return None
 
     def _select_ground_truth_file(self, problem_data):
-        """Возвращает файл с правильными ответами (answer_file -> test_file fallback)."""
-        for attr in ("answer_file", "test_file"):
+        """Return best available file with expected targets."""
+        for attr in ("answer_file", "test_file", "train_file", "sample_submission_file"):
             file_field = getattr(problem_data, attr, None)
             file_name = getattr(file_field, "name", "")
             if file_field and file_name:
                 return file_field
-        logger.warning("No answer/test files available for problem %s", getattr(problem_data, "problem_id", "?"))
+        logger.warning("No ground-truth candidate files available for problem %s", getattr(problem_data, "problem_id", "?"))
         return None
 
     def _load_ground_truth(self, file_field) -> Optional[pd.DataFrame]:
-        """Загружаем ground truth из ProblemData"""
+        """Load ground truth from ProblemData file fields (csv/zip)."""
         if not file_field:
             return None
-        path = getattr(file_field, "path", None)
+        path = self._resolve_file_path(file_field)
         if not path:
-            logger.warning("Ground truth file has no path (maybe not saved yet)")
+            logger.warning("Ground truth file has no usable path")
             return None
         try:
+            if str(path).lower().endswith(".zip"):
+                return self._load_ground_truth_from_zip(path)
             return pd.read_csv(path)
         except Exception:  # pragma: no cover - log for observability
             logger.info("Failed to load ground truth file %s", path)
+            return None
+
+    def _resolve_file_path(self, file_field) -> Optional[str]:
+        path = getattr(file_field, "path", None)
+        if isinstance(path, (str, bytes, os.PathLike)) and os.path.exists(path):
+            return path
+
+        name = getattr(file_field, "name", None)
+        if name:
+            media_root = None
+            try:
+                media_root = getattr(settings, "MEDIA_ROOT", None)
+            except Exception:  # pragma: no cover - settings may be unavailable in pure unit tests
+                media_root = None
+            if media_root:
+                candidate = os.path.join(media_root, str(name).replace("/", os.sep))
+                if os.path.exists(candidate):
+                    return candidate
+
+        return path
+
+    def _load_ground_truth_from_zip(self, zip_path: str) -> Optional[pd.DataFrame]:
+        try:
+            with zipfile.ZipFile(zip_path, "r") as archive:
+                csv_names = [name for name in archive.namelist() if name.lower().endswith(".csv")]
+                if not csv_names:
+                    logger.info("Zip ground truth file contains no CSV: %s", zip_path)
+                    return None
+
+                def _priority(name: str) -> tuple[int, str]:
+                    lowered = name.lower()
+                    for idx, token in enumerate(("answer", "label", "target", "truth", "test", "train")):
+                        if token in lowered:
+                            return (idx, lowered)
+                    if "sample" in lowered:
+                        return (200, lowered)
+                    return (99, lowered)
+
+                for csv_name in sorted(csv_names, key=_priority):
+                    with archive.open(csv_name, "r") as handle:
+                        df = pd.read_csv(handle)
+                    if len(df.columns) >= 2:
+                        logger.info("Loaded ground truth CSV '%s' from archive %s", csv_name, zip_path)
+                        return df
+
+                logger.info(
+                    "Zip ground truth archive %s contains CSV files, but none has at least 2 columns",
+                    zip_path,
+                )
+                return None
+        except Exception:  # pragma: no cover - defensive
+            logger.info("Failed to load ground truth from zip archive %s", zip_path)
             return None
 
     def _get_metric_name(self, submission) -> Optional[str]:
@@ -224,13 +395,36 @@ class SubmissionChecker:
             }
 
         target_column = descriptor.target_column
-        true_target_column = f"{target_column}_true"
-        pred_target_column = f"{target_column}_pred"
+        pred_source_column = getattr(descriptor, "pred_column", None) or target_column
+        true_source_column = target_column
+        if true_source_column is None:
+            return {
+                "success": False,
+                "error": "Cannot infer target column for this task",
+                "score": 0.0,
+            }
+
+        submission_columns = set(submission_df.columns)
+        ground_truth_columns = set(ground_truth_df.columns)
+
+        true_target_column = (
+            f"{true_source_column}_true"
+            if true_source_column in submission_columns and true_source_column != descriptor.id_column
+            else true_source_column
+        )
+        pred_target_column = (
+            f"{pred_source_column}_pred"
+            if pred_source_column in ground_truth_columns and pred_source_column != descriptor.id_column
+            else pred_source_column
+        )
 
         if true_target_column not in merged_df.columns or pred_target_column not in merged_df.columns:
             return {
                 "success": False,
-                "error": f'Target column "{target_column}" not found in ground truth data',
+                "error": (
+                    f'Target columns not found after merge '
+                    f'(expected true="{true_target_column}", pred="{pred_target_column}")'
+                ),
                 "score": 0.0,
             }
 
@@ -390,11 +584,258 @@ class SubmissionChecker:
             return float(metrics)
         raise ValueError("Cannot extract numeric metric from metric result")
 
+    def _merge_score_payload(
+        self,
+        metric_result_payload: Any,
+        *,
+        metric_name: str,
+        raw_metric: float,
+        score_100: float,
+        score_mode: str,
+        curve_p: Optional[float],
+        reference_metric: Optional[float],
+    ) -> Dict[str, Any]:
+        if isinstance(metric_result_payload, dict):
+            # Start with a shallow copy to avoid mutating the original input.
+            payload = dict(metric_result_payload)
+        else:
+            payload = {}
+
+        # Canonical representation of the raw metric.
+        raw_value = float(raw_metric)
+        payload.setdefault(metric_name, raw_value)
+        payload.setdefault("raw_metric", raw_value)
+        payload["raw_metric_name"] = metric_name
+
+        # Canonical normalized score key.
+        score_value = float(score_100)
+        payload["score_100"] = score_value
+
+        # Legacy aliases for backward compatibility. These mirror score_100
+        # and may be removed in the future. We only populate them if they are
+        # not already present in the incoming payload to avoid overwriting.
+        payload.setdefault("metric_score", score_value)
+        payload.setdefault("score", score_value)
+        payload.setdefault("metric", score_value)
+        payload["score_mode"] = score_mode
+        if curve_p is not None:
+            payload["curve_p"] = float(curve_p)
+        if reference_metric is not None:
+            payload["reference_metric"] = float(reference_metric)
+        return payload
+
+    def _calculate_score_100(
+        self,
+        *,
+        submission: Submission,
+        problem_data,
+        descriptor,
+        metric_name: str,
+        metric_code: str,
+        raw_metric: float,
+        ground_truth_df: pd.DataFrame,
+    ) -> Dict[str, Any]:
+        manual_direction = getattr(descriptor, "score_direction", "") or ""
+        manual_ideal = getattr(descriptor, "score_ideal_metric", None)
+        score_spec = resolve_score_spec(
+            metric_name,
+            descriptor_direction=manual_direction,
+            descriptor_ideal=manual_ideal,
+        )
+
+        default_p = default_curve_p(score_spec.direction)
+        stored_curve_p = getattr(descriptor, "score_curve_p", None)
+        curve_p = float(stored_curve_p) if isinstance(stored_curve_p, (int, float)) else default_p
+        descriptor_pk = getattr(descriptor, "pk", None)
+        has_persistent_descriptor = isinstance(descriptor_pk, int) and descriptor_pk > 0
+
+        reference_metric = self._resolve_reference_metric(
+            problem_data=problem_data,
+            descriptor=descriptor,
+            metric_name=metric_name,
+            metric_code=metric_code,
+            ground_truth_df=ground_truth_df,
+        )
+
+        mode = "linear"
+        if reference_metric is not None and abs(float(reference_metric) - float(score_spec.ideal)) > 1e-12:
+            if has_persistent_descriptor:
+                if not isinstance(stored_curve_p, (int, float)):
+                    inferred = self._infer_problem_curve_p(
+                        problem_id=getattr(submission, "problem_id", None),
+                        metric_name=metric_name,
+                        ideal=score_spec.ideal,
+                        reference_metric=float(reference_metric),
+                        direction=score_spec.direction,
+                        fallback_p=default_p,
+                        current_raw=raw_metric,
+                    )
+                    curve_p = float(inferred)
+                    descriptor.score_curve_p = curve_p
+                    descriptor.save(update_fields=["score_curve_p"])
+            score_100, mode = score_from_raw(
+                raw_metric,
+                metric_name=metric_name,
+                direction=score_spec.direction,
+                ideal=score_spec.ideal,
+                reference=float(reference_metric),
+                curve_p=curve_p,
+            )
+            return {
+                "score_100": float(score_100),
+                "mode": mode,
+                "curve_p": float(curve_p),
+                "reference_metric": float(reference_metric),
+            }
+
+        score_100, mode = score_from_raw(
+            raw_metric,
+            metric_name=metric_name,
+            direction=score_spec.direction,
+            ideal=score_spec.ideal,
+            reference=None,
+            curve_p=None,
+        )
+        return {
+            "score_100": float(score_100),
+            "mode": mode,
+            "curve_p": None,
+            "reference_metric": reference_metric,
+        }
+
+    def _resolve_reference_metric(
+        self,
+        *,
+        problem_data,
+        descriptor,
+        metric_name: str,
+        metric_code: str,
+        ground_truth_df: pd.DataFrame,
+    ) -> Optional[float]:
+        sample_file = getattr(problem_data, "sample_submission_file", None)
+        sample_name = getattr(sample_file, "name", "")
+        if not sample_file or not isinstance(sample_name, str) or not sample_name.strip():
+            return None
+
+        cached_reference = getattr(descriptor, "score_reference_metric", None)
+        if isinstance(cached_reference, (int, float)):
+            return float(cached_reference)
+
+        calculated_reference = self.compute_sample_reference_metric(
+            problem_data=problem_data,
+            descriptor=descriptor,
+            metric_name=metric_name,
+            metric_code=metric_code,
+            ground_truth_df=ground_truth_df,
+        )
+        if calculated_reference is None:
+            return None
+
+        descriptor_pk = getattr(descriptor, "pk", None)
+        has_persistent_descriptor = isinstance(descriptor_pk, int) and descriptor_pk > 0
+        if has_persistent_descriptor:
+            descriptor.score_reference_metric = float(calculated_reference)
+            descriptor.save(update_fields=["score_reference_metric"])
+        return float(calculated_reference)
+
+    def compute_sample_reference_metric(
+        self,
+        *,
+        problem_data,
+        descriptor,
+        metric_name: str,
+        metric_code: str,
+        ground_truth_df: pd.DataFrame | None = None,
+    ) -> Optional[float]:
+        sample_file = getattr(problem_data, "sample_submission_file", None)
+        sample_name = getattr(sample_file, "name", "")
+        if not sample_file or not isinstance(sample_name, str) or not sample_name.strip():
+            return None
+
+        gt_df = ground_truth_df
+        if gt_df is None:
+            ground_truth_file = self._select_ground_truth_file(problem_data)
+            gt_df = self._load_ground_truth(ground_truth_file)
+        if gt_df is None:
+            return None
+
+        sample_df = self._load_submission_file(sample_file)
+        if sample_df is None:
+            logger.warning(
+                "Failed to load sample submission for problem %s",
+                getattr(problem_data, "problem_id", "?"),
+            )
+            return None
+
+        if self._use_csv_match(metric_name, metric_code):
+            result = self._calculate_csv_match(sample_df, gt_df, descriptor, metric_name)
+        else:
+            result = self._calculate_metric(sample_df, gt_df, descriptor, metric_name, metric_code)
+
+        if not result.get("success"):
+            logger.warning(
+                "Failed to compute sample reference metric for problem %s: %s",
+                getattr(problem_data, "problem_id", "?"),
+                result.get("error"),
+            )
+            return None
+        return float(result["score"])
+
+    def _infer_problem_curve_p(
+        self,
+        *,
+        problem_id: Optional[int],
+        metric_name: str,
+        ideal: float,
+        reference_metric: float,
+        direction: str,
+        fallback_p: float,
+        current_raw: Optional[float] = None,
+    ) -> float:
+        if not isinstance(problem_id, int) or problem_id <= 0:
+            return fallback_p
+
+        metrics_rows = Submission.objects.filter(
+            problem_id=problem_id,
+            status__in=(Submission.STATUS_ACCEPTED, Submission.STATUS_VALIDATED),
+        ).values_list("metrics", flat=True)
+
+        raw_values = []
+        for metrics in metrics_rows.iterator(chunk_size=1000):
+            raw = extract_raw_metric(metrics, metric_name=metric_name)
+            if raw is not None:
+                raw_values.append(float(raw))
+        if current_raw is not None:
+            raw_values.append(float(current_raw))
+        if not raw_values:
+            return fallback_p
+
+        return infer_curve_p(
+            raw_values,
+            ideal=float(ideal),
+            reference=float(reference_metric),
+            direction=direction,
+            default_p=float(fallback_p),
+        )
+
     def _metric_config(self, submission, descriptor) -> tuple[Optional[str], str]:
-        descriptor_metric_name = (getattr(descriptor, "metric_name", "") or "").strip()
+        descriptor_metric_name_raw = getattr(descriptor, "metric_name", "")
+        descriptor_metric_name = (
+            descriptor_metric_name_raw.strip()
+            if isinstance(descriptor_metric_name_raw, str)
+            else ""
+        )
+        descriptor_metric_legacy_raw = getattr(descriptor, "metric", "")
+        descriptor_metric_legacy = (
+            descriptor_metric_legacy_raw.strip()
+            if isinstance(descriptor_metric_legacy_raw, str)
+            else ""
+        )
         descriptor_metric_code = getattr(descriptor, "metric_code", "") or ""
         if descriptor_metric_code.strip():
-            return descriptor_metric_name or "custom_metric", descriptor_metric_code
+            return descriptor_metric_name or descriptor_metric_legacy or "custom_metric", descriptor_metric_code
+        if descriptor_metric_legacy and (not descriptor_metric_name or descriptor_metric_name == "rmse"):
+            return descriptor_metric_legacy, ""
         if descriptor_metric_name:
             return descriptor_metric_name, ""
         legacy_name = self._get_metric_name(submission)
@@ -405,3 +846,4 @@ def check_submission(submission: Submission) -> CheckResult:
     """Основная функция для проверки submission (используется worker'ом)"""
     checker = SubmissionChecker()
     return checker.check_submission(submission)
+

@@ -29,9 +29,9 @@
               </span>
             </div>
             
-            <div class="submission__info-item" v-if="submission.metrics">
-              <span class="submission__info-label">Метрика:</span>
-              <span class="submission__info-value">{{ formatMetrics(submission.metrics) }}</span>
+            <div class="submission__info-item" v-if="submission.metrics || submission.score != null">
+              <span class="submission__info-label">Баллы:</span>
+              <span class="submission__info-value">{{ formatSubmissionScore(submission) }}</span>
             </div>
             
             <div class="submission__info-item" v-if="submission.code_size">
@@ -180,25 +180,33 @@ const getPrevalidationStatus = (status) => {
 const formatMetrics = (metrics) => {
   if (!metrics) return '-'
   if (typeof metrics === 'number') {
-    return metrics.toFixed(4)
+    return metrics.toFixed(2)
   }
   if (typeof metrics === 'object') {
     // Find primary metric
-    const primaryKeys = ['metric', 'score', 'accuracy', 'f1', 'auc']
+    const primaryKeys = ['metric', 'metric_score', 'score', 'accuracy', 'f1', 'auc']
     for (const key of primaryKeys) {
       if (key in metrics && typeof metrics[key] === 'number') {
-        return metrics[key].toFixed(4)
+        return metrics[key].toFixed(2)
       }
     }
     // Return first numeric value
     for (const [, value] of Object.entries(metrics)) {
       if (typeof value === 'number') {
-        return value.toFixed(4)
+        return value.toFixed(2)
       }
     }
     return JSON.stringify(metrics)
   }
   return String(metrics)
+}
+
+const formatSubmissionScore = (submission) => {
+  if (!submission || typeof submission !== 'object') return '-'
+  if (typeof submission.score === 'number') {
+    return submission.score.toFixed(2)
+  }
+  return formatMetrics(submission.metrics)
 }
 
 const formatFileSize = (bytes) => {
@@ -418,3 +426,5 @@ const formatFileSize = (bytes) => {
   color: #dc3545;
 }
 </style>
+
+

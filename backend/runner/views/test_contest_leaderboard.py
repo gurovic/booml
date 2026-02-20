@@ -121,7 +121,7 @@ class ContestLeaderboardViewTests(TestCase):
         leaderboards = {lb["problem_id"]: lb for lb in payload["leaderboards"]}
 
         rmse_board = leaderboards[self.problem_rmse.id]
-        self.assertTrue(rmse_board["lower_is_better"])
+        self.assertFalse(rmse_board["lower_is_better"])
         rmse_entries = rmse_board["entries"]
         rmse_user_ids = {entry["user_id"] for entry in rmse_entries}
         self.assertEqual(
@@ -187,8 +187,8 @@ class ContestLeaderboardViewTests(TestCase):
         self.assertEqual(entries[self.bob.id]["rank"], 1)
         self.assertEqual(entries[self.alice.id]["rank"], 2)
         self.assertIsNone(entries[self.charlie.id]["rank"])
-        self.assertAlmostEqual(entries[self.bob.id]["total_score"], 0.7, places=6)
-        self.assertAlmostEqual(entries[self.alice.id]["total_score"], 0.5, places=6)
+        self.assertAlmostEqual(entries[self.bob.id]["total_score"], 170.0, places=6)
+        self.assertAlmostEqual(entries[self.alice.id]["total_score"], 150.0, places=6)
 
     def test_overall_leaderboard_icpc_penalty(self):
         start_time = timezone.now() - timedelta(hours=2)

@@ -71,6 +71,12 @@ class CourseSelfEnrollTests(TestCase):
 class CourseCreateTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(username="creator", password="pass")
+        self.admin = User.objects.create_user(
+            username="admin",
+            password="pass",
+            is_staff=True,
+            is_superuser=True,
+        )
         self.client.login(username="creator", password="pass")
         self.url = reverse("course-create")
         self.root_section = Section.objects.get(title="Авторские", parent__isnull=True)
@@ -105,11 +111,42 @@ class CourseCreateTests(TestCase):
         self.assertEqual(resp.status_code, 400)
         self.assertIn("section_id", resp.json())
 
+    def test_admin_can_create_course_in_foreign_nested_section(self):
+        foreign_owner = User.objects.create_user(username="foreign_owner", password="pass")
+        foreign_section = create_section(
+            SectionCreateInput(
+                title="Foreign Section",
+                owner=foreign_owner,
+                parent=self.root_section,
+            )
+        )
+        self.client.login(username="admin", password="pass")
+        resp = self.client.post(
+            self.url,
+            {"title": "Admin Course", "section_id": foreign_section.id},
+        )
+        self.assertEqual(resp.status_code, 201)
+        self.assertEqual(resp.json()["title"], "Admin Course")
+
 
 class SectionCreateTests(TestCase):
     def setUp(self):
         self.root_section = Section.objects.get(title="Авторские", parent__isnull=True)
         self.url = reverse("section-create")
+        self.owner = User.objects.create_user(username="owner", password="pass")
+        self.admin = User.objects.create_user(
+            username="admin",
+            password="pass",
+            is_staff=True,
+            is_superuser=True,
+        )
+        self.nested = create_section(
+            SectionCreateInput(
+                title="Owned Section",
+                owner=self.owner,
+                parent=self.root_section,
+            )
+        )
 
     def test_teacher_can_create_section_in_root(self):
         User.objects.create_user(username="teacher_root", password="pass", is_staff=True)
@@ -125,12 +162,27 @@ class SectionCreateTests(TestCase):
         self.assertEqual(resp.status_code, 400)
         self.assertIn("parent_id", resp.json())
 
+    def test_admin_can_create_nested_section_anywhere(self):
+        self.client.login(username="admin", password="pass")
+        resp = self.client.post(
+            self.url,
+            {"title": "Admin Nested", "parent_id": self.nested.id},
+        )
+        self.assertEqual(resp.status_code, 201)
+        self.assertEqual(resp.json()["title"], "Admin Nested")
+
 
 class SectionDeleteTests(TestCase):
     def setUp(self):
         self.owner = User.objects.create_user(username="sec_owner", password="pass", is_staff=True)
         self.other_teacher = User.objects.create_user(username="sec_other", password="pass", is_staff=True)
         self.student = User.objects.create_user(username="sec_student", password="pass", is_staff=False)
+        self.admin = User.objects.create_user(
+            username="admin",
+            password="pass",
+            is_staff=True,
+            is_superuser=True,
+        )
         self.root_section = Section.objects.get(title="Авторские", parent__isnull=True)
         self.section = create_section(
             SectionCreateInput(
@@ -188,11 +240,24 @@ class SectionDeleteTests(TestCase):
         resp = self.client.post(url)
         self.assertEqual(resp.status_code, 403)
 
+    def test_admin_can_delete_foreign_section(self):
+        self.client.login(username="admin", password="pass")
+        resp = self.client.post(self.url)
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(resp.json().get("success"))
+        self.assertFalse(Section.objects.filter(pk=self.section.id).exists())
+
 
 class CourseParticipantsTests(TestCase):
     def setUp(self):
         self.teacher = User.objects.create_user(username="teacher", password="pass")
         self.student = User.objects.create_user(username="student", password="pass")
+        self.admin = User.objects.create_user(
+            username="admin",
+            password="pass",
+            is_staff=True,
+            is_superuser=True,
+        )
         self.root_section = Section.objects.get(title="Авторские", parent__isnull=True)
         self.section = create_section(
             SectionCreateInput(
@@ -218,6 +283,12 @@ class CourseParticipantsTests(TestCase):
 
     def test_owner_can_add_student(self):
         self.client.login(username="teacher", password="pass")
+        resp = self.client.post(self.url, {"student_ids": [self.student.id]})
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(len(resp.json()["created"]), 1)
+
+    def test_admin_can_add_student(self):
+        self.client.login(username="admin", password="pass")
         resp = self.client.post(self.url, {"student_ids": [self.student.id]})
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(len(resp.json()["created"]), 1)
