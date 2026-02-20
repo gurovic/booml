@@ -1,6 +1,7 @@
 from django.http import Http404
 from ..models import Notebook
 
+
 def get_user_notebook_or_404(user, notebook_id):
     try:
         nb = Notebook.objects.get(id=notebook_id)
@@ -11,3 +12,10 @@ def get_user_notebook_or_404(user, notebook_id):
         raise Http404("Notebook not found")
 
     return nb
+
+
+def get_user_writable_notebook_or_404(user, notebook_id):
+    notebook = get_user_notebook_or_404(user, notebook_id)
+    if notebook.owner is not None and notebook.owner != user:
+        raise Http404("Notebook not found")
+    return notebook

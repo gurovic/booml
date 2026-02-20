@@ -51,23 +51,23 @@
         <section class="notebook-workspace">
           <div class="notebook-toolbar">
             <div class="toolbar-group">
-              <div
+              <button
                 v-for="action in toolbarActions"
                 :key="action.id"
+                type="button"
                 :class="['toolbar-pill', 'toolbar-pill--' + action.id]"
-                role="button"
-                tabindex="0"
+                :aria-label="getToolbarActionLabel(action.id)"
                 @click="createNotebookCell(action.id)"
               >
                 <span class="toolbar-label">{{ action.label }}</span>
-              </div>
+              </button>
             </div>
             <div class="toolbar-group toolbar-group--right">
-              <div class="toolbar-pill toolbar-session">
+              <div class="toolbar-pill toolbar-pill--static toolbar-session">
                 <span class="toolbar-label">Сессия</span>
                 <span class="toolbar-session-dot" aria-hidden="true"></span>
               </div>
-              <div class="toolbar-pill">
+              <div class="toolbar-pill toolbar-pill--static">
                 <span class="toolbar-label">Настройки</span>
               </div>
             </div>
@@ -84,7 +84,15 @@
               class="cell-stack"
             >
               <div class="cell-row" :class="{ 'cell-row--selected': selectedCellId === cell.id }">
-                <article class="cell-card" @click="selectCell(cell.id)">
+                <article
+                  class="cell-card"
+                  role="button"
+                  tabindex="0"
+                  :aria-label="getCellSelectionLabel(cell)"
+                  @click="selectCell(cell.id)"
+                  @keydown.enter.prevent="selectCell(cell.id)"
+                  @keydown.space.prevent="selectCell(cell.id)"
+                >
                   <div
                     class="cell-body"
                     :class="{ 'cell-body--text': cell.cell_type === 'text' }"
@@ -95,6 +103,7 @@
                       type="button"
                       disabled
                       title="Запуск ячейки"
+                      :aria-label="`Запустить кодовую ячейку ${cell.id}`"
                     >
                       <span class="material-symbols-rounded" aria-hidden="true">play_arrow</span>
                     </button>
@@ -112,7 +121,8 @@
                         <textarea
                           v-model="cell.content"
                           class="text-editor"
-                          placeholder="Введите текст..."
+                          placeholder="Введите заметку"
+                          :aria-label="`Текст ячейки ${cell.id}`"
                           @focus="selectCell(cell.id)"
                           @input="() => scheduleSave(cell)"
                           @blur="() => flushSave(cell)"
@@ -145,7 +155,8 @@
                     <button
                       type="button"
                       class="cell-action-btn"
-                      :title="'Переместить вверх'"
+                      :title="`Переместить ячейку ${cell.id} вверх`"
+                      :aria-label="`Переместить ячейку ${cell.id} вверх`"
                       :disabled="isCellFirst(cell)"
                       @click.stop="shiftCell(cell, -1)"
                     >
@@ -154,7 +165,8 @@
                     <button
                       type="button"
                       class="cell-action-btn"
-                      :title="'Переместить вниз'"
+                      :title="`Переместить ячейку ${cell.id} вниз`"
+                      :aria-label="`Переместить ячейку ${cell.id} вниз`"
                       :disabled="isCellLast(cell)"
                       @click.stop="shiftCell(cell, 1)"
                     >
@@ -163,7 +175,8 @@
                     <button
                       type="button"
                       class="cell-action-btn cell-action-btn--danger"
-                      :title="'Удалить ячейку'"
+                      :title="`Удалить ячейку ${cell.id}`"
+                      :aria-label="`Удалить ячейку ${cell.id}`"
                       @click.stop="removeCell(cell)"
                     >
                       <span class="material-symbols-rounded" aria-hidden="true">delete</span>
@@ -178,6 +191,7 @@
                     :key="`${cell.id}-${action.id}`"
                     type="button"
                     class="footer-pill"
+                    :aria-label="getInsertActionLabel(action.id, cell.id)"
                     @click="createNotebookCell(action.id)"
                   >
                     {{ action.label }}
@@ -253,6 +267,23 @@ const footerActions = [
   { id: 'code', label: '+ Код' },
   { id: 'text', label: '+ Текст' },
 ]
+
+const getToolbarActionLabel = (actionId) => {
+  if (actionId === 'code') return 'Добавить новую кодовую ячейку'
+  if (actionId === 'text') return 'Добавить новую текстовую ячейку'
+  return 'Выполнить действие с ячейками'
+}
+
+const getCellSelectionLabel = (cell) => {
+  const typeLabel = cell?.cell_type === 'text' ? 'текстовая' : 'кодовая'
+  return `Выбрать ${typeLabel} ячейку ${cell?.id}`
+}
+
+const getInsertActionLabel = (actionId, cellId) => {
+  if (actionId === 'code') return `Добавить кодовую ячейку после ячейки ${cellId}`
+  if (actionId === 'text') return `Добавить текстовую ячейку после ячейки ${cellId}`
+  return `Добавить ячейку после ${cellId}`
+}
 
 const seedSavedContent = (cells) => {
   lastSavedContent.clear()
@@ -591,6 +622,7 @@ onBeforeUnmount(() => {
   height: 29px;
   padding: 5px 10px;
   background: var(--color-button-primary);
+  border: none;
   color: #fff;
   border-radius: 10px;
   font-size: 16px;
@@ -601,6 +633,10 @@ onBeforeUnmount(() => {
   cursor: pointer;
   opacity: 1;
   user-select: none;
+}
+
+.toolbar-pill--static {
+  cursor: default;
 }
 
 .toolbar-session-dot {
@@ -706,7 +742,7 @@ onBeforeUnmount(() => {
 .text-editor {
   width: 100%;
   height: 40px;
-  min-height: 30px;
+  min-height: 40px;
   border: none;
   border-radius: 10px;
   background: transparent;
@@ -911,5 +947,3 @@ onBeforeUnmount(() => {
   }
 }
 </style>
-
-

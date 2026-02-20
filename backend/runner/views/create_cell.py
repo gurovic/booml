@@ -1,10 +1,11 @@
 import json
 
 from django.http import JsonResponse
-from django.shortcuts import render, get_object_or_404
+from django.shortcuts import render
 from django.views.decorators.http import require_http_methods
 
-from ..models import Notebook, Cell
+from ..models import Cell
+from ..services.permissions import get_user_writable_notebook_or_404
 
 
 def _wants_json_response(request):
@@ -57,7 +58,7 @@ def _create_cell(notebook, cell_type):
 
 @require_http_methods(["POST"])
 def create_cell(request, notebook_id):
-    notebook = get_object_or_404(Notebook, id=notebook_id)
+    notebook = get_user_writable_notebook_or_404(request.user, notebook_id)
     cell_type = _resolve_cell_type(request)
     cell = _create_cell(notebook, cell_type)
 
@@ -69,7 +70,7 @@ def create_cell(request, notebook_id):
 
 @require_http_methods(["POST"])
 def create_latex_cell(request, notebook_id):
-    notebook = get_object_or_404(Notebook, id=notebook_id)
+    notebook = get_user_writable_notebook_or_404(request.user, notebook_id)
     cell = _create_cell(notebook, Cell.LATEX)
 
     if _wants_json_response(request):
