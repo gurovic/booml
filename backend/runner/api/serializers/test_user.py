@@ -276,9 +276,9 @@ class ProfileDetailSerializerTests(TestCase):
 
         if recent:
             submission = recent[0]
-            # Проверяем поля из SubmissionReadSerializer
+            # Добавлено поле 'score'
             expected_fields = {'id', 'problem_id', 'problem_title', 'file_url',
-                               'submitted_at', 'status', 'code_size', 'metrics'}
+                               'submitted_at', 'status', 'code_size', 'metrics', 'score'}
             for field in expected_fields:
                 self.assertIn(field, submission)
 
@@ -287,6 +287,11 @@ class ProfileDetailSerializerTests(TestCase):
             self.assertIsInstance(submission['problem_id'], int)
             self.assertIsInstance(submission['problem_title'], str)
             self.assertIsInstance(submission['metrics'], dict)
+
+            # Проверяем, что score есть и это число или None
+            self.assertIn('score', submission)
+            if submission['score'] is not None:
+                self.assertIsInstance(submission['score'], (int, float))
 
             # Проверяем, что нет лишних полей
             self.assertNotIn('user', submission)
@@ -381,14 +386,20 @@ class SubmissionSerializersTests(TestCase):
         )
         data = serializer.data
 
+        # Добавлено поле 'score'
         expected_fields = {'id', 'problem_id', 'problem_title', 'file_url',
-                           'submitted_at', 'status', 'code_size', 'metrics'}
+                           'submitted_at', 'status', 'code_size', 'metrics', 'score'}
         self.assertEqual(set(data.keys()), expected_fields)
 
         self.assertEqual(data['problem_id'], self.problem.id)
         self.assertEqual(data['problem_title'], 'Тестовая задача')
         self.assertEqual(data['status'], 'pending')
         self.assertEqual(data['metrics'], {'accuracy': 0.95})
+
+        # Проверяем, что score есть и это число или None
+        self.assertIn('score', data)
+        if data['score'] is not None:
+            self.assertIsInstance(data['score'], (int, float))
 
     def test_submission_detail_serializer_fields(self):
         """Тест полей SubmissionDetailSerializer"""
@@ -398,13 +409,39 @@ class SubmissionSerializersTests(TestCase):
         )
         data = serializer.data
 
+        # Добавлено поле 'score'
         expected_fields = {'id', 'problem_id', 'problem_title', 'file_url',
-                           'submitted_at', 'status', 'code_size', 'metrics',
+                           'submitted_at', 'status', 'code_size', 'metrics', 'score',
                            'prevalidation'}
         self.assertEqual(set(data.keys()), expected_fields)
 
         # prevalidation может быть None
         self.assertIsNone(data['prevalidation'])
+
+        # Проверяем, что score есть и это число или None
+        self.assertIn('score', data)
+        if data['score'] is not None:
+            self.assertIsInstance(data['score'], (int, float))
+
+    def test_get_score_method(self):
+        """Тест метода get_score"""
+        serializer = SubmissionReadSerializer()
+
+        # Проверяем, что метод возвращает число или None
+        score = serializer.get_score(self.submission)
+        if score is not None:
+            self.assertIsInstance(score, (int, float))
+
+        # Создаем посылку с другими метриками
+        submission2 = Submission.objects.create(
+            user=self.user,
+            problem=self.problem,
+            status='accepted',
+            metrics={'accuracy': 0.85, 'f1': 0.78}
+        )
+        score2 = serializer.get_score(submission2)
+        if score2 is not None:
+            self.assertIsInstance(score2, (int, float))
 
     def test_get_file_url_method(self):
         """Тест метода get_file_url"""
