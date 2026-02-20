@@ -97,10 +97,21 @@ class ContestAdmin(admin.ModelAdmin):
         "status",
         "start_time",
         "duration_minutes",
+        "allow_upsolving",
         "created_by",
         "created_at",
     )
-    list_filter = ("is_published", "approval_status", "access_type", "is_rated", "scoring", "registration_type", "status", "course")
+    list_filter = (
+        "is_published",
+        "approval_status",
+        "access_type",
+        "is_rated",
+        "scoring",
+        "registration_type",
+        "status",
+        "allow_upsolving",
+        "course",
+    )
     search_fields = ("title", "course__title", "created_by__username", "source")
     inlines = (ContestProblemInline,)
     filter_horizontal = ("allowed_participants",)

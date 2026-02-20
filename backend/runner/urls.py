@@ -37,6 +37,7 @@ from .views.contest_draft import (
     reorder_contest_problems,
     remove_problem_from_contest,
     set_contest_access,
+    update_contest,
 )
 from .views.contest_leaderboard import contest_problem_leaderboard
 from .views.course import course_contests, course_detail
@@ -93,6 +94,7 @@ urlpatterns = [
     path('contest/<int:contest_id>/leaderboard/', contest_problem_leaderboard, name='contest_problem_leaderboard'),
     path('contest/<int:course_id>/new/', create_contest, name='create_contest'),
     path('contest/<int:contest_id>/delete/', delete_contest, name='delete_contest'),
+    path('contest/<int:contest_id>/update/', update_contest, name='contest_update'),
     path('contest/<int:contest_id>/access/', set_contest_access, name='contest_set_access'),
     path('contest/<int:contest_id>/participants/', manage_contest_participants, name='contest_manage_participants'),
     path('contest/<int:contest_id>/problems/add/', add_problem_to_contest, name='contest_add_problem'),
@@ -142,6 +144,7 @@ urlpatterns = [
     # Frontend talks to backend through /backend/* (see frontend devServer proxy).
     path('backend/contest/<int:course_id>/new/', create_contest, name='backend_create_contest'),
     path('backend/contest/<int:contest_id>/delete/', delete_contest, name='backend_delete_contest'),
+    path('backend/contest/<int:contest_id>/update/', update_contest, name='backend_contest_update'),
     path(
         'backend/contest/<int:contest_id>/leaderboard/',
         contest_problem_leaderboard,

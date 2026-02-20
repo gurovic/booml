@@ -191,6 +191,39 @@
               <option value="partial">Частичная оценка</option>
             </select>
           </div>
+          <div class="form-group">
+            <label class="form-checkbox">
+              <input type="checkbox" v-model="newContest.has_time_limit" />
+              <span>Контест с ограничением по времени</span>
+            </label>
+          </div>
+          <div v-if="newContest.has_time_limit" class="contest-timing-config">
+            <div class="contest-timing-config__head">Параметры времени</div>
+            <div class="form-row form-row--timing">
+              <div class="form-group form-group--compact">
+                <label for="contest-start-time" class="form-label">Начало</label>
+                <input
+                  id="contest-start-time"
+                  v-model="newContest.start_time"
+                  type="datetime-local"
+                  class="form-input form-input--datetime"
+                />
+              </div>
+              <div class="form-group form-group--compact">
+                <label for="contest-end-time" class="form-label">Окончание</label>
+                <input
+                  id="contest-end-time"
+                  v-model="newContest.end_time"
+                  type="datetime-local"
+                  class="form-input form-input--datetime"
+                />
+              </div>
+            </div>
+            <label class="form-checkbox form-checkbox--subtle">
+              <input type="checkbox" v-model="newContest.allow_upsolving" />
+              <span>Разрешить дорешку после дедлайна</span>
+            </label>
+          </div>
           <div class="form-row">
             <div class="form-group">
               <label class="form-checkbox">
@@ -261,6 +294,10 @@ const newContest = ref({
   title: '',
   description: '',
   scoring: 'ioi',
+  has_time_limit: false,
+  start_time: '',
+  end_time: '',
+  allow_upsolving: false,
   is_published: false,
   is_rated: false,
 })
@@ -388,9 +425,20 @@ const closeCreateDialog = () => {
     title: '',
     description: '',
     scoring: 'ioi',
+    has_time_limit: false,
+    start_time: '',
+    end_time: '',
+    allow_upsolving: false,
     is_published: false,
     is_rated: false,
   }
+}
+
+const toIsoDateTime = (localValue) => {
+  if (!localValue) return null
+  const dt = new Date(localValue)
+  if (Number.isNaN(dt.getTime())) return null
+  return dt.toISOString()
 }
 
 const createContest = async () => {
@@ -404,10 +452,30 @@ const createContest = async () => {
   createError.value = ''
   
   try {
+    const hasTimeLimit = !!newContest.value.has_time_limit
+    const startIso = hasTimeLimit ? toIsoDateTime(newContest.value.start_time) : null
+    const endIso = hasTimeLimit ? toIsoDateTime(newContest.value.end_time) : null
+    if (hasTimeLimit) {
+      if (!startIso || !endIso) {
+        createError.value = 'Для контеста по времени укажите дату начала и окончания'
+        isCreating.value = false
+        return
+      }
+      if (new Date(endIso).getTime() <= new Date(startIso).getTime()) {
+        createError.value = 'Время окончания должно быть позже времени начала'
+        isCreating.value = false
+        return
+      }
+    }
+
     const contestData = {
       title,
       description: newContest.value.description,
       scoring: newContest.value.scoring,
+      has_time_limit: hasTimeLimit,
+      start_time: startIso,
+      end_time: endIso,
+      allow_upsolving: hasTimeLimit ? !!newContest.value.allow_upsolving : false,
       is_published: newContest.value.is_published,
       is_rated: newContest.value.is_rated,
     }
@@ -540,6 +608,14 @@ const deleteThisCourse = async () => {
 watch(courseId, () => {
   loadContests()
 }, { immediate: true })
+
+watch(
+  () => newContest.value.has_time_limit,
+  (enabled) => {
+    if (enabled) return
+    newContest.value.allow_upsolving = false
+  }
+)
 </script>
 
 <style scoped>
@@ -945,6 +1021,10 @@ watch(courseId, () => {
   margin-bottom: 0;
 }
 
+.form-group--compact {
+  margin-bottom: 0;
+}
+
 .form-label {
   display: block;
   margin-bottom: 6px;
@@ -981,8 +1061,45 @@ watch(courseId, () => {
 }
 
 .form-row {
-  display: flex;
-  gap: 16px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  align-items: start;
+}
+
+.form-row .form-group {
+  min-width: 0;
+}
+
+.form-row--timing {
+  margin-bottom: 12px;
+}
+
+.contest-timing-config {
+  margin: 0 0 16px;
+  padding: 14px;
+  border: 1px solid var(--color-border-default, #d0d0d0);
+  border-radius: 12px;
+  background: var(--color-bg-muted, #f8fafc);
+}
+
+.contest-timing-config__head {
+  margin-bottom: 10px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--color-text-muted, #64748b);
+}
+
+.form-input--datetime {
+  min-height: 42px;
+  background: #fff;
+}
+
+.form-checkbox--subtle {
+  font-size: 13px;
+  color: var(--color-text-secondary, #334155);
 }
 
 .form-checkbox {
@@ -1017,6 +1134,13 @@ watch(courseId, () => {
 
   .course-title {
     font-size: 32px;
+  }
+}
+
+@media (max-width: 700px) {
+  .form-row {
+    grid-template-columns: 1fr;
+    gap: 10px;
   }
 }
 </style>

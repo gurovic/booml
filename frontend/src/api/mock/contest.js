@@ -118,7 +118,7 @@ export function getContest(contestId) {
   const found = Object.values(mockContests).flat().find(item => item.id === numericId)
   if (!found) return Promise.resolve(null)
   const problems = Array.isArray(found.problems) ? found.problems : buildProblems(found)
-  return Promise.resolve({ ...found, problems })
+  return Promise.resolve({ ...found, problems, can_manage: true, can_edit: true })
 }
 
 export function getContestLeaderboard(contestId) {
@@ -140,10 +140,17 @@ export async function createContest(courseId, contestData) {
     title: contestData.title,
     description: contestData.description,
     course: courseId,
+    has_time_limit: !!contestData.has_time_limit,
+    start_time: contestData.start_time || null,
+    end_time: contestData.end_time || null,
+    allow_upsolving: !!contestData.allow_upsolving,
+    time_state: contestData.has_time_limit ? 'not_started' : 'always_open',
     is_published: contestData.is_published || false,
     is_rated: contestData.is_rated || false,
     scoring: contestData.scoring || 'ioi',
     problems_count: 0,
+    can_manage: true,
+    can_edit: true,
   }
   
   // Add to mock data
@@ -214,4 +221,30 @@ export async function deleteContest(contestId) {
   }
 
   return Promise.resolve({ success: true, deleted_id: numericId })
+}
+
+export async function updateContest(contestId, contestData) {
+  const numericId = Number(contestId)
+  let updated = null
+
+  for (const key of Object.keys(mockContests)) {
+    const list = mockContests[key] || []
+    const idx = list.findIndex(item => Number(item.id) === numericId)
+    if (idx < 0) continue
+    const next = { ...list[idx] }
+    next.has_time_limit = !!contestData.has_time_limit
+    next.start_time = contestData.start_time || null
+    next.end_time = contestData.end_time || null
+    next.allow_upsolving = !!contestData.allow_upsolving
+    next.can_edit = true
+    updated = next
+    list[idx] = next
+    break
+  }
+
+  if (!updated) {
+    return Promise.reject(new Error('Contest not found'))
+  }
+
+  return Promise.resolve(updated)
 }

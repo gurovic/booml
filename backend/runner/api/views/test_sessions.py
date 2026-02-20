@@ -1,7 +1,6 @@
 from http import HTTPStatus
 from tempfile import TemporaryDirectory
 import importlib.util
-import unittest
 
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -364,27 +363,32 @@ class NotebookSessionAPITests(TestCase):
 
         self.assertEqual(resp.status_code, HTTPStatus.FORBIDDEN)
 
-    @unittest.skipUnless(
-        importlib.util.find_spec("pyarrow") is not None,
-        "pyarrow is not installed",
-    )
     def test_session_file_preview_parquet(self):
-        import pyarrow as pa
-        import pyarrow.parquet as pq
-
         session_id = f"notebook:{self.notebook.id}"
         session = create_session(session_id)
         parquet_path = session.workdir / "sample.parquet"
-        table = pa.table({"a": [1, 2], "b": ["x", "y"]})
-        pq.write_table(table, parquet_path)
+
+        has_pyarrow = importlib.util.find_spec("pyarrow") is not None
+        if has_pyarrow:
+            import pyarrow as pa
+            import pyarrow.parquet as pq
+
+            table = pa.table({"a": [1, 2], "b": ["x", "y"]})
+            pq.write_table(table, parquet_path)
+        else:
+            # Simulate a parquet upload in environments without pyarrow.
+            parquet_path.write_bytes(b"PAR1")
 
         resp = self.client.get(f"{self.preview_url}?session_id={session_id}&path=sample.parquet")
-
-        self.assertEqual(resp.status_code, HTTPStatus.OK)
         data = resp.json()
-        self.assertEqual(data["format"], "parquet")
-        self.assertEqual(data["columns"], ["a", "b"])
-        self.assertEqual(data["rows"][0], ["1", "x"])
+        if has_pyarrow:
+            self.assertEqual(resp.status_code, HTTPStatus.OK)
+            self.assertEqual(data["format"], "parquet")
+            self.assertEqual(data["columns"], ["a", "b"])
+            self.assertEqual(data["rows"][0], ["1", "x"])
+        else:
+            self.assertEqual(resp.status_code, HTTPStatus.BAD_REQUEST)
+            self.assertIn("pyarrow", (data.get("detail") or "").lower())
 
     def test_stop_session_success(self):
         session_id = f"notebook:{self.notebook.id}"

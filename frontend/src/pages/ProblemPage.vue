@@ -15,6 +15,22 @@
           <div class="problem__text" v-html="problem.rendered_statement"></div>
         </div>
         <ul class="problem__menu">
+          <li v-if="contestContext && contestHasTimeLimit" class="problem__contest-time problem__menu-item">
+            <h2 class="problem__item-title">Режим контеста</h2>
+            <p class="problem__contest-state">{{ contestStateLabel }}</p>
+            <div v-if="contestCountdown" class="problem__contest-timer">
+              <p class="problem__contest-timer-label">{{ contestCountdown.label }}</p>
+              <p class="problem__contest-timer-value">{{ contestCountdown.value }}</p>
+            </div>
+            <div class="problem__contest-meta">
+              <p class="problem__contest-line">Начало: {{ contestStartLabel }}</p>
+              <p class="problem__contest-line">Дедлайн: {{ contestEndLabel }}</p>
+              <p class="problem__contest-line">Дорешка: {{ contestUpsolvingLabel }}</p>
+              <p v-if="contestSubmitBlockedReason" class="problem__contest-warning">
+                {{ contestSubmitBlockedReason }}
+              </p>
+            </div>
+          </li>
           <li class="problem__files problem__menu-item" v-if="availableFiles.length > 0">
             <h2 class="problem__files-title problem__item-title">Файлы</h2>
             <ul class="problem__files-list">
@@ -86,6 +102,12 @@ id,pred
               <div v-if="submitMessage" :class="['problem__submit-message', `problem__submit-message--${submitMessage.type}`]">
                 {{ submitMessage.text }}
               </div>
+              <div
+                v-if="contestSubmitBlockedReason"
+                class="problem__submit-message problem__submit-message--error"
+              >
+                {{ contestSubmitBlockedReason }}
+              </div>
             </div>
           </li>
           <li class="problem__submissions problem__menu-item">
@@ -108,7 +130,7 @@ id,pred
                 >
                   <p>{{ submission.id }}</p>
                   <p>{{ submission.submitted_at }}</p>
-                  <p>{{ getStatusLabel(submission.status) }}</p>
+                  <p>{{ getSubmissionStatusLabel(submission) }}</p>
                   <p>{{ formatSubmissionMetric(submission) }}</p>
                 </router-link>
               </li>
@@ -130,7 +152,7 @@ id,pred
 </template>
 
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onBeforeUnmount, onMounted, computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { contestApi } from '@/api'
 import { getProblem } from '@/api/problem'
@@ -143,6 +165,7 @@ import UiHeader from '@/components/ui/UiHeader.vue'
 import UiBreadcrumbs from '@/components/ui/UiBreadcrumbs.vue'
 import UiIdPill from '@/components/ui/UiIdPill.vue'
 import { normalizeContestProblemLabel, toContestProblemLabel } from '@/utils/contestProblemLabel'
+import { formatCountdown, formatDateTimeMsk, toTimestamp } from '@/utils/datetime'
 
 const md = new MarkdownIt({
   html: false,
@@ -162,6 +185,10 @@ let fileInputKey = ref(0)
 let isCreatingNotebook = ref(false)
 let notebookMessage = ref(null)
 const contestProblemLabel = ref('')
+const nowTs = ref(Date.now())
+let clockTimer = null
+let contestSyncTimer = null
+const contestSyncInFlight = ref(false)
 
 const stripLeadingH1 = (statement) => {
   if (typeof statement !== 'string' || !statement) return ''
@@ -213,7 +240,7 @@ const resolveContestProblemLabel = async () => {
 const loadProblem = async () => {
   contestProblemLabel.value = ''
   try {
-    const res = await getProblem(route.params.id)
+    const res = await getProblem(route.params.id, { contestId: contestIdFromQuery.value })
     problem.value = res
   } catch (err) {
     console.log(err)
@@ -227,6 +254,82 @@ const loadProblem = async () => {
 
 onMounted(loadProblem)
 
+onMounted(() => {
+  if (clockTimer != null) return
+  clockTimer = window.setInterval(() => {
+    nowTs.value = Date.now()
+  }, 1000)
+})
+
+const applyContestContextFromDetail = (contestData) => {
+  if (!problem.value?.contest || !contestData) return
+  const nextContest = {
+    ...problem.value.contest,
+    id: contestData.id,
+    title: contestData.title,
+    start_time: contestData.start_time,
+    end_time: contestData.end_time,
+    duration_minutes: contestData.duration_minutes,
+    has_time_limit: contestData.has_time_limit,
+    allow_upsolving: contestData.allow_upsolving,
+    time_state: contestData.time_state,
+    can_submit: contestData.can_submit,
+    submit_block_reason: contestData.submit_block_reason,
+    can_manage: contestData.can_manage,
+  }
+  if (contestData.can_view_problems === false) {
+    nextContest.can_submit = false
+    nextContest.submit_block_reason =
+      contestData.problems_locked_reason || 'Задачи откроются после начала контеста.'
+  }
+  problem.value = {
+    ...problem.value,
+    contest: nextContest,
+  }
+}
+
+const syncContestContextSilently = async () => {
+  if (!problem.value || !contestContext.value) return
+  if (!contestIdFromQuery.value) return
+  if (!contestHasTimeLimit.value || contestCanManage.value) return
+  if (isSubmitting.value || contestSyncInFlight.value) return
+
+  contestSyncInFlight.value = true
+  try {
+    const contestData = await contestApi.getContest(contestIdFromQuery.value)
+    applyContestContextFromDetail(contestData)
+  } catch (err) {
+    // Keep current state on transient sync errors.
+  } finally {
+    contestSyncInFlight.value = false
+  }
+}
+
+onMounted(() => {
+  if (contestSyncTimer != null) return
+  contestSyncTimer = window.setInterval(() => {
+    void syncContestContextSilently()
+  }, 5000)
+})
+
+onBeforeUnmount(() => {
+  if (clockTimer != null) {
+    window.clearInterval(clockTimer)
+    clockTimer = null
+  }
+  if (contestSyncTimer != null) {
+    window.clearInterval(contestSyncTimer)
+    contestSyncTimer = null
+  }
+})
+
+watch(
+  () => [route.params.id, contestIdFromQuery.value, queryProblemLabel.value],
+  () => {
+    loadProblem()
+  }
+)
+
 const availableFiles = computed(() => {
   if (!problem.value || !problem.value.files) return []
   return Object.entries(problem.value.files)
@@ -238,7 +341,62 @@ const availableFiles = computed(() => {
     })
 })
 
+const contestContext = computed(() => problem.value?.contest || null)
+const contestHasTimeLimit = computed(() => !!contestContext.value?.has_time_limit)
+const contestCanManage = computed(() => !!contestContext.value?.can_manage)
+const contestStartTs = computed(() => toTimestamp(contestContext.value?.start_time))
+const contestEndTs = computed(() => toTimestamp(contestContext.value?.end_time))
+const contestStartLabel = computed(() => formatDateTimeMsk(contestContext.value?.start_time))
+const contestEndLabel = computed(() => formatDateTimeMsk(contestContext.value?.end_time))
+const contestUpsolvingLabel = computed(() => {
+  return contestContext.value?.allow_upsolving ? 'Да' : 'Нет'
+})
+const contestState = computed(() => {
+  if (!contestHasTimeLimit.value) return 'always_open'
+  const now = nowTs.value
+  if (contestStartTs.value != null && now < contestStartTs.value) return 'not_started'
+  if (contestEndTs.value != null && now >= contestEndTs.value) {
+    return contestContext.value?.allow_upsolving ? 'upsolving' : 'finished'
+  }
+  return 'running'
+})
+const contestStateLabel = computed(() => {
+  const state = contestState.value
+  const labels = {
+    not_started: 'Контест ещё не начался',
+    running: 'Контест идёт',
+    upsolving: 'Дорешка',
+    finished: 'Контест завершён',
+  }
+  return labels[state] || 'Соревновательный режим'
+})
+const contestCountdown = computed(() => {
+  if (!contestHasTimeLimit.value) return null
+  const now = nowTs.value
+  if (contestState.value === 'not_started' && contestStartTs.value != null) {
+    const secondsLeft = Math.max(0, Math.ceil((contestStartTs.value - now) / 1000))
+    return { label: 'До начала', value: formatCountdown(secondsLeft) }
+  }
+  if (contestState.value === 'running' && contestEndTs.value != null) {
+    const secondsLeft = Math.max(0, Math.ceil((contestEndTs.value - now) / 1000))
+    return { label: 'До конца', value: formatCountdown(secondsLeft) }
+  }
+  return null
+})
+const contestSubmitBlockedReason = computed(() => {
+  if (!contestContext.value) return ''
+  if (contestCanManage.value) return ''
+  if (!contestHasTimeLimit.value) return ''
+  if (contestState.value === 'not_started') return 'Контест ещё не начался.'
+  if (contestState.value === 'finished') return 'Контест завершён, отправка недоступна.'
+  if (contestContext.value.can_submit === false) {
+    return contestContext.value.submit_block_reason || 'Отправка сейчас недоступна.'
+  }
+  return ''
+})
+
 const canSubmit = computed(() => {
+  if (contestSubmitBlockedReason.value) return false
   const hasFile = selectedFile.value != null
   const hasText = textSubmission.value.trim().length > 0
   return hasFile || hasText
@@ -288,6 +446,14 @@ const getStatusLabel = (status) => {
   return statusMap[status] || status
 }
 
+const getSubmissionStatusLabel = (submission) => {
+  const base = getStatusLabel(submission?.status)
+  if (submission?.is_after_deadline) {
+    return `${base} (дорешка)`
+  }
+  return base
+}
+
 const handleFileChange = (event) => {
   const file = event.target.files[0]
   if (file) {
@@ -311,6 +477,11 @@ const clearFileInput = () => {
 }
 
 const handleSubmit = async () => {
+  if (contestSubmitBlockedReason.value) {
+    submitMessage.value = { type: 'error', text: contestSubmitBlockedReason.value }
+    return
+  }
+
   const hasFile = selectedFile.value != null
   const hasText = textSubmission.value.trim().length > 0
 
@@ -329,14 +500,14 @@ const handleSubmit = async () => {
 
   try {
     const payload = hasFile
-      ? { file: selectedFile.value }
-      : { rawText: textSubmission.value }
+      ? { file: selectedFile.value, contestId: contestIdFromQuery.value }
+      : { rawText: textSubmission.value, contestId: contestIdFromQuery.value }
     await submitSolution(problem.value.id, payload)
     submitMessage.value = { type: 'success', text: 'Решение успешно отправлено на проверку!' }
     
     // Refresh problem data to show new submission
     try {
-      const res = await getProblem(route.params.id)
+      const res = await getProblem(route.params.id, { contestId: contestIdFromQuery.value })
       problem.value = res
       if (problem.value != null) {
         problem.value.rendered_statement = renderStatement(problem.value.statement)
@@ -575,6 +746,61 @@ const handleCreateNotebook = async () => {
 
 .problem__item-title {
   margin-bottom: 10px;
+}
+
+.problem__contest-time {
+  gap: 10px;
+}
+
+.problem__contest-state {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.problem__contest-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.problem__contest-timer {
+  border: 1px solid var(--color-border-light);
+  border-radius: 12px;
+  background: linear-gradient(135deg, #f8fafc 0%, #eef2ff 100%);
+  padding: 10px 12px;
+}
+
+.problem__contest-timer-label {
+  margin: 0 0 4px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 700;
+  color: #334155;
+}
+
+.problem__contest-timer-value {
+  margin: 0;
+  font-size: clamp(22px, 2.4vw, 28px);
+  font-weight: 700;
+  line-height: 1.1;
+  color: #0f172a;
+  font-variant-numeric: tabular-nums;
+}
+
+.problem__contest-line {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: 14px;
+}
+
+.problem__contest-warning {
+  margin: 2px 0 0;
+  color: var(--color-text-danger);
+  font-size: 13px;
+  line-height: 1.4;
 }
 
 .problem__files-list, .problem__submissions-list {
