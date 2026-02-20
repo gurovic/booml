@@ -1,4 +1,3 @@
-<!-- frontend/src/pages/ProfilePage.vue -->
 <template>
   <div class="page">
     <UiHeader />

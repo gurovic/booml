@@ -44,55 +44,51 @@ def get_profile_by_id(request, user_id):
 @api_view(['PATCH'])
 @permission_classes([IsAuthenticated])
 def update_avatar(request):
-    profile = getattr(request.user, 'profile', None)
+    try:
+        profile, created = Profile.objects.get_or_create(user=request.user)
 
-    if not profile:
+        avatar = request.FILES.get('avatar')
+        if not avatar:
+            return Response(
+                {'detail': 'Файл аватара не предоставлен'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        max_size = 5 * 1024 * 1024  # 5MB
+        if avatar.size > max_size:
+            return Response(
+                {'detail': 'Файл слишком большой. Максимальный размер 5MB'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        allowed_types = ['image/jpeg', 'image/png', 'image/gif']
+        if avatar.content_type not in allowed_types:
+            return Response(
+                {'detail': 'Допустимы только JPEG, PNG и GIF'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if profile.avatar:
+            profile.avatar.delete(save=False)
+
+        profile.avatar = avatar
+        profile.save()
+
+        serializer = ProfileSerializer(profile, context={'request': request})
+        return Response(serializer.data)
+
+    except Exception as e:
+        print(f"Error updating avatar: {e}")
         return Response(
-            {'detail': 'Профиль не найден'},
-            status=status.HTTP_404_NOT_FOUND
+            {'detail': 'Внутренняя ошибка сервера'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
-
-    avatar = request.FILES.get('avatar')
-    if not avatar:
-        return Response(
-            {'detail': 'Файл аватара не предоставлен'},
-            status=status.HTTP_400_BAD_REQUEST
-        )
-
-    max_size = 5 * 1024 * 1024  # 5MB
-    if avatar.size > max_size:
-        return Response(
-            {'detail': 'Файл слишком большой. Максимальный размер 5MB'},
-            status=status.HTTP_400_BAD_REQUEST
-        )
-
-    allowed_types = ['image/jpeg', 'image/png', 'image/gif']
-    if avatar.content_type not in allowed_types:
-        return Response(
-            {'detail': 'Допустимы только JPEG, PNG и GIF'},
-            status=status.HTTP_400_BAD_REQUEST
-        )
-
-    if profile.avatar:
-        profile.avatar.delete(save=False)
-
-    profile.avatar = avatar
-    profile.save()
-
-    serializer = ProfileSerializer(profile, context={'request': request})
-    return Response(serializer.data)
 
 
 @api_view(['DELETE'])
 @permission_classes([IsAuthenticated])
 def delete_avatar(request):
-    profile = getattr(request.user, 'profile', None)
-
-    if not profile:
-        return Response(
-            {'detail': 'Профиль не найден'},
-            status=status.HTTP_404_NOT_FOUND
-        )
+    profile, created = Profile.objects.get_or_create(user=request.user)
 
     if profile.avatar:
         profile.avatar.delete(save=False)
@@ -106,13 +102,7 @@ def delete_avatar(request):
 @api_view(['PATCH'])
 @permission_classes([IsAuthenticated])
 def update_profile_info(request):
-    profile = getattr(request.user, 'profile', None)
-
-    if not profile:
-        return Response(
-            {'detail': 'Профиль не найден'},
-            status=status.HTTP_404_NOT_FOUND
-        )
+    profile, created = Profile.objects.get_or_create(user=request.user)
 
     user = request.user
     first_name = request.data.get('first_name')
