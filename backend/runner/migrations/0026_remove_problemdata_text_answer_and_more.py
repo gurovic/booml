@@ -6,18 +6,10 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('runner', '0025_problemdata_text_answer_and_more'),
+        ('runner', '0023_section_teachers'),
     ]
 
     operations = [
-        migrations.RemoveField(
-            model_name='problemdata',
-            name='text_answer',
-        ),
-        migrations.RemoveField(
-            model_name='problemdescriptor',
-            name='problem_type',
-        ),
         migrations.AddField(
             model_name='submission',
             name='raw_text',

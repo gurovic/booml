@@ -1,8 +1,6 @@
 import { ensureCsrfToken } from './http'
 import { toApiError } from './error'
 
-export async function submitSolution(problemId, payload = {}) {
-  const { file = null, rawText = '' } = payload
 async function fetchJsonWithFriendlyErrors(url, options = {}) {
   let res
   try {

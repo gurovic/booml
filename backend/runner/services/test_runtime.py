@@ -76,7 +76,7 @@ class RuntimeServiceTests(SimpleTestCase):
         if session.vm:
             self.assertTrue(session.vm.workspace_path.exists())
 
-        newer = timezone.now()
+        newer = now + timedelta(seconds=1)
         touched = get_session("ns", now=newer)
         self.assertIs(touched, session)
         self.assertEqual(session.updated_at, newer)

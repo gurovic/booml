@@ -109,7 +109,7 @@ id,pred
                   <p>{{ submission.id }}</p>
                   <p>{{ submission.submitted_at }}</p>
                   <p>{{ getStatusLabel(submission.status) }}</p>
-                  <p>{{ roundMetric(submission.metric) }}</p>
+                  <p>{{ formatSubmissionMetric(submission) }}</p>
                 </router-link>
               </li>
             </ul>
@@ -791,4 +791,3 @@ const handleCreateNotebook = async () => {
   opacity: 0.9;
 }
 </style>
-
