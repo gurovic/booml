@@ -11,11 +11,70 @@ from ...models import (
     Course,
     CourseParticipant,
     FavoriteCourse,
+    ProblemDescriptor,
     SiteUpdate,
     Submission,
 )
 
 from ...views.submissions import _primary_metric  # keep scoring logic consistent across views
+from ...services.problem_scoring import (
+    default_curve_p,
+    extract_raw_metric,
+    extract_score_100,
+    resolve_score_spec,
+    score_from_raw,
+)
+
+
+def _score_from_metrics(metrics, descriptor):
+    score_100 = extract_score_100(metrics)
+    if score_100 is not None:
+        return float(score_100)
+
+    metric_name = "metric"
+    if descriptor is not None:
+        descriptor_metric = getattr(descriptor, "metric", "")
+        descriptor_metric_name = getattr(descriptor, "metric_name", "")
+        if isinstance(descriptor_metric, str) and descriptor_metric.strip():
+            metric_name = descriptor_metric.strip()
+        elif isinstance(descriptor_metric_name, str) and descriptor_metric_name.strip():
+            metric_name = descriptor_metric_name.strip()
+    if isinstance(metrics, dict):
+        raw_metric_name = metrics.get("raw_metric_name")
+        if isinstance(raw_metric_name, str) and raw_metric_name.strip():
+            metric_name = raw_metric_name.strip()
+
+    raw_metric = extract_raw_metric(metrics, metric_name=metric_name)
+    if raw_metric is None:
+        return _primary_metric(metrics)
+
+    score_spec = resolve_score_spec(
+        metric_name,
+        descriptor_direction=getattr(descriptor, "score_direction", "") if descriptor else "",
+        descriptor_ideal=getattr(descriptor, "score_ideal_metric", None) if descriptor else None,
+    )
+    reference_metric = getattr(descriptor, "score_reference_metric", None) if descriptor else None
+    curve_p = getattr(descriptor, "score_curve_p", None) if descriptor else None
+    nonlinear_reference = (
+        float(reference_metric)
+        if isinstance(reference_metric, (int, float))
+        and abs(float(reference_metric) - float(score_spec.ideal)) > 1e-12
+        else None
+    )
+    nonlinear_curve = (
+        float(curve_p)
+        if isinstance(curve_p, (int, float))
+        else default_curve_p(score_spec.direction)
+    )
+    score_100, _ = score_from_raw(
+        float(raw_metric),
+        metric_name=metric_name,
+        direction=score_spec.direction,
+        ideal=float(score_spec.ideal),
+        reference=nonlinear_reference,
+        curve_p=nonlinear_curve,
+    )
+    return float(score_100)
 
 
 def _course_is_visible_to_user(course: Course, user) -> bool:
@@ -93,7 +152,12 @@ class HomeSidebarView(APIView):
         # Submissions are not linked to contests, so we pick a visible contest that contains the problem.
         problem_ids = [row["problem_id"] for row in recent if row.get("problem_id")]
         context_by_problem_id = {}
+        descriptor_by_problem_id = {}
         if problem_ids:
+            descriptor_by_problem_id = {
+                descriptor.problem_id: descriptor
+                for descriptor in ProblemDescriptor.objects.filter(problem_id__in=problem_ids)
+            }
             links = list(
                 ContestProblem.objects.filter(problem_id__in=problem_ids).values(
                     "problem_id", "contest_id"
@@ -199,6 +263,7 @@ class HomeSidebarView(APIView):
         for row in recent:
             pid = row["problem_id"]
             ctx = context_by_problem_id.get(pid) or {}
+            descriptor = descriptor_by_problem_id.get(pid)
             recent_problems.append(
                 {
                     "problem_id": pid,
@@ -206,7 +271,7 @@ class HomeSidebarView(APIView):
                     "last_submitted_at": row["last_submitted_at"].isoformat()
                     if row["last_submitted_at"]
                     else None,
-                    "last_score": _primary_metric(row.get("last_metrics")),
+                    "last_score": _score_from_metrics(row.get("last_metrics"), descriptor),
                     "contest_id": ctx.get("contest_id"),
                     "contest_title": ctx.get("contest_title"),
                     "course_id": ctx.get("course_id"),

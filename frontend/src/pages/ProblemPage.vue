@@ -95,7 +95,7 @@ id,pred
                 <p>ID</p>
                 <p>Время</p>
                 <p>Статус</p>
-                <p>Метрика</p>
+                <p>Баллы</p>
               </li>
               <li 
                 class="problem__submission"
@@ -246,7 +246,34 @@ const canSubmit = computed(() => {
 
 const roundMetric = (value) => {
   if (value == null) return '-'
-  return value.toFixed(3)
+  return value.toFixed(2)
+}
+
+const extractMetricValue = (submission) => {
+  if (!submission || typeof submission !== 'object') return null
+  if (typeof submission.score === 'number') return submission.score
+  const metrics = submission.metrics
+  if (typeof metrics === 'number') return metrics
+  if (metrics && typeof metrics === 'object') {
+    const keys = ['score_100', 'metric_score', 'metric', 'score', 'accuracy', 'f1', 'auc']
+    for (const key of keys) {
+      if (typeof metrics[key] === 'number') {
+        return metrics[key]
+      }
+    }
+    for (const value of Object.values(metrics)) {
+      if (typeof value === 'number') {
+        return value
+      }
+    }
+  }
+  if (typeof submission.metric === 'number') return submission.metric
+  return null
+}
+
+const formatSubmissionMetric = (submission) => {
+  const metricValue = extractMetricValue(submission)
+  return roundMetric(metricValue)
 }
 
 const getStatusLabel = (status) => {
@@ -764,3 +791,4 @@ const handleCreateNotebook = async () => {
   opacity: 0.9;
 }
 </style>
+

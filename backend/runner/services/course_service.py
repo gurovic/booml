@@ -8,6 +8,7 @@ from django.db import transaction
 
 from ..models import Course, CourseParticipant, Section
 from .section_service import is_root_section
+from .user_access import is_platform_admin
 
 User = get_user_model()
 
@@ -44,7 +45,12 @@ def create_course(payload: CourseCreateInput) -> Course:
         raise ValueError("Section is required to create a course")
     if payload.section.pk is None:
         raise ValueError("Section must be saved before use")
-    if not is_root_section(payload.section) and payload.section.owner_id != payload.owner.pk:
+    can_admin_everywhere = is_platform_admin(payload.owner)
+    if (
+        not can_admin_everywhere
+        and not is_root_section(payload.section)
+        and payload.section.owner_id != payload.owner.pk
+    ):
         raise ValueError("Only section owner can create courses in this section")
 
     teacher_candidates = [payload.owner]

@@ -1,8 +1,18 @@
 <template>
-  <li class="tree-node">
+  <li
+    class="tree-node"
+    :class="{
+      'tree-node--course': isCourse,
+      'tree-node--section': !isCourse,
+      'tree-node--branch': hasChildren,
+    }"
+  >
     <div
       class="tree-node__row"
-      :class="isCourse ? 'tree-node__row--course' : 'tree-node__row--section'"
+      :class="[
+        isCourse ? 'tree-node__row--course' : 'tree-node__row--section',
+        { 'tree-node__row--open': hasChildren && isOpen },
+      ]"
       :style="{ '--tree-level': level }"
     >
       <button
@@ -31,10 +41,23 @@
         >
           <svg v-if="isCourse" viewBox="0 0 24 24" width="18" height="18" fill="none" xmlns="http://www.w3.org/2000/svg">
             <path
-              d="M6 3h11a2 2 0 0 1 2 2v14.5a1.5 1.5 0 0 1-2.34 1.25L12 17.7l-4.66 3.05A1.5 1.5 0 0 1 5 19.5V5a2 2 0 0 1 1-2Z"
+              d="M12 3 2.5 8 12 13l9.5-5L12 3Z"
               stroke="currentColor"
-              stroke-width="2"
+              stroke-width="1.8"
               stroke-linejoin="round"
+            />
+            <path
+              d="M6.5 10.3V15c0 .4.23.76.59.93C8.32 16.49 10.1 17 12 17s3.68-.51 4.91-1.07c.36-.17.59-.53.59-.93v-4.7"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+            <path
+              d="M21.5 9.2V14"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
             />
           </svg>
           <svg v-else viewBox="0 0 24 24" width="18" height="18" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -136,6 +159,7 @@ const orderedChildren = computed(() => {
 <style scoped>
 .tree-node {
   list-style: none;
+  position: relative;
 }
 
 .tree-node__row {
@@ -147,17 +171,61 @@ const orderedChildren = computed(() => {
   min-width: 0;
   border-radius: 10px;
   padding: 8px 10px;
-  padding-left: calc(10px + (var(--tree-level, 0) * 18px));
+  padding-left: calc(10px + (var(--tree-level, 0) * 8px));
+  position: relative;
+  transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.tree-node__row::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 3px;
+  border-radius: 999px;
+  background: transparent;
 }
 
 .tree-node__row--section {
-  background: rgba(59, 130, 246, 0.08);
-  border: 1px solid rgba(59, 130, 246, 0.26);
+  background: linear-gradient(180deg, rgba(59, 130, 246, 0.11), rgba(59, 130, 246, 0.07));
+  border: 1px solid rgba(59, 130, 246, 0.28);
+}
+
+.tree-node__row--section::before {
+  background: rgba(37, 99, 235, 0.7);
 }
 
 .tree-node__row--course {
-  background: var(--color-button-secondary);
-  border: 1px solid var(--color-border-default, #e5e9f1);
+  background: #fff;
+  border: 1px solid rgba(148, 163, 184, 0.34);
+}
+
+.tree-node__row--course::before {
+  background: rgba(100, 116, 139, 0.46);
+}
+
+.tree-node__row--section:hover {
+  border-color: rgba(37, 99, 235, 0.45);
+  box-shadow: 0 4px 10px rgba(37, 99, 235, 0.08);
+}
+
+.tree-node__row--course:hover {
+  border-color: rgba(100, 116, 139, 0.45);
+  box-shadow: 0 3px 8px rgba(15, 23, 42, 0.06);
+}
+
+.tree-node__row:hover {
+  transform: translateX(1px);
+}
+
+.tree-node__row--open.tree-node__row--section {
+  border-color: rgba(37, 99, 235, 0.5);
+  box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.08) inset;
+}
+
+.tree-node__row--open.tree-node__row--course {
+  border-color: rgba(100, 116, 139, 0.5);
 }
 
 .tree-node__toggle {
@@ -171,6 +239,21 @@ const orderedChildren = computed(() => {
   align-items: center;
   justify-content: center;
   cursor: pointer;
+  transition: border-color 0.2s ease, background-color 0.2s ease, transform 0.2s ease;
+}
+
+.tree-node__toggle:hover {
+  border-color: rgba(59, 130, 246, 0.5);
+  background: rgba(239, 246, 255, 0.85);
+}
+
+.tree-node__toggle:active {
+  transform: translateY(1px);
+}
+
+.tree-node__toggle:focus-visible {
+  outline: 2px solid rgba(59, 130, 246, 0.45);
+  outline-offset: 1px;
 }
 
 .tree-node__toggle--spacer {
@@ -204,6 +287,7 @@ const orderedChildren = computed(() => {
   text-align: left;
   cursor: pointer;
   color: var(--color-text-primary);
+  transition: opacity 0.2s ease;
 }
 
 .tree-node__main--section {
@@ -218,6 +302,14 @@ const orderedChildren = computed(() => {
 
 .tree-node__icon {
   flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(148, 163, 184, 0.22);
 }
 
 .tree-node__icon--section {
@@ -229,6 +321,7 @@ const orderedChildren = computed(() => {
 }
 
 .tree-node__text {
+  flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -237,6 +330,12 @@ const orderedChildren = computed(() => {
 
 .tree-node__main:hover {
   opacity: 0.9;
+}
+
+.tree-node__main:focus-visible {
+  outline: 2px solid rgba(59, 130, 246, 0.45);
+  outline-offset: 2px;
+  border-radius: 8px;
 }
 
 .tree-node__star {
@@ -251,11 +350,18 @@ const orderedChildren = computed(() => {
   align-items: center;
   justify-content: center;
   flex: 0 0 auto;
+  transition: border-color 0.2s ease, background-color 0.2s ease, color 0.2s ease, transform 0.2s ease;
 }
 
 .tree-node__star:hover {
   border-color: var(--color-primary, #3b82f6);
   color: var(--color-text-primary, #000);
+  transform: translateY(-1px);
+}
+
+.tree-node__star:focus-visible {
+  outline: 2px solid rgba(59, 130, 246, 0.45);
+  outline-offset: 1px;
 }
 
 .tree-node__star--on {
@@ -265,17 +371,50 @@ const orderedChildren = computed(() => {
 }
 
 .tree-node__children {
-  margin: 8px 0 0;
-  padding: 0;
+  margin: 6px 0 0 14px;
+  padding: 8px 0 0 12px;
   display: flex;
   flex-direction: column;
   gap: 8px;
+  border-left: 1px solid rgba(148, 163, 184, 0.44);
+  border-radius: 0 0 0 10px;
+  background: rgba(148, 163, 184, 0.06);
+}
+
+.tree-node__children > .tree-node::before {
+  content: '';
+  position: absolute;
+  left: -12px;
+  top: 22px;
+  width: 10px;
+  border-top: 1px solid rgba(148, 163, 184, 0.44);
+}
+
+.tree-node--section > .tree-node__children {
+  border-left-color: rgba(59, 130, 246, 0.36);
+  background: rgba(59, 130, 246, 0.06);
+}
+
+.tree-node--section > .tree-node__children > .tree-node::before {
+  border-top-color: rgba(59, 130, 246, 0.36);
 }
 
 @media (max-width: 720px) {
   .tree-node__row {
     padding: 7px 8px;
-    padding-left: calc(8px + (var(--tree-level, 0) * 14px));
+    padding-left: calc(8px + (var(--tree-level, 0) * 5px));
   }
+
+  .tree-node__children {
+    margin-left: 10px;
+    padding-left: 9px;
+    padding-top: 7px;
+  }
+
+  .tree-node__children > .tree-node::before {
+    left: -9px;
+    width: 7px;
+  }
+
 }
 </style>
