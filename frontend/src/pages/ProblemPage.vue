@@ -96,13 +96,13 @@
             <ul class="problem__submissions-list">
               <li class="problem__submission-head">
                 <p>ID</p>
-                <p>Время</p>
+                <p>Дата и время</p>
                 <p>Статус</p>
                 <p>Баллы</p>
               </li>
               <li 
                 class="problem__submission"
-                v-for="submission in problem.submissions"
+                v-for="submission in formattedSubmissions"
                 :key="submission.id"
               >
                 <router-link
@@ -110,7 +110,10 @@
                   class="problem__submission-href"
                 >
                   <p>{{ submission.id }}</p>
-                  <p>{{ submission.submitted_at }}</p>
+                  <div class="problem__submission-datetime">
+                    <p class="problem__submission-date">{{ submission.formattedDateTime.date }}</p>
+                    <p class="problem__submission-time">{{ submission.formattedDateTime.time }}</p>
+                  </div>
                   <p>{{ getStatusLabel(submission.status) }}</p>
                   <p>{{ formatSubmissionMetric(submission) }}</p>
                 </router-link>
@@ -296,6 +299,14 @@ const availableFiles = computed(() => {
     }))
 })
 
+const formattedSubmissions = computed(() => {
+  if (!problem.value || !problem.value.submissions) return []
+  return problem.value.submissions.map(submission => ({
+    ...submission,
+    formattedDateTime: formatSubmissionDateTime(submission.submitted_at)
+  }))
+})
+
 const roundMetric = (value) => {
   if (value == null) return '-'
   return value.toFixed(2)
@@ -364,6 +375,39 @@ const getStatusLabel = (status) => {
     'validated': '✅ Валидировано'
   }
   return statusMap[status] || status
+}
+
+const formatSubmissionDateTime = (dateTimeString) => {
+  if (!dateTimeString) return { date: '-', time: '-' }
+  
+  try {
+    const date = new Date(dateTimeString)
+    
+    // Check if date is valid
+    if (Number.isNaN(date.getTime())) {
+      console.error('Invalid date:', dateTimeString)
+      return { date: '-', time: '-' }
+    }
+    
+    // Use formatToParts for more reliable formatting in MSK timezone
+    const parts = new Intl.DateTimeFormat('ru-RU', {
+      timeZone: 'Europe/Moscow',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    }).formatToParts(date)
+    
+    const byType = Object.fromEntries(parts.map(p => [p.type, p.value]))
+    const dateFormatted = `${byType.day}.${byType.month}.${byType.year}`
+    const timeFormatted = `${byType.hour}:${byType.minute}`
+    
+    return { date: dateFormatted, time: timeFormatted }
+  } catch (error) {
+    console.error('Error formatting date:', error)
+    return { date: '-', time: '-' }
+  }
 }
 
 const handleFileChange = (event) => {
@@ -466,7 +510,7 @@ const handleCreateNotebook = async () => {
   width: 100%;
   height: 100%;
   display: flex;
-  gap: 20px;
+  gap: 15px;
 }
 
 .problem__selection_menu {
@@ -673,7 +717,7 @@ const handleCreateNotebook = async () => {
 }
 
 .problem__menu {
-  max-width: 350px;
+  max-width: 450px;
   width: 100%;
   flex-grow: 1;
   display: flex;
@@ -726,11 +770,14 @@ const handleCreateNotebook = async () => {
 .problem__submission-head,
 .problem__submission-href {
   border-radius: 10px;
-  padding: 10px 20px;
+  padding: 10px 15px;
   width: 100%;
   display: grid;
-  grid-template-columns: 0.5fr 1.5fr 1fr 1fr;
+  grid-template-columns: 55px 115px 1fr 85px;
   align-items: center;
+  gap: 10px;
+  height: 65px;
+  overflow: hidden;
 }
 
 .problem__submission-head {
@@ -753,6 +800,27 @@ const handleCreateNotebook = async () => {
   text-align: center;
 }
 
+.problem__submission-head > *,
+.problem__submission-href > * {
+  overflow: visible;
+}
+
+.problem__submission-head > :nth-child(1),
+.problem__submission-href > :nth-child(1) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.problem__submission-head > :nth-child(3),
+.problem__submission-href > :nth-child(3) {
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+  hyphens: auto;
+  line-height: 1.2;
+  font-size: 13px;
+}
+
 
 .problem__submission-head p {
   color: var(--color-button-text-primary);
@@ -760,6 +828,25 @@ const handleCreateNotebook = async () => {
 
 .problem__submission-href p {
   color: #9480C9;
+}
+
+.problem__submission-datetime {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  height: 100%;
+}
+
+.problem__submission-date {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.problem__submission-time {
+  font-size: 12px;
+  opacity: 0.8;
 }
 
 .problem__submission {
