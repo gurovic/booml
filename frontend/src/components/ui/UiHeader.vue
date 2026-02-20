@@ -22,6 +22,13 @@
           >
             Полигон
           </button>
+          <button
+            type="button"
+            class="header__nav-link"
+            @click="handleProfileClick"
+          >
+            Профиль
+          </button>
         </nav>
 
         <button
@@ -73,6 +80,12 @@ const handlePolygonClick = () => {
 const handleCoursesClick = () => {
   if (router.currentRoute.value.path !== '/courses') {
     router.push('/courses')
+  }
+}
+
+const handleProfileClick = () => {
+  if (router.currentRoute.value.path !== '/profile') {
+    router.push('/profile')
   }
 }
 </script>

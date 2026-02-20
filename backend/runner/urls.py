@@ -61,6 +61,12 @@ from .views.polygon_api import (
     publish_polygon_problem_api,
 )
 from .views.api import start_api
+from .views.profile import (get_my_profile,
+                            get_profile_by_id,
+                            update_avatar,
+                            delete_avatar,
+                            update_profile_info,
+                            )
 
 
 app_name = 'runner'
@@ -175,4 +181,9 @@ urlpatterns = [
     path('backend/csrf-token/', get_csrf_token, name='backend_csrf_token'),
     path('backend/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('backend/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    path('backend/profiles/me/', get_my_profile, name='profile-me'),
+    path('backend/profiles/<int:user_id>/', get_profile_by_id, name='profile-detail'),
+    path('backend/profiles/update-avatar/', update_avatar, name='profile-update-avatar'),
+    path('backend/profiles/delete-avatar/', delete_avatar, name='profile-delete-avatar'),
+    path('backend/profiles/update-info/', update_profile_info, name='profile-update-info'),
 ]
