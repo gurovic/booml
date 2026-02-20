@@ -232,8 +232,8 @@
         }
 
         .dataframe-info {
-            background: #f7f9ff;
-            border: 1px solid #dbe3ff;
+            background: #fff;
+            border: 1px solid #dcdcdc;
             border-radius: 6px;
             padding: 10px 12px;
             font-size: 12px;
@@ -258,7 +258,7 @@
         .dataframe-info th {
             color: #445;
             font-weight: 600;
-            background: #eef2ff;
+            background: #fff;
         }
 
         .df-info-title {
@@ -292,6 +292,7 @@
          data-session-file-upload-url="{% url 'session-file-upload' %}"
          data-session-file-download-url="{% url 'session-file-download' %}"
          data-session-file-preview-url="{% url 'session-file-preview' %}"
+         data-session-file-chart-url="{% url 'session-file-chart' %}"
          data-session-stop-url="{% url 'session-stop' %}"
          data-notebook-device="{{ notebook.compute_device }}"
          data-update-device-url="{% url 'runner:update_notebook_device' notebook.id %}"
@@ -404,6 +405,7 @@
     {% url "session-files" as session_files_url %}
     {% url "session-file-preview" as session_file_preview_url %}
     {% url "session-file-download" as session_file_download_url %}
+    {% url "session-file-chart" as session_file_chart_url %}
     {% url "session-stop" as session_stop_url %}
 
     <script>
@@ -418,6 +420,7 @@
             sessionFilesUrl: '{{ session_files_url|escapejs }}',
             sessionFilePreviewUrl: '{{ session_file_preview_url|escapejs }}',
             sessionFileDownloadUrl: '{{ session_file_download_url|escapejs }}',
+            sessionFileChartUrl: '{{ session_file_chart_url|escapejs }}',
             sessionStopUrl: '{{ session_stop_url|escapejs }}'
         });
         });

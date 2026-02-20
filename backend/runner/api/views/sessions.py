@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import base64
 import csv
+import io
 import logging
+import math
 import shutil
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from django.http import FileResponse, Http404
 from django.shortcuts import get_object_or_404
@@ -33,6 +36,7 @@ from ..serializers import (
     SessionFileDownloadSerializer,
     SessionFileUploadSerializer,
     SessionFilePreviewSerializer,
+    SessionFileChartSerializer,
 )
 
 NOTEBOOK_SESSION_PREFIX = "notebook:"
@@ -42,6 +46,13 @@ MAX_PREVIEW_ROWS = 500
 MAX_PREVIEW_COLS = 200
 MAX_PREVIEW_CELL_CHARS = 2000
 SUPPORTED_PREVIEW_EXTENSIONS = {".csv", ".parquet", ".parq"}
+DEFAULT_CHART_ROWS = 5000
+MAX_CHART_ROWS = 50000
+DEFAULT_CHART_POINTS = 1000
+MAX_CHART_POINTS = 5000
+DEFAULT_CHART_BINS = 20
+DEFAULT_BAR_TOP_N = 30
+MAX_BAR_TOP_N = 200
 
 
 def build_notebook_session_id(notebook_id: int) -> str:
@@ -438,6 +449,93 @@ class SessionFilePreviewView(APIView):
         return Response(payload, status=status.HTTP_200_OK)
 
 
+class SessionFileChartView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        serializer = SessionFileChartSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        session_id = serializer.validated_data["session_id"]
+        relative_path = serializer.validated_data["path"]
+        chart_type = serializer.validated_data.get("chart_type")
+        x_column = _normalize_optional_column(serializer.validated_data.get("x"))
+        y_columns = _normalize_y_columns(serializer.validated_data.get("y"))
+        aggregation = (serializer.validated_data.get("agg") or "mean").lower()
+        delimiter = _normalize_delimiter(serializer.validated_data.get("delimiter"))
+        render_image = bool(serializer.validated_data.get("render_image", True))
+        row_limit = _normalize_chart_row_limit(serializer)
+        max_points = _normalize_chart_max_points(serializer)
+        bins = serializer.validated_data.get("bins") or DEFAULT_CHART_BINS
+        top_n = _normalize_chart_top_n(serializer)
+
+        session = get_session(session_id, touch=False)
+        if session is None:
+            raise Http404("Session not found")
+
+        notebook_id = extract_notebook_id(session_id)
+        if notebook_id is not None:
+            notebook = get_object_or_404(Notebook, pk=notebook_id)
+            ensure_notebook_access(request.user, notebook)
+
+        candidate = (session.workdir / relative_path).resolve()
+        try:
+            candidate.relative_to(session.workdir.resolve())
+        except ValueError:
+            raise Http404("File outside sandbox")
+
+        if not candidate.exists() or not candidate.is_file():
+            raise Http404("File not found")
+
+        ext = candidate.suffix.lower()
+        if ext not in SUPPORTED_PREVIEW_EXTENSIONS:
+            return Response(
+                {"detail": "Unsupported file type for chart"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            frame = _load_chart_dataframe(candidate, delimiter=delimiter, row_limit=row_limit)
+            schema = _build_chart_schema(frame)
+            recommended = _recommend_chart(frame)
+            if not chart_type:
+                return Response(
+                    {
+                        "session_id": session_id,
+                        "path": relative_path,
+                        "format": "csv" if ext == ".csv" else "parquet",
+                        "schema": schema,
+                        "recommended": recommended,
+                    },
+                    status=status.HTTP_200_OK,
+                )
+
+            chart = _build_chart_payload(
+                frame,
+                chart_type=chart_type,
+                x_column=x_column,
+                y_columns=y_columns,
+                aggregation=aggregation,
+                bins=bins,
+                max_points=max_points,
+                top_n=top_n,
+            )
+            chart_image = _render_chart_image(chart) if render_image else None
+        except ChartError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        payload = {
+            "session_id": session_id,
+            "path": relative_path,
+            "format": "csv" if ext == ".csv" else "parquet",
+            "schema": schema,
+            "recommended": recommended,
+            "chart": chart,
+        }
+        if chart_image:
+            payload["chart_image"] = chart_image
+        return Response(payload, status=status.HTTP_200_OK)
+
+
 def _build_session_payload(
     session_id: str,
     session: RuntimeSession | None,
@@ -479,12 +577,31 @@ class PreviewError(ValueError):
     pass
 
 
+class ChartError(ValueError):
+    pass
+
+
 def _normalize_preview_limits(serializer: SessionFilePreviewSerializer) -> tuple[int, int]:
     max_rows = serializer.validated_data.get("max_rows") or DEFAULT_PREVIEW_ROWS
     max_cols = serializer.validated_data.get("max_cols") or DEFAULT_PREVIEW_COLS
     max_rows = min(int(max_rows), MAX_PREVIEW_ROWS)
     max_cols = min(int(max_cols), MAX_PREVIEW_COLS)
     return max_rows, max_cols
+
+
+def _normalize_chart_row_limit(serializer: SessionFileChartSerializer) -> int:
+    raw = serializer.validated_data.get("row_limit") or DEFAULT_CHART_ROWS
+    return min(int(raw), MAX_CHART_ROWS)
+
+
+def _normalize_chart_max_points(serializer: SessionFileChartSerializer) -> int:
+    raw = serializer.validated_data.get("max_points") or DEFAULT_CHART_POINTS
+    return min(int(raw), MAX_CHART_POINTS)
+
+
+def _normalize_chart_top_n(serializer: SessionFileChartSerializer) -> int:
+    raw = serializer.validated_data.get("top_n") or DEFAULT_BAR_TOP_N
+    return min(int(raw), MAX_BAR_TOP_N)
 
 
 def _normalize_delimiter(raw: object) -> str | None:
@@ -654,3 +771,750 @@ def _preview_parquet(path: Path, *, max_rows: int, max_cols: int) -> dict:
         raise PreviewError(
             "Не удалось прочитать Parquet-файл: возможно, он поврежден или имеет неподдерживаемый формат."
         ) from exc
+
+
+def _normalize_optional_column(raw: object) -> str | None:
+    if raw is None:
+        return None
+    text = str(raw).strip()
+    return text or None
+
+
+def _normalize_y_columns(raw: object) -> list[str]:
+    if raw is None:
+        return []
+    if isinstance(raw, str):
+        parts = [item.strip() for item in raw.split(",")]
+    elif isinstance(raw, (list, tuple)):
+        parts = [str(item).strip() for item in raw]
+    else:
+        return []
+    columns: list[str] = []
+    for name in parts:
+        if name and name not in columns:
+            columns.append(name)
+    return columns
+
+
+def _load_chart_dataframe(path: Path, *, delimiter: str | None, row_limit: int):
+    try:
+        import pandas as pd
+    except Exception as exc:  # pragma: no cover - optional dependency
+        raise ChartError("Для построения графиков установите pandas.") from exc
+
+    ext = path.suffix.lower()
+    if ext == ".csv":
+        resolved_delimiter = delimiter
+        if resolved_delimiter is None:
+            with path.open("r", encoding="utf-8", errors="replace", newline="") as handle:
+                sample = _read_csv_sample(handle)
+            resolved_delimiter = _detect_csv_delimiter(sample)
+        try:
+            frame = pd.read_csv(
+                path,
+                sep=resolved_delimiter,
+                engine="python",
+                nrows=row_limit,
+            )
+        except Exception as exc:
+            raise ChartError("Не удалось прочитать CSV для построения графика.") from exc
+        return frame
+
+    if ext in {".parquet", ".parq"}:
+        try:
+            frame = pd.read_parquet(path)
+        except Exception as exc:
+            raise ChartError("Не удалось прочитать Parquet для построения графика.") from exc
+        if len(frame.index) > row_limit:
+            frame = frame.head(row_limit)
+        return frame
+
+    raise ChartError("Unsupported file type for chart")
+
+
+def _build_chart_schema(frame) -> dict[str, object]:
+    columns: list[dict[str, object]] = []
+    numeric: list[str] = []
+    categorical: list[str] = []
+    datetimes: list[str] = []
+    for name in frame.columns:
+        series = frame[name]
+        kind = _column_kind(series)
+        if kind == "numeric":
+            numeric.append(str(name))
+        elif kind == "datetime":
+            datetimes.append(str(name))
+        elif kind in {"categorical", "bool"}:
+            categorical.append(str(name))
+        columns.append(
+            {
+                "name": str(name),
+                "dtype": str(series.dtype),
+                "kind": kind,
+                "non_null": int(series.notna().sum()),
+            }
+        )
+    return {
+        "rows": int(len(frame.index)),
+        "columns": columns,
+        "numeric_columns": numeric,
+        "categorical_columns": categorical,
+        "datetime_columns": datetimes,
+    }
+
+
+def _recommend_chart(frame) -> dict[str, object] | None:
+    numeric = _select_numeric_columns(frame)
+    datetimes = [str(name) for name in frame.columns if _column_kind(frame[name]) == "datetime"]
+    categorical = [
+        str(name)
+        for name in frame.columns
+        if _column_kind(frame[name]) in {"categorical", "bool"}
+    ]
+
+    if datetimes and numeric:
+        return {"chart_type": "line", "x": datetimes[0], "y": [numeric[0]]}
+    if len(numeric) >= 2:
+        return {"chart_type": "scatter", "x": numeric[0], "y": [numeric[1]]}
+    if categorical and numeric:
+        return {"chart_type": "bar", "x": categorical[0], "y": [numeric[0]], "agg": "mean"}
+    if numeric:
+        return {"chart_type": "hist", "y": [numeric[0]], "bins": DEFAULT_CHART_BINS}
+    if categorical:
+        return {"chart_type": "bar", "x": categorical[0], "agg": "count"}
+    return None
+
+
+def _build_chart_payload(
+    frame,
+    *,
+    chart_type: str,
+    x_column: str | None,
+    y_columns: list[str],
+    aggregation: str,
+    bins: int,
+    max_points: int,
+    top_n: int,
+) -> dict[str, object]:
+    if frame.empty:
+        raise ChartError("Набор данных пуст: график строить не из чего.")
+
+    if chart_type == "line":
+        return _build_line_chart(frame, x_column=x_column, y_columns=y_columns, max_points=max_points)
+    if chart_type == "bar":
+        return _build_bar_chart(
+            frame,
+            x_column=x_column,
+            y_columns=y_columns,
+            aggregation=aggregation,
+            top_n=top_n,
+        )
+    if chart_type == "scatter":
+        return _build_scatter_chart(frame, x_column=x_column, y_columns=y_columns, max_points=max_points)
+    if chart_type == "hist":
+        return _build_hist_chart(frame, y_columns=y_columns, bins=bins)
+    if chart_type == "box":
+        return _build_box_chart(frame, y_columns=y_columns)
+    raise ChartError("Unsupported chart type")
+
+
+def _build_line_chart(frame, *, x_column: str | None, y_columns: list[str], max_points: int) -> dict[str, object]:
+    try:
+        import pandas as pd
+    except Exception as exc:  # pragma: no cover - optional dependency
+        raise ChartError("Для построения графиков установите pandas.") from exc
+
+    if x_column and x_column not in frame.columns:
+        raise ChartError(f"Колонка '{x_column}' не найдена.")
+
+    numeric_columns = _select_numeric_columns(frame)
+    if not y_columns:
+        y_columns = [col for col in numeric_columns if col != x_column][:3]
+    if not y_columns:
+        raise ChartError("Для line-графика нужна хотя бы одна числовая колонка y.")
+
+    for name in y_columns:
+        if name not in frame.columns:
+            raise ChartError(f"Колонка '{name}' не найдена.")
+        if name not in numeric_columns:
+            raise ChartError(f"Колонка '{name}' должна быть числовой для line-графика.")
+
+    x_name = x_column or "__index__"
+    x_values = frame.index if x_column is None else frame[x_column]
+    payload_series: list[dict[str, object]] = []
+    for name in y_columns:
+        numeric_y = pd.to_numeric(frame[name], errors="coerce")
+        points: list[dict[str, object]] = []
+        for x_val, y_val in zip(x_values, numeric_y):
+            if _is_missing(y_val):
+                continue
+            points.append({"x": _to_json_scalar(x_val), "y": _to_json_scalar(y_val)})
+        total_points = len(points)
+        points, truncated = _downsample_points(points, max_points=max_points)
+        payload_series.append(
+            {
+                "name": name,
+                "points": points,
+                "total_points": total_points,
+                "truncated": truncated,
+            }
+        )
+
+    return {
+        "type": "line",
+        "x": x_name,
+        "y": y_columns,
+        "series": payload_series,
+    }
+
+
+def _build_scatter_chart(
+    frame,
+    *,
+    x_column: str | None,
+    y_columns: list[str],
+    max_points: int,
+) -> dict[str, object]:
+    try:
+        import pandas as pd
+    except Exception as exc:  # pragma: no cover - optional dependency
+        raise ChartError("Для построения графиков установите pandas.") from exc
+
+    numeric_columns = _select_numeric_columns(frame)
+    if not numeric_columns:
+        raise ChartError("Для scatter-графика нужны как минимум две числовые колонки.")
+
+    if not x_column:
+        x_column = numeric_columns[0]
+    if x_column not in frame.columns:
+        raise ChartError(f"Колонка '{x_column}' не найдена.")
+    if x_column not in numeric_columns:
+        raise ChartError(f"Колонка '{x_column}' должна быть числовой для scatter-графика.")
+
+    if y_columns:
+        y_column = y_columns[0]
+    else:
+        y_candidates = [name for name in numeric_columns if name != x_column]
+        y_column = y_candidates[0] if y_candidates else None
+    if not y_column:
+        raise ChartError("Для scatter-графика нужна вторая числовая колонка.")
+    if y_column not in frame.columns:
+        raise ChartError(f"Колонка '{y_column}' не найдена.")
+    if y_column not in numeric_columns:
+        raise ChartError(f"Колонка '{y_column}' должна быть числовой для scatter-графика.")
+
+    x_series = pd.to_numeric(frame[x_column], errors="coerce")
+    y_series = pd.to_numeric(frame[y_column], errors="coerce")
+    points: list[dict[str, object]] = []
+    for x_val, y_val in zip(x_series, y_series):
+        if _is_missing(x_val) or _is_missing(y_val):
+            continue
+        points.append({"x": _to_json_scalar(x_val), "y": _to_json_scalar(y_val)})
+    total_points = len(points)
+    points, truncated = _downsample_points(points, max_points=max_points)
+    return {
+        "type": "scatter",
+        "x": x_column,
+        "y": [y_column],
+        "series": [
+            {
+                "name": f"{y_column} vs {x_column}",
+                "points": points,
+                "total_points": total_points,
+                "truncated": truncated,
+            }
+        ],
+    }
+
+
+def _build_bar_chart(
+    frame,
+    *,
+    x_column: str | None,
+    y_columns: list[str],
+    aggregation: str,
+    top_n: int,
+) -> dict[str, object]:
+    try:
+        import pandas as pd
+    except Exception as exc:  # pragma: no cover - optional dependency
+        raise ChartError("Для построения графиков установите pandas.") from exc
+
+    if not x_column:
+        raise ChartError("Для bar-графика укажите колонку x.")
+    if x_column not in frame.columns:
+        raise ChartError(f"Колонка '{x_column}' не найдена.")
+
+    if not y_columns:
+        counts = frame[x_column].astype("string").fillna("<null>").value_counts(dropna=False).head(top_n)
+        points = [{"x": _to_json_scalar(idx), "y": int(value)} for idx, value in counts.items()]
+        return {
+            "type": "bar",
+            "x": x_column,
+            "y": ["count"],
+            "agg": "count",
+            "series": [{"name": "count", "points": points}],
+        }
+
+    for name in y_columns:
+        if name not in frame.columns:
+            raise ChartError(f"Колонка '{name}' не найдена.")
+
+    numeric_columns = set(_select_numeric_columns(frame))
+    if aggregation != "count":
+        for name in y_columns:
+            if name not in numeric_columns:
+                raise ChartError(
+                    f"Колонка '{name}' должна быть числовой для agg='{aggregation}' в bar-графике."
+                )
+
+    working = frame[[x_column, *y_columns]].copy()
+    if aggregation != "count":
+        for name in y_columns:
+            working[name] = pd.to_numeric(working[name], errors="coerce")
+    grouped = working.groupby(x_column, dropna=False)[y_columns]
+    if aggregation == "count":
+        aggregated = grouped.count()
+    elif aggregation == "mean":
+        aggregated = grouped.mean()
+    elif aggregation == "sum":
+        aggregated = grouped.sum()
+    elif aggregation == "median":
+        aggregated = grouped.median()
+    elif aggregation == "min":
+        aggregated = grouped.min()
+    elif aggregation == "max":
+        aggregated = grouped.max()
+    else:
+        raise ChartError(f"Неподдерживаемая агрегация '{aggregation}'.")
+
+    if aggregated.empty:
+        raise ChartError("Не удалось построить bar-график: нет данных после агрегации.")
+
+    aggregated = aggregated.reset_index()
+    sort_column = y_columns[0]
+    if sort_column in aggregated.columns:
+        aggregated = aggregated.sort_values(by=sort_column, ascending=False, kind="stable")
+    aggregated = aggregated.head(top_n)
+
+    x_values = aggregated[x_column].tolist()
+    series_payload: list[dict[str, object]] = []
+    for name in y_columns:
+        points = []
+        for x_val, y_val in zip(x_values, aggregated[name]):
+            if _is_missing(y_val):
+                continue
+            points.append({"x": _to_json_scalar(x_val), "y": _to_json_scalar(y_val)})
+        series_payload.append({"name": name, "points": points})
+
+    return {
+        "type": "bar",
+        "x": x_column,
+        "y": y_columns,
+        "agg": aggregation,
+        "series": series_payload,
+    }
+
+
+def _build_hist_chart(frame, *, y_columns: list[str], bins: int) -> dict[str, object]:
+    try:
+        import numpy as np
+        import pandas as pd
+    except Exception as exc:  # pragma: no cover - optional dependency
+        raise ChartError("Для построения графиков установите numpy/pandas.") from exc
+
+    numeric_columns = _select_numeric_columns(frame)
+    if y_columns:
+        target = y_columns[0]
+    else:
+        target = numeric_columns[0] if numeric_columns else None
+    if not target:
+        raise ChartError("Для hist-графика укажите числовую колонку y.")
+    if target not in frame.columns:
+        raise ChartError(f"Колонка '{target}' не найдена.")
+    if target not in numeric_columns:
+        raise ChartError(f"Колонка '{target}' должна быть числовой для hist-графика.")
+
+    values = pd.to_numeric(frame[target], errors="coerce").dropna()
+    if values.empty:
+        raise ChartError(f"В колонке '{target}' нет числовых значений для hist-графика.")
+
+    counts, edges = np.histogram(values.to_numpy(dtype=float), bins=int(bins))
+    buckets = []
+    for idx, count in enumerate(counts):
+        buckets.append(
+            {
+                "start": _to_json_scalar(edges[idx]),
+                "end": _to_json_scalar(edges[idx + 1]),
+                "count": int(count),
+            }
+        )
+    return {"type": "hist", "x": target, "y": ["count"], "bins": int(bins), "series": [{"name": target, "bins": buckets}]}
+
+
+def _build_box_chart(frame, *, y_columns: list[str]) -> dict[str, object]:
+    try:
+        import pandas as pd
+    except Exception as exc:  # pragma: no cover - optional dependency
+        raise ChartError("Для построения графиков установите pandas.") from exc
+
+    numeric_columns = _select_numeric_columns(frame)
+    if not y_columns:
+        y_columns = numeric_columns[:5]
+    if not y_columns:
+        raise ChartError("Для box-графика нужна хотя бы одна числовая колонка y.")
+
+    stats: list[dict[str, object]] = []
+    for name in y_columns:
+        if name not in frame.columns:
+            raise ChartError(f"Колонка '{name}' не найдена.")
+        if name not in numeric_columns:
+            raise ChartError(f"Колонка '{name}' должна быть числовой для box-графика.")
+        values = pd.to_numeric(frame[name], errors="coerce").dropna()
+        if values.empty:
+            continue
+        quantiles = values.quantile([0.25, 0.5, 0.75])
+        stats.append(
+            {
+                "name": name,
+                "count": int(values.count()),
+                "min": _to_json_scalar(values.min()),
+                "q1": _to_json_scalar(quantiles.loc[0.25]),
+                "median": _to_json_scalar(quantiles.loc[0.5]),
+                "q3": _to_json_scalar(quantiles.loc[0.75]),
+                "max": _to_json_scalar(values.max()),
+                "mean": _to_json_scalar(values.mean()),
+            }
+        )
+
+    if not stats:
+        raise ChartError("Для box-графика не найдено подходящих числовых данных.")
+    return {"type": "box", "x": None, "y": y_columns, "series": stats}
+
+
+def _select_numeric_columns(frame) -> list[str]:
+    columns: list[str] = []
+    for name in frame.columns:
+        if _column_kind(frame[name]) == "numeric":
+            columns.append(str(name))
+    return columns
+
+
+def _column_kind(series) -> str:
+    kind = getattr(series.dtype, "kind", None)
+    dtype_text = str(series.dtype).lower()
+    if kind in {"i", "u", "f", "c"}:
+        return "numeric"
+    if kind in {"M", "m"} or dtype_text.startswith("datetime"):
+        return "datetime"
+    if dtype_text in {"bool", "boolean"}:
+        return "bool"
+    if dtype_text in {"object", "string", "category"}:
+        return "categorical"
+    return "other"
+
+
+def _downsample_points(points: list[dict[str, object]], *, max_points: int) -> tuple[list[dict[str, object]], bool]:
+    if len(points) <= max_points:
+        return points, False
+    step = max(1, math.ceil(len(points) / max_points))
+    reduced = points[::step]
+    if reduced and reduced[-1] != points[-1]:
+        reduced.append(points[-1])
+    if len(reduced) > max_points:
+        reduced = reduced[:max_points]
+    return reduced, True
+
+
+def _is_missing(value: object) -> bool:
+    if value is None:
+        return True
+    try:
+        import pandas as pd
+    except Exception:
+        pd = None
+    if pd is not None:
+        try:
+            return bool(pd.isna(value))
+        except Exception:
+            pass
+    if isinstance(value, float):
+        return math.isnan(value) or math.isinf(value)
+    try:
+        return bool(value != value)
+    except Exception:
+        return False
+
+
+def _to_json_scalar(value: Any) -> Any:
+    if _is_missing(value):
+        return None
+
+    if hasattr(value, "item"):
+        try:
+            value = value.item()
+        except Exception:
+            pass
+
+    if isinstance(value, float):
+        if math.isnan(value) or math.isinf(value):
+            return None
+        return float(value)
+    if isinstance(value, (bool, int, str)):
+        return value
+
+    isoformat = getattr(value, "isoformat", None)
+    if callable(isoformat):
+        try:
+            return isoformat()
+        except Exception:
+            pass
+
+    return str(value)
+
+
+def _render_chart_image(chart: dict[str, object]) -> str:
+    try:
+        import matplotlib
+
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+    except Exception as exc:  # pragma: no cover - optional dependency
+        raise ChartError("Для рендера графиков установите matplotlib.") from exc
+
+    fig, axis = plt.subplots(figsize=(8, 4.8))
+    try:
+        chart_type = str(chart.get("type") or "").strip().lower()
+        if chart_type == "line":
+            _render_line_chart_image(axis, chart)
+        elif chart_type == "scatter":
+            _render_scatter_chart_image(axis, chart)
+        elif chart_type == "bar":
+            _render_bar_chart_image(axis, chart)
+        elif chart_type == "hist":
+            _render_hist_chart_image(axis, chart)
+        elif chart_type == "box":
+            _render_box_chart_image(axis, chart)
+        else:
+            raise ChartError("Неподдерживаемый тип графика для рендера.")
+
+        axis.grid(True, alpha=0.25)
+        fig.tight_layout()
+        buffer = io.BytesIO()
+        fig.savefig(buffer, format="png", dpi=130)
+        encoded = base64.b64encode(buffer.getvalue()).decode("ascii")
+        return f"data:image/png;base64,{encoded}"
+    except ChartError:
+        raise
+    except Exception as exc:
+        raise ChartError("Не удалось построить изображение графика.") from exc
+    finally:
+        plt.close(fig)
+
+
+def _render_line_chart_image(axis, chart: dict[str, object]) -> None:
+    series = chart.get("series") or []
+    if not isinstance(series, list) or not series:
+        raise ChartError("Недостаточно данных для line-графика.")
+
+    for item in series:
+        if not isinstance(item, dict):
+            continue
+        points = item.get("points") or []
+        if not isinstance(points, list):
+            continue
+        xs = []
+        ys = []
+        for point in points:
+            if not isinstance(point, dict):
+                continue
+            y_value = _safe_float(point.get("y"))
+            if y_value is None:
+                continue
+            xs.append(_coerce_axis_value(point.get("x")))
+            ys.append(y_value)
+        if not ys:
+            continue
+        label = str(item.get("name") or "")
+        axis.plot(xs, ys, marker="o", linewidth=1.7, markersize=3.5, label=label or None)
+
+    axis.set_title("Line chart")
+    axis.set_xlabel(str(chart.get("x") or "x"))
+    axis.set_ylabel(", ".join(chart.get("y") or []) or "value")
+    if len(series) > 1:
+        axis.legend(loc="best")
+
+
+def _render_scatter_chart_image(axis, chart: dict[str, object]) -> None:
+    series = chart.get("series") or []
+    if not isinstance(series, list) or not series:
+        raise ChartError("Недостаточно данных для scatter-графика.")
+
+    for item in series:
+        if not isinstance(item, dict):
+            continue
+        points = item.get("points") or []
+        if not isinstance(points, list):
+            continue
+        xs = []
+        ys = []
+        for point in points:
+            if not isinstance(point, dict):
+                continue
+            x_value = _safe_float(point.get("x"))
+            y_value = _safe_float(point.get("y"))
+            if x_value is None or y_value is None:
+                continue
+            xs.append(x_value)
+            ys.append(y_value)
+        if not xs:
+            continue
+        label = str(item.get("name") or "")
+        axis.scatter(xs, ys, s=18, alpha=0.85, label=label or None)
+
+    axis.set_title("Scatter chart")
+    axis.set_xlabel(str(chart.get("x") or "x"))
+    y_labels = chart.get("y") or []
+    axis.set_ylabel(str(y_labels[0]) if isinstance(y_labels, list) and y_labels else "y")
+    if len(series) > 1:
+        axis.legend(loc="best")
+
+
+def _render_bar_chart_image(axis, chart: dict[str, object]) -> None:
+    series = chart.get("series") or []
+    if not isinstance(series, list) or not series:
+        raise ChartError("Недостаточно данных для bar-графика.")
+
+    labels: list[str] = []
+    for item in series:
+        if not isinstance(item, dict):
+            continue
+        points = item.get("points") or []
+        if not isinstance(points, list):
+            continue
+        for point in points:
+            if not isinstance(point, dict):
+                continue
+            x_value = str(point.get("x"))
+            if x_value not in labels:
+                labels.append(x_value)
+    if not labels:
+        raise ChartError("Недостаточно данных для bar-графика.")
+
+    positions = list(range(len(labels)))
+    width = 0.8 / max(1, len(series))
+    for idx, item in enumerate(series):
+        if not isinstance(item, dict):
+            continue
+        points = item.get("points") or []
+        point_map: dict[str, float] = {}
+        if isinstance(points, list):
+            for point in points:
+                if not isinstance(point, dict):
+                    continue
+                y_value = _safe_float(point.get("y"))
+                if y_value is None:
+                    continue
+                point_map[str(point.get("x"))] = y_value
+        values = [point_map.get(label, 0.0) for label in labels]
+        offset = (idx - (len(series) - 1) / 2.0) * width
+        shifted = [pos + offset for pos in positions]
+        label = str(item.get("name") or "")
+        axis.bar(shifted, values, width=width, label=label or None)
+
+    axis.set_title("Bar chart")
+    axis.set_xlabel(str(chart.get("x") or "x"))
+    axis.set_ylabel(", ".join(chart.get("y") or []) or "value")
+    axis.set_xticks(positions)
+    axis.set_xticklabels(labels, rotation=30, ha="right")
+    if len(series) > 1:
+        axis.legend(loc="best")
+
+
+def _render_hist_chart_image(axis, chart: dict[str, object]) -> None:
+    series = chart.get("series") or []
+    if not isinstance(series, list) or not series:
+        raise ChartError("Недостаточно данных для hist-графика.")
+    first = series[0] if isinstance(series[0], dict) else {}
+    buckets = first.get("bins") or []
+    if not isinstance(buckets, list) or not buckets:
+        raise ChartError("Недостаточно данных для hist-графика.")
+
+    starts = []
+    widths = []
+    counts = []
+    for bucket in buckets:
+        if not isinstance(bucket, dict):
+            continue
+        start = _safe_float(bucket.get("start"))
+        end = _safe_float(bucket.get("end"))
+        count = _safe_float(bucket.get("count"))
+        if start is None or end is None or count is None:
+            continue
+        starts.append(start)
+        widths.append(max(end - start, 1e-9))
+        counts.append(count)
+    if not starts:
+        raise ChartError("Недостаточно данных для hist-графика.")
+
+    axis.bar(starts, counts, width=widths, align="edge", edgecolor="#ffffff", linewidth=0.8, alpha=0.85)
+    axis.set_title("Histogram")
+    axis.set_xlabel(str(chart.get("x") or "value"))
+    axis.set_ylabel("count")
+
+
+def _render_box_chart_image(axis, chart: dict[str, object]) -> None:
+    series = chart.get("series") or []
+    if not isinstance(series, list) or not series:
+        raise ChartError("Недостаточно данных для box-графика.")
+
+    bxp_stats = []
+    for item in series:
+        if not isinstance(item, dict):
+            continue
+        q1 = _safe_float(item.get("q1"))
+        q3 = _safe_float(item.get("q3"))
+        med = _safe_float(item.get("median"))
+        whislo = _safe_float(item.get("min"))
+        whishi = _safe_float(item.get("max"))
+        mean = _safe_float(item.get("mean"))
+        if None in (q1, q3, med, whislo, whishi):
+            continue
+        bxp_stats.append(
+            {
+                "label": str(item.get("name") or ""),
+                "q1": q1,
+                "q3": q3,
+                "med": med,
+                "whislo": whislo,
+                "whishi": whishi,
+                "mean": mean if mean is not None else med,
+            }
+        )
+    if not bxp_stats:
+        raise ChartError("Недостаточно данных для box-графика.")
+
+    axis.bxp(bxp_stats, showmeans=True)
+    axis.set_title("Box plot")
+    axis.set_ylabel("value")
+
+
+def _safe_float(value: object) -> float | None:
+    if value is None:
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    if math.isnan(number) or math.isinf(number):
+        return None
+    return number
+
+
+def _coerce_axis_value(value: object) -> object:
+    numeric = _safe_float(value)
+    if numeric is not None:
+        return numeric
+    if value is None:
+        return ""
+    return str(value)
