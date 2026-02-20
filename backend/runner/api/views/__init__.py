@@ -8,6 +8,7 @@ from .sessions import (
     SessionFileDownloadView,
     SessionFileUploadView,
     SessionFilePreviewView,
+    SessionFileChartView,
     build_notebook_session_id,
     extract_notebook_id,
     ensure_notebook_access,

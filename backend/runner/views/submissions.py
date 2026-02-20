@@ -10,7 +10,7 @@ def _primary_metric(metrics):
     if isinstance(metrics, (int, float)):
         return float(metrics)
     if isinstance(metrics, dict):
-        for key in ("metric", "score", "accuracy", "f1", "auc"):
+        for key in ("score_100", "metric_score", "metric", "score", "accuracy", "f1", "auc"):
             if key in metrics:
                 try:
                     return float(metrics[key])

@@ -10,32 +10,16 @@ from django.shortcuts import get_object_or_404
 from django.utils import timezone
 
 from ..models import Contest, CourseParticipant, ProblemDescriptor, Submission
-from .submissions import _primary_metric
-
-
-_VALID_STATUSES = {Submission.STATUS_ACCEPTED, Submission.STATUS_VALIDATED}
-_LOWER_IS_BETTER_HINTS = (
-    "mse",
-    "rmse",
-    "mae",
-    "mape",
-    "smape",
-    "msle",
-    "rmsle",
-    "logloss",
-    "log_loss",
-    "loss",
-    "error",
+from ..services.problem_scoring import (
+    default_curve_p,
+    extract_raw_metric,
+    extract_score_100,
+    resolve_score_spec,
+    score_from_raw,
 )
 
 
-def _metric_is_lower_better(metric_name: str | None) -> bool:
-    name = (metric_name or "").strip().lower()
-    if not name:
-        return False
-    return any(hint in name for hint in _LOWER_IS_BETTER_HINTS)
-
-
+_VALID_STATUSES = {Submission.STATUS_ACCEPTED, Submission.STATUS_VALIDATED}
 def _coerce_metric(value: Any) -> float | None:
     if value is None:
         return None
@@ -45,15 +29,28 @@ def _coerce_metric(value: Any) -> float | None:
         return None
 
 
-def _extract_metric_value(metrics: Any, preferred_key: str | None) -> float | None:
-    if metrics is None:
+def _extract_score_value(metrics: Any, settings: Dict[str, Any]) -> float | None:
+    stored_score = extract_score_100(metrics)
+    if stored_score is not None:
+        return stored_score
+
+    metric_name = settings.get("metric") or "metric"
+    raw_metric = extract_raw_metric(metrics, metric_name=metric_name)
+    if raw_metric is None:
         return None
-    if isinstance(metrics, dict) and preferred_key:
-        value = metrics.get(preferred_key)
-        metric = _coerce_metric(value)
-        if metric is not None:
-            return metric
-    return _coerce_metric(_primary_metric(metrics))
+
+    score_spec = settings["score_spec"]
+    reference_metric = settings.get("reference_metric")
+    curve_p = settings.get("curve_p")
+    score_100, _ = score_from_raw(
+        raw_metric,
+        metric_name=metric_name,
+        direction=score_spec.direction,
+        ideal=score_spec.ideal,
+        reference=reference_metric,
+        curve_p=curve_p,
+    )
+    return _coerce_metric(score_100)
 
 
 def _is_better(
@@ -61,14 +58,7 @@ def _is_better(
     candidate_at: datetime | None,
     current: float,
     current_at: datetime | None,
-    lower_is_better: bool,
 ) -> bool:
-    if lower_is_better:
-        if candidate < current:
-            return True
-        if candidate == current and candidate_at and current_at:
-            return candidate_at < current_at
-        return False
     if candidate > current:
         return True
     if candidate == current and candidate_at and current_at:
@@ -126,9 +116,27 @@ def _build_contest_leaderboard_data(contest: Contest) -> Dict[str, Any]:
                 metric_name = (descriptor.metric or descriptor.metric_name or "").strip()
             if not metric_name:
                 metric_name = "metric"
+            score_spec = resolve_score_spec(
+                metric_name,
+                descriptor_direction=getattr(descriptor, "score_direction", "") if descriptor else "",
+                descriptor_ideal=getattr(descriptor, "score_ideal_metric", None) if descriptor else None,
+            )
+            reference_metric = None
+            curve_p = None
+            if descriptor is not None:
+                cached_reference = getattr(descriptor, "score_reference_metric", None)
+                if isinstance(cached_reference, (int, float)):
+                    reference_metric = float(cached_reference)
+                    stored_p = getattr(descriptor, "score_curve_p", None)
+                    if isinstance(stored_p, (int, float)):
+                        curve_p = float(stored_p)
+                    else:
+                        curve_p = default_curve_p(score_spec.direction)
             problem_settings[problem.id] = {
                 "metric": metric_name,
-                "lower_is_better": _metric_is_lower_better(metric_name),
+                "score_spec": score_spec,
+                "reference_metric": reference_metric,
+                "curve_p": curve_p,
             }
 
     attempts: Dict[Tuple[int, int], int] = defaultdict(int)
@@ -179,19 +187,18 @@ def _build_contest_leaderboard_data(contest: Contest) -> Dict[str, Any]:
             settings = problem_settings.get(row["problem_id"])
             if settings is None:
                 continue
-            metric = _extract_metric_value(row["metrics"], settings["metric"])
-            if metric is None:
+            score_100 = _extract_score_value(row["metrics"], settings)
+            if score_100 is None:
                 continue
             current = best_results.get(key)
             if current is None or _is_better(
-                metric,
+                score_100,
                 submitted_at,
-                current["metric"],
+                current["score_100"],
                 current["submitted_at"],
-                settings["lower_is_better"],
             ):
                 best_results[key] = {
-                    "metric": metric,
+                    "score_100": score_100,
                     "submission_id": row["id"],
                     "submitted_at": submitted_at,
                 }
@@ -224,7 +231,15 @@ def build_contest_problem_leaderboards(
 
     leaderboards: List[Dict[str, Any]] = []
     for problem in problems:
-        settings = problem_settings.get(problem.id, {"metric": "metric", "lower_is_better": False})
+        settings = problem_settings.get(
+            problem.id,
+            {
+                "metric": "metric",
+                "score_spec": resolve_score_spec("metric"),
+                "reference_metric": None,
+                "curve_p": None,
+            },
+        )
         entries: List[Dict[str, Any]] = []
         for participant in participants:
             key = (problem.id, participant["id"])
@@ -236,24 +251,23 @@ def build_contest_problem_leaderboards(
                     "role": participant.get("role"),
                     "is_owner": participant.get("is_owner", False),
                     "attempts": attempts.get(key, 0),
-                    "best_metric": best["metric"] if best else None,
+                    "best_score": best["score_100"] if best else None,
+                    "best_metric": best["score_100"] if best else None,
                     "best_submission_id": best["submission_id"] if best else None,
                     "best_submitted_at": best["submitted_at"] if best else None,
                 }
             )
 
-        lower_is_better = settings["lower_is_better"]
         now = timezone.now()
         fallback_time = datetime.max.replace(tzinfo=now.tzinfo) if timezone.is_aware(now) else datetime.max
 
         def _sort_key(entry: Dict[str, Any]) -> Tuple[int, float, datetime, int]:
-            metric = entry["best_metric"]
-            if metric is None:
+            best_score = entry["best_score"]
+            if best_score is None:
                 return (1, 0.0, fallback_time, entry["user_id"])
-            metric_value = metric if lower_is_better else -metric
             return (
                 0,
-                metric_value,
+                -best_score,
                 entry["best_submitted_at"] or fallback_time,
                 entry["user_id"],
             )
@@ -261,15 +275,15 @@ def build_contest_problem_leaderboards(
         entries.sort(key=_sort_key)
 
         rank = 0
-        last_metric = None
+        last_score = None
         for entry in entries:
-            metric = entry["best_metric"]
-            if metric is None:
+            best_score = entry["best_score"]
+            if best_score is None:
                 entry["rank"] = None
             else:
-                if last_metric is None or metric != last_metric:
+                if last_score is None or best_score != last_score:
                     rank += 1
-                    last_metric = metric
+                    last_score = best_score
                 entry["rank"] = rank
             if entry["best_submitted_at"] is not None:
                 entry["best_submitted_at"] = entry["best_submitted_at"].isoformat()
@@ -278,8 +292,8 @@ def build_contest_problem_leaderboards(
             {
                 "problem_id": problem.id,
                 "problem_title": problem.title,
-                "metric": settings["metric"],
-                "lower_is_better": lower_is_better,
+                "metric": "points",
+                "lower_is_better": False,
                 "entries": entries,
             }
         )
@@ -347,10 +361,7 @@ def build_contest_overall_leaderboard(
                 if best is None:
                     continue
                 solved_count += 1
-                settings = problem_settings.get(problem.id, {"lower_is_better": False})
-                metric = best["metric"]
-                score = -metric if settings["lower_is_better"] else metric
-                total_score += score
+                total_score += float(best["score_100"])
                 if best["submitted_at"] is not None:
                     last_time = best["submitted_at"] if last_time is None else max(last_time, best["submitted_at"])
             if contest.scoring == Contest.Scoring.PARTIAL and problems:

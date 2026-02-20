@@ -14,6 +14,28 @@ class ProblemDescriptor(models.Model):
     check_order = models.BooleanField(default=False)
     metric_name = models.CharField(max_length=100, default="rmse")
     metric_code = models.TextField(blank=True, default="")
+    score_curve_p = models.FloatField(
+        null=True,
+        blank=True,
+        help_text="Curve coefficient for nonlinear score mapping (higher -> faster growth far from ideal).",
+    )
+    score_direction = models.CharField(
+        max_length=10,
+        choices=[("maximize", "Maximize"), ("minimize", "Minimize")],
+        blank=True,
+        default="",
+        help_text="Optional manual scoring direction for custom metrics.",
+    )
+    score_ideal_metric = models.FloatField(
+        null=True,
+        blank=True,
+        help_text="Optional manual ideal raw metric value for custom metrics.",
+    )
+    score_reference_metric = models.FloatField(
+        null=True,
+        blank=True,
+        help_text="Cached raw metric of sample submission used as nonlinear reference.",
+    )
 
     created_at = models.DateTimeField(default=timezone.now)
     updated_at = models.DateTimeField(auto_now=True)

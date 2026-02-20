@@ -38,6 +38,7 @@ class NotebookSessionAPITests(TestCase):
         self.download_url = reverse("session-file-download")
         self.upload_url = reverse("session-file-upload")
         self.preview_url = reverse("session-file-preview")
+        self.chart_url = reverse("session-file-chart")
         _sessions.clear()
 
     def tearDown(self):
@@ -265,6 +266,103 @@ class NotebookSessionAPITests(TestCase):
         resp = self.client.get(f"{self.preview_url}?session_id={session_id}&path=sample.csv")
 
         self.assertEqual(resp.status_code, HTTPStatus.NOT_FOUND)
+
+    def test_session_file_chart_schema_and_recommendation(self):
+        session_id = f"notebook:{self.notebook.id}"
+        session = create_session(session_id)
+        csv_path = session.workdir / "sample.csv"
+        csv_path.write_text("x,y,cat\n1,10,a\n2,11,b\n3,12,a\n", encoding="utf-8")
+
+        resp = self.client.post(
+            self.chart_url,
+            {"session_id": session_id, "path": "sample.csv"},
+            content_type="application/json",
+        )
+
+        self.assertEqual(resp.status_code, HTTPStatus.OK)
+        data = resp.json()
+        self.assertIn("schema", data)
+        self.assertEqual(data["schema"]["numeric_columns"], ["x", "y"])
+        self.assertIsNotNone(data.get("recommended"))
+        self.assertEqual(data["recommended"]["chart_type"], "scatter")
+
+    def test_session_file_chart_bar_with_aggregation(self):
+        session_id = f"notebook:{self.notebook.id}"
+        session = create_session(session_id)
+        csv_path = session.workdir / "scores.csv"
+        csv_path.write_text(
+            "city,score,attempts\nMoscow,10,1\nMoscow,20,2\nSPB,5,3\n",
+            encoding="utf-8",
+        )
+
+        resp = self.client.post(
+            self.chart_url,
+            {
+                "session_id": session_id,
+                "path": "scores.csv",
+                "chart_type": "bar",
+                "x": "city",
+                "y": ["score"],
+                "agg": "mean",
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(resp.status_code, HTTPStatus.OK)
+        data = resp.json()
+        chart = data.get("chart") or {}
+        self.assertEqual(chart.get("type"), "bar")
+        self.assertTrue((data.get("chart_image") or "").startswith("data:image/png;base64,"))
+        series = chart.get("series") or []
+        self.assertTrue(series)
+        values = {item["x"]: item["y"] for item in series[0]["points"]}
+        self.assertEqual(values["Moscow"], 15.0)
+        self.assertEqual(values["SPB"], 5.0)
+
+    def test_session_file_chart_hist(self):
+        session_id = f"notebook:{self.notebook.id}"
+        session = create_session(session_id)
+        csv_path = session.workdir / "hist.csv"
+        csv_path.write_text("score\n1\n2\n3\n4\n5\n", encoding="utf-8")
+
+        resp = self.client.post(
+            self.chart_url,
+            {
+                "session_id": session_id,
+                "path": "hist.csv",
+                "chart_type": "hist",
+                "y": ["score"],
+                "bins": 4,
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(resp.status_code, HTTPStatus.OK)
+        data = resp.json()
+        chart = data.get("chart") or {}
+        self.assertEqual(chart.get("type"), "hist")
+        self.assertTrue((data.get("chart_image") or "").startswith("data:image/png;base64,"))
+        bins = (chart.get("series") or [{}])[0].get("bins") or []
+        self.assertEqual(len(bins), 4)
+        self.assertEqual(sum(item["count"] for item in bins), 5)
+
+    def test_session_file_chart_forbidden_for_other_user(self):
+        session_id = f"notebook:{self.notebook.id}"
+        session = create_session(session_id)
+        csv_path = session.workdir / "sample.csv"
+        csv_path.write_text("x,y\n1,2\n", encoding="utf-8")
+
+        other = User.objects.create_user(username="chart_other", password="pass123")
+        self.client.logout()
+        self.client.login(username="chart_other", password="pass123")
+
+        resp = self.client.post(
+            self.chart_url,
+            {"session_id": session_id, "path": "sample.csv"},
+            content_type="application/json",
+        )
+
+        self.assertEqual(resp.status_code, HTTPStatus.FORBIDDEN)
 
     @unittest.skipUnless(
         importlib.util.find_spec("pyarrow") is not None,

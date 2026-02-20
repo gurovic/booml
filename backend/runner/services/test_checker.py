@@ -108,7 +108,7 @@ class TestChecker(unittest.TestCase):
             self.assertIn('metric_name', result.outputs)
             self.assertEqual(result.outputs['metric_name'], 'accuracy')
             self.assertEqual(result.errors, '')
-            mock_broadcast.assert_called_once_with(1, 'accuracy', 0.76)
+            mock_broadcast.assert_called_once_with(1, 'accuracy', result.outputs["metric_score"])
             self.mock_submission.save.assert_called_once()
             self.assertIn('metric', self.mock_submission.metrics)
             
@@ -242,7 +242,7 @@ class TestChecker(unittest.TestCase):
         
         self.assertIsInstance(result, CheckResult)
         self.assertTrue(result.ok)
-        mock_broadcast.assert_called_once_with(1, 'accuracy', 0.91)
+        mock_broadcast.assert_called_once_with(1, 'accuracy', result.outputs["metric_score"])
 
     @patch('runner.services.checker.broadcast_metric_update')
     @patch('runner.services.checker.ReportGenerator')
@@ -276,7 +276,7 @@ class TestChecker(unittest.TestCase):
                 self.assertTrue(result.ok)
                 self.assertEqual(result.outputs['metric_name'], metric_name)
                 self.assertIsInstance(result.outputs['metric_score'], float)
-                mock_broadcast.assert_called_once_with(1, metric_name, 0.55)
+                mock_broadcast.assert_called_once_with(1, metric_name, result.outputs["metric_score"])
                 mock_broadcast.reset_mock()
 
     @patch('runner.services.checker.broadcast_metric_update')
@@ -304,7 +304,7 @@ class TestChecker(unittest.TestCase):
         self.assertTrue(result.ok)
         self.assertEqual(result.outputs['metric_name'], 'macro_iou')
         self.assertIn('macro_iou', self.mock_submission.metrics)
-        mock_broadcast.assert_called_once_with(1, 'macro_iou', 0.42)
+        mock_broadcast.assert_called_once_with(1, 'macro_iou', result.outputs["metric_score"])
 
     @patch('runner.services.checker.broadcast_metric_update')
     @patch('runner.services.checker.ReportGenerator')
@@ -341,8 +341,8 @@ class TestChecker(unittest.TestCase):
 
         self.assertTrue(result.ok)
         self.assertEqual(result.outputs["metric_name"], "csv_match")
-        self.assertEqual(result.outputs["metric_score"], 1.0)
-        mock_broadcast.assert_called_once_with(1, "csv_match", 1.0)
+        self.assertEqual(result.outputs["metric_score"], 100.0)
+        mock_broadcast.assert_called_once_with(1, "csv_match", 100.0)
 
     @patch('runner.services.checker.broadcast_metric_update')
     @patch('runner.services.checker.ReportGenerator')
