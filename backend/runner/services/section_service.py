@@ -6,6 +6,7 @@ from django.contrib.auth import get_user_model
 from django.db import transaction
 
 from ..models import Section
+from .user_access import is_platform_admin
 
 User = get_user_model()
 
@@ -66,7 +67,12 @@ def create_section(payload: SectionCreateInput) -> Section:
     if payload.parent is None and payload.title not in ROOT_SECTION_TITLES:
         raise ValueError("Root sections must be one of the predefined categories")
     if payload.parent is not None:
-        if not is_root_section(payload.parent) and payload.parent.owner_id != payload.owner.pk:
+        can_admin_everywhere = is_platform_admin(payload.owner)
+        if (
+            not can_admin_everywhere
+            and not is_root_section(payload.parent)
+            and payload.parent.owner_id != payload.owner.pk
+        ):
             raise ValueError("Only section owner can create nested sections")
         _ensure_no_cycles(payload.parent, child_id=None)
     if payload.parent is None and Section.objects.filter(

@@ -10,6 +10,7 @@ from rest_framework.views import APIView
 from ...models import Course, CourseParticipant, FavoriteCourse, Section
 from ...services import add_users_to_course
 from ...services.section_service import ROOT_SECTION_TITLES, is_root_section, root_section_order_key
+from ...services.user_access import is_platform_admin
 from ..serializers import (
     CourseCreateSerializer,
     CourseParticipantSummarySerializer,
@@ -36,7 +37,11 @@ def _build_section_tree(sections, courses, favorite_positions=None, *, user=None
         return sorted(items, key=lambda item: item.title.lower())
 
     section_teacher_ids = section_teacher_ids or set()
-    is_admin = bool(user and getattr(user, "is_authenticated", False) and (user.is_staff or user.is_superuser))
+    is_admin = bool(
+        user
+        and getattr(user, "is_authenticated", False)
+        and (is_platform_admin(user) or user.is_staff or user.is_superuser)
+    )
 
     def build(section):
         child_nodes = []
@@ -115,7 +120,7 @@ class CourseParticipantsUpdateView(generics.GenericAPIView):
     lookup_url_kwarg = "course_id"
 
     """
-    Allow course owner to add or update participants.
+    Allow course owner (or platform admin) to add or update participants.
     """
 
     def post(self, request, *args, **kwargs):
@@ -148,6 +153,8 @@ class CourseParticipantsUpdateView(generics.GenericAPIView):
         return get_object_or_404(Course, pk=course_id)
 
     def _ensure_owner(self, user, course: Course) -> None:
+        if is_platform_admin(user):
+            return
         if course.owner_id != user.id:
             raise PermissionDenied("Only course owner can manage course participants")
 
@@ -167,7 +174,9 @@ class CourseTreeView(APIView):
 
         sections = list(Section.objects.select_related("parent", "owner").all())
         courses_qs = Course.objects.select_related("section", "owner").all()
-        is_admin = request.user.is_staff or request.user.is_superuser
+        is_admin = bool(
+            is_platform_admin(request.user) or request.user.is_staff or request.user.is_superuser
+        )
 
         section_teacher_ids = set()
         if request.user.is_authenticated and not is_admin:
@@ -254,7 +263,7 @@ class CourseBrowseView(APIView):
         page_size = min(max(page_size, 1), 50)
 
         user = request.user
-        is_admin = bool(user.is_staff or user.is_superuser)
+        is_admin = bool(is_platform_admin(user) or user.is_staff or user.is_superuser)
 
         # Favorite flag for star UI.
         fav_exists = Exists(
@@ -386,7 +395,8 @@ class SectionCreateView(generics.CreateAPIView):
 
 class SectionDeleteView(generics.GenericAPIView):
     """
-    Delete a section subtree (non-root only). Allowed only for the section owner.
+    Delete a section subtree (non-root only). Allowed for the section owner
+    or platform admin.
 
     Deletes:
     - the section
@@ -403,7 +413,7 @@ class SectionDeleteView(generics.GenericAPIView):
 
         if is_root_section(section):
             raise PermissionDenied("Root sections cannot be deleted")
-        if section.owner_id != request.user.id:
+        if section.owner_id != request.user.id and not is_platform_admin(request.user):
             raise PermissionDenied("Only section owner can delete section")
 
         from django.db import transaction
