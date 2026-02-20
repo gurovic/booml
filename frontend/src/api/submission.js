@@ -17,10 +17,16 @@ async function fetchJsonWithFriendlyErrors(url, options = {}) {
   return await res.json()
 }
 
-export async function submitSolution(problemId, file) {
+export async function submitSolution(problemId, payload = {}) {
+  const { file = null, rawText = '' } = payload
   const formData = new FormData()
   formData.append('problem_id', problemId)
-  formData.append('file', file)
+  if (file) {
+    formData.append('file', file)
+  }
+  if (typeof rawText === 'string' && rawText.length > 0) {
+    formData.append('raw_text', rawText)
+  }
 
   const csrftoken = await ensureCsrfToken()
   return await fetchJsonWithFriendlyErrors('/api/submissions/', {

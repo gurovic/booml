@@ -6,21 +6,9 @@
   <div class="problem">
     <div class="container">
       <div v-if="problem != null" class="problem__inner">
-        <nav v-if="contestProblemItems.length > 0" class="problem__selection_menu" aria-label="Выбор задачи">
-          <router-link
-            v-for="item in contestProblemItems"
-            :key="item.id"
-            :to="item.route"
-            class="problem__selection_item"
-            :class="{ 'is-selected': item.isCurrent }"
-            :aria-current="item.isCurrent ? 'page' : undefined"
-          >
-            {{ item.label }}
-          </router-link>
-        </nav>
         <div class="problem__content">
           <h1 class="problem__name">
-            <span v-if="contestProblemLabel" class="problem__contest-label">Задача {{ contestProblemLabel }}</span>
+            <span v-if="contestProblemLabel" class="problem__contest-label">Problem {{ contestProblemLabel }}</span>
             <span class="problem__title-text">{{ problem.title }}</span>
             <UiIdPill v-if="problem?.id" class="problem__id" :id="problem.id" title="ID задачи" />
           </h1>
@@ -33,13 +21,13 @@
               <li
                 class="problem__file"
                 v-for="file in availableFiles"
-                :key="`${file.kind}:${file.name}`"
+                :key="file.key"
               >
                 <a
                   class="problem__file-href button button--secondary"
                   :href="file.url"
-                  :download="file.name"
-                >{{ file.name }}</a>
+                  :download="file.downloadName"
+                >{{ file.downloadName }}</a>
             </li>
             </ul>
           </li>
@@ -66,6 +54,7 @@
           <li class="problem__submit problem__menu-item" v-if="userStore.isAuthenticated">
             <h2 class="problem__submit-title problem__item-title">Отправить решение</h2>
             <div class="problem__submit-form">
+              <p class="problem__submit-hint">Выберите один способ: файл или вставка CSV-текста</p>
               <input 
                 type="file" 
                 :key="fileInputKey"
@@ -78,9 +67,17 @@
                 <span v-if="!selectedFile">Выбрать файл</span>
                 <span v-else>{{ selectedFile.name }}</span>
               </label>
+              <textarea
+                v-model="textSubmission"
+                class="problem__text-input"
+                placeholder="Или вставьте CSV прямо сюда, например:
+id,pred
+1,0.42
+2,0.75"
+              ></textarea>
               <button 
                 @click="handleSubmit"
-                :disabled="!selectedFile || isSubmitting"
+                :disabled="!canSubmit || isSubmitting"
                 class="problem__submit-button button button--primary"
               >
                 <span v-if="!isSubmitting">Отправить</span>
@@ -133,7 +130,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed, watch } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { contestApi } from '@/api'
 import { getProblem } from '@/api/problem'
@@ -158,13 +155,13 @@ const userStore = useUserStore()
 
 let problem = ref(null)
 let selectedFile = ref(null)
+let textSubmission = ref('')
 let isSubmitting = ref(false)
 let submitMessage = ref(null)
 let fileInputKey = ref(0)
 let isCreatingNotebook = ref(false)
 let notebookMessage = ref(null)
 const contestProblemLabel = ref('')
-const contestProblems = ref([])
 
 const stripLeadingH1 = (statement) => {
   if (typeof statement !== 'string' || !statement) return ''
@@ -195,42 +192,14 @@ const contestIdFromQuery = computed(() => {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : null
 })
 const queryProblemLabel = computed(() => normalizeContestProblemLabel(queryValue(route.query.problem_label)))
-const currentProblemId = computed(() => Number(route.params.id))
-
-const contestProblemItems = computed(() => {
-  const problems = Array.isArray(contestProblems.value) ? contestProblems.value : []
-  const contestId = contestIdFromQuery.value
-
-  return problems
-    .filter(row => row?.id != null)
-    .map((row, idx) => {
-      const ordinal = Number.isInteger(row?.index) && row.index >= 0 ? row.index : idx
-      const label = normalizeContestProblemLabel(row?.label) || toContestProblemLabel(ordinal)
-      return {
-        id: row.id,
-        label,
-        isCurrent: Number(row.id) === currentProblemId.value,
-        route: {
-          name: 'problem',
-          params: { id: row.id },
-          query: { contest: contestId, problem_label: label },
-        },
-      }
-    })
-})
 
 const resolveContestProblemLabel = async () => {
   contestProblemLabel.value = queryProblemLabel.value
-  contestProblems.value = []
-
-  if (!problem.value?.id || !contestIdFromQuery.value) return
+  if (contestProblemLabel.value || !problem.value?.id || !contestIdFromQuery.value) return
 
   try {
     const contestData = await contestApi.getContest(contestIdFromQuery.value)
     const problems = Array.isArray(contestData?.problems) ? contestData.problems : []
-    contestProblems.value = problems
-    if (contestProblemLabel.value) return
-
     const idx = problems.findIndex(row => Number(row?.id) === Number(problem.value.id))
     if (idx < 0) return
 
@@ -258,42 +227,21 @@ const loadProblem = async () => {
 
 onMounted(loadProblem)
 
-watch(
-  () => route.params.id,
-  (nextId, prevId) => {
-    if (nextId !== prevId) {
-      loadProblem()
-    }
-  }
-)
-
 const availableFiles = computed(() => {
-  if (!problem.value) return []
-
-  if (Array.isArray(problem.value.file_list)) {
-    return problem.value.file_list
-      .filter(file => file && file.url && file.name && file.kind)
-      .map(file => ({
-        kind: String(file.kind),
-        name: String(file.name),
-        url: String(file.url),
-      }))
-  }
-
-  const fallbackCanonicalNames = {
-    train: 'train.csv',
-    test: 'test.csv',
-    sample_submission: 'sample_submission.csv',
-  }
-
-  if (!problem.value.files) return []
+  if (!problem.value || !problem.value.files) return []
   return Object.entries(problem.value.files)
     .filter(([, url]) => url)
-    .map(([key, url]) => ({
-      kind: String(key || ''),
-      name: String(fallbackCanonicalNames[key] || key || ''),
-      url: String(url),
-    }))
+    .map(([key, url]) => {
+      const k = String(key || '')
+      const downloadName = k.toLowerCase().endsWith('.csv') ? k : `${k}.csv`
+      return { key: k, url, downloadName }
+    })
+})
+
+const canSubmit = computed(() => {
+  const hasFile = selectedFile.value != null
+  const hasText = textSubmission.value.trim().length > 0
+  return hasFile || hasText
 })
 
 const roundMetric = (value) => {
@@ -363,8 +311,16 @@ const clearFileInput = () => {
 }
 
 const handleSubmit = async () => {
-  if (!selectedFile.value) {
-    submitMessage.value = { type: 'error', text: 'Пожалуйста, выберите файл' }
+  const hasFile = selectedFile.value != null
+  const hasText = textSubmission.value.trim().length > 0
+
+  if (!hasFile && !hasText) {
+    submitMessage.value = { type: 'error', text: 'Пожалуйста, выберите файл или вставьте CSV-текст' }
+    return
+  }
+
+  if (hasFile && hasText) {
+    submitMessage.value = { type: 'error', text: 'Используйте только один способ отправки: файл или текст' }
     return
   }
 
@@ -372,8 +328,11 @@ const handleSubmit = async () => {
   submitMessage.value = null
 
   try {
-    await submitSolution(problem.value.id, selectedFile.value)
-    submitMessage.value = { type: 'success', text: 'Файл успешно отправлен на проверку!' }
+    const payload = hasFile
+      ? { file: selectedFile.value }
+      : { rawText: textSubmission.value }
+    await submitSolution(problem.value.id, payload)
+    submitMessage.value = { type: 'success', text: 'Решение успешно отправлено на проверку!' }
     
     // Refresh problem data to show new submission
     try {
@@ -386,15 +345,16 @@ const handleSubmit = async () => {
       console.warn('Failed to refresh submissions after upload:', refreshError)
       submitMessage.value = {
         type: 'success',
-        text: 'Файл отправлен. Не удалось обновить историю посылок — обновите страницу.'
+        text: 'Решение отправлено. Не удалось обновить историю посылок, обновите страницу.'
       }
     }
     
-    // Clear file input for next submission
+    // Clear input for next submission
     clearFileInput()
+    textSubmission.value = ''
   } catch (err) {
     console.error('Submission error:', err)
-    submitMessage.value = { type: 'error', text: err.message || 'Ошибка при отправке файла' }
+    submitMessage.value = { type: 'error', text: err.message || 'Ошибка при отправке решения' }
   } finally {
     isSubmitting.value = false
   }
@@ -441,63 +401,6 @@ const handleCreateNotebook = async () => {
   height: 100%;
   display: flex;
   gap: 20px;
-}
-
-.problem__selection_menu {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  align-items: flex-start;
-}
-
-.problem__selection_item {
-  width: 48px;
-  height: 48px;
-  border-radius: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: #ffffff;
-  color: #111827;
-  font-weight: 700;
-  font-size: 16px;
-  line-height: 1;
-  cursor: pointer;
-  user-select: none;
-  text-decoration: none;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
-  transition:
-    background-color 0.15s ease,
-    border-color 0.15s ease,
-    color 0.15s ease,
-    transform 0.05s ease,
-    box-shadow 0.15s ease;
-}
-
-.problem__selection_item:hover {
-  background: #f3f4f6;
-}
-
-.problem__selection_item:active {
-  transform: translateY(1px);
-}
-
-.problem__selection_item.is-selected,
-.problem__selection_item[aria-current='true'] {
-  background: var(--color-button-secondary);
-  border: #9480C9 1px solid;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
-  color: var(--color-primary);
-}
-
-.problem__selection_item:focus {
-  outline: 3px solid rgba(139, 92, 246, 0.35);
-  outline-offset: 2px;
-}
-
-.problem__selection_item:focus-visible {
-  outline: 3px solid rgba(139, 92, 246, 0.35);
-  outline-offset: 2px;
 }
 
 .problem__content {
@@ -746,6 +649,12 @@ const handleCreateNotebook = async () => {
   gap: 10px;
 }
 
+.problem__submit-hint {
+  margin: 0;
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
 .problem__file-input {
   display: none;
 }
@@ -764,6 +673,24 @@ const handleCreateNotebook = async () => {
 
 .problem__file-label:hover {
   opacity: 0.9;
+}
+
+.problem__text-input {
+  min-height: 160px;
+  resize: vertical;
+  border-radius: 10px;
+  border: 1px solid var(--color-border-default);
+  padding: 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--color-text-primary);
+  background-color: #fff;
+}
+
+.problem__text-input:focus {
+  outline: 2px solid rgba(148, 128, 201, 0.25);
+  border-color: #9480c9;
 }
 
 .problem__submit-button {

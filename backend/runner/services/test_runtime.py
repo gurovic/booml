@@ -1,6 +1,7 @@
 from datetime import timedelta
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from uuid import uuid4
 from unittest.mock import patch
 
 from django.test import SimpleTestCase, override_settings
@@ -62,7 +63,7 @@ class RuntimeServiceTests(SimpleTestCase):
         now = timezone.now()
         session = create_session("ns", now=now)
 
-        stored = get_session("ns", touch=False)
+        stored = get_session("ns", touch=False, now=now)
 
         self.assertIs(session, stored)
         self.assertIn("__builtins__", session.namespace)
@@ -75,13 +76,13 @@ class RuntimeServiceTests(SimpleTestCase):
         if session.vm:
             self.assertTrue(session.vm.workspace_path.exists())
 
-        newer = timezone.now()
+        newer = now + timedelta(seconds=1)
         touched = get_session("ns", now=newer)
         self.assertIs(touched, session)
         self.assertEqual(session.updated_at, newer)
 
     def test_reset_session_replaces_existing(self) -> None:
-        first = create_session("ns", now=timezone.now())
+        first = create_session("ns")
         later = timezone.now() + timedelta(seconds=5)
         run_code("ns", "open('old.txt','w').write('x')")
         old_path = first.workdir / "old.txt"
@@ -121,9 +122,12 @@ class RuntimeServiceTests(SimpleTestCase):
         self.assertFalse(expired_vm_dir.exists())
 
     def test_run_code_operates_inside_workdir(self) -> None:
-        create_session("sess")
-        result = run_code("sess", "with open('result.txt','w') as fh:\n    fh.write('ok')\nvalue = 7")
-        session = get_session("sess", touch=False)
+        session_id = f"sess-{uuid4().hex}"
+        reset_execution_backend()
+        _sessions.clear()
+        create_session(session_id)
+        result = run_code(session_id, "with open('result.txt','w') as fh:\n    fh.write('ok')\nvalue = 7")
+        session = get_session(session_id, touch=False)
         assert session is not None
         self.assertTrue((session.workdir / "result.txt").exists())
         self.assertEqual(result.variables["value"], "7")
@@ -155,7 +159,9 @@ class RuntimeServiceTests(SimpleTestCase):
         self.assertFalse(second.workdir.exists())
 
     def test_run_code_reports_session_cwd(self) -> None:
-        session_id = "sess2"
+        session_id = f"sess-{uuid4().hex}"
+        reset_execution_backend()
+        _sessions.clear()
         session = create_session(session_id)
         result = run_code(session_id, "import os\nprint(os.getcwd())")
         self.assertIn(str(session.workdir), (result.stdout or ""))
@@ -194,6 +200,9 @@ class RuntimeServiceTests(SimpleTestCase):
     @patch("runner.services.runtime.urlopen")
     def test_download_helper_saves_file(self, mock_urlopen) -> None:
         session_id = "sess3"
+        # Defensive reset to avoid cross-test backend cache side effects.
+        reset_execution_backend()
+        _sessions.clear()
         create_session(session_id)
         chunks = [b"foo", b"bar", b""]
 
