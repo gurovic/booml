@@ -535,11 +535,16 @@ const runCodeCell = async (cell, options = {}) => {
   if (!cell?.id || cell.cell_type !== 'code' || !canRunCells.value || isCellRunning(cell.id)) return
   setCellRunning(cell.id, true)
   try {
-    await saveCodeCell(notebookId.value, cell.id, cell.content || '', cell.output || '')
+    // Avoid duplicate save request from pending autosave timer when user runs immediately after typing.
+    clearCellTimer(cell.id)
+    const content = typeof cell.content === 'string' ? cell.content : ''
+    const previousOutput = typeof cell.output === 'string' ? cell.output : ''
+    await saveCodeCell(notebookId.value, cell.id, content, previousOutput)
+    lastSavedContent.set(cell.id, content)
     const result = await runNotebookCell(sessionId.value, cell.id)
     const outputHtml = buildRunOutputHtml(result)
     cell.output = outputHtml
-    await saveCodeCell(notebookId.value, cell.id, cell.content || '', outputHtml)
+    await saveCodeCell(notebookId.value, cell.id, content, outputHtml)
     if (refreshFiles) {
       await refreshSessionFiles({ silent: true })
     }
