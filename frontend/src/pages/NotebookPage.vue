@@ -101,6 +101,16 @@
               >
                 <span class="toolbar-label">{{ action.label }}</span>
               </button>
+              <button
+                type="button"
+                class="toolbar-pill toolbar-pill--run-all"
+                :disabled="!canRunAll"
+                aria-label="Выполнить все кодовые ячейки"
+                @click="runAllCodeCells"
+              >
+                <span class="material-symbols-rounded toolbar-icon" aria-hidden="true">play_arrow</span>
+                <span class="toolbar-label">Выполнить всё</span>
+              </button>
             </div>
             <div class="toolbar-group toolbar-group--right">
               <div ref="sessionMenuRef" class="toolbar-session-wrap">
@@ -339,6 +349,7 @@ const fileInputRef = ref(null)
 const fileActionBusy = ref(false)
 const fileActionError = ref('')
 const runningCellIds = ref(new Set())
+const runAllInProgress = ref(false)
 const saveTimers = new Map()
 const lastSavedContent = new Map()
 
@@ -398,6 +409,14 @@ const canStopSession = computed(() => {
 
 const canRunCells = computed(() => {
   return hasValidId.value && sessionStatus.value === 'running' && !sessionActionBusy.value
+})
+
+const hasCodeCells = computed(() => {
+  return orderedCells.value.some((cell) => cell.cell_type === 'code')
+})
+
+const canRunAll = computed(() => {
+  return canRunCells.value && !runAllInProgress.value && hasCodeCells.value
 })
 
 const canManageFiles = computed(() => {
@@ -511,15 +530,19 @@ const buildRunOutputHtml = (result) => {
   return parts.join('')
 }
 
-const runCodeCell = async (cell) => {
+const runCodeCell = async (cell, options = {}) => {
+  const { refreshFiles = true } = options
   if (!cell?.id || cell.cell_type !== 'code' || !canRunCells.value || isCellRunning(cell.id)) return
   setCellRunning(cell.id, true)
   try {
+    await saveCodeCell(notebookId.value, cell.id, cell.content || '', cell.output || '')
     const result = await runNotebookCell(sessionId.value, cell.id)
     const outputHtml = buildRunOutputHtml(result)
     cell.output = outputHtml
     await saveCodeCell(notebookId.value, cell.id, cell.content || '', outputHtml)
-    await refreshSessionFiles({ silent: true })
+    if (refreshFiles) {
+      await refreshSessionFiles({ silent: true })
+    }
   } catch (error) {
     const message = error?.message || 'Не удалось выполнить ячейку.'
     const outputHtml = `<pre>${escapeHtml(message)}</pre>`
@@ -531,6 +554,20 @@ const runCodeCell = async (cell) => {
     }
   } finally {
     setCellRunning(cell.id, false)
+  }
+}
+
+const runAllCodeCells = async () => {
+  if (!canRunAll.value) return
+  runAllInProgress.value = true
+  try {
+    const codeCells = orderedCells.value.filter((cell) => cell.cell_type === 'code')
+    for (const cell of codeCells) {
+      await runCodeCell(cell, { refreshFiles: false })
+    }
+    await refreshSessionFiles({ silent: true })
+  } finally {
+    runAllInProgress.value = false
   }
 }
 
@@ -1112,6 +1149,18 @@ onBeforeUnmount(() => {
   cursor: pointer;
   opacity: 1;
   user-select: none;
+}
+
+.toolbar-pill:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.toolbar-icon {
+  font-size: 18px;
+  line-height: 1;
+  color: #fff;
+  font-variation-settings: 'FILL' 1, 'wght' 500, 'GRAD' 0, 'opsz' 20;
 }
 
 .toolbar-pill--static {
