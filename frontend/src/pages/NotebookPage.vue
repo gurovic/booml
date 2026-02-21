@@ -24,11 +24,11 @@
           </div>
           <div class="files-list">
             <div v-if="files.length === 0" class="files-empty">
-              Файлы появятся после запуска сессии
+              {{ sessionStatus === 'running' ? 'В сессии пока нет файлов' : 'Файлы появятся после запуска сессии' }}
             </div>
             <button
               v-for="file in files"
-              :key="file.name"
+              :key="file.path || file.name"
               type="button"
               class="file-item"
             >
@@ -63,9 +63,57 @@
               </button>
             </div>
             <div class="toolbar-group toolbar-group--right">
-              <div class="toolbar-pill toolbar-pill--static toolbar-session">
-                <span class="toolbar-label">Сессия</span>
-                <span class="toolbar-session-dot" aria-hidden="true"></span>
+              <div ref="sessionMenuRef" class="toolbar-session-wrap">
+                <button
+                  type="button"
+                  class="toolbar-pill toolbar-session"
+                  :aria-expanded="sessionMenuOpen ? 'true' : 'false'"
+                  aria-label="Открыть меню управления сессией"
+                  @click="toggleSessionMenu"
+                >
+                  <span class="toolbar-label">Сессия</span>
+                  <span :class="['toolbar-session-dot', sessionIndicatorClass]" aria-hidden="true"></span>
+                </button>
+                <div v-if="sessionMenuOpen" class="session-menu" aria-label="Панель управления сессией">
+                  <div class="session-menu-meta">
+                    Статус: {{ sessionStatusLabel }}
+                  </div>
+                  <button
+                    type="button"
+                    class="session-menu-item"
+                    :disabled="!canStartSession"
+                    @click="startSession"
+                  >
+                    Запустить
+                  </button>
+                  <button
+                    type="button"
+                    class="session-menu-item"
+                    :disabled="!canRestartSession"
+                    @click="restartSession"
+                  >
+                    Перезапустить
+                  </button>
+                  <button
+                    type="button"
+                    class="session-menu-item"
+                    :disabled="sessionActionBusy || !hasValidId"
+                    @click="refreshSessionFiles"
+                  >
+                    Обновить файлы
+                  </button>
+                  <button
+                    type="button"
+                    class="session-menu-item session-menu-item--danger"
+                    :disabled="!canStopSession"
+                    @click="stopSession"
+                  >
+                    Остановить
+                  </button>
+                  <div v-if="sessionActionError" class="session-menu-error">
+                    {{ sessionActionError }}
+                  </div>
+                </div>
               </div>
               <div class="toolbar-pill toolbar-pill--static">
                 <span class="toolbar-label">Настройки</span>
@@ -207,7 +255,7 @@
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import UiHeader from '@/components/ui/UiHeader.vue'
 import NotebookCodeEditor from '@/components/NotebookCodeEditor.vue'
@@ -215,9 +263,14 @@ import {
   createCell,
   deleteCell,
   getNotebook,
+  getNotebookSessionFiles,
+  getNotebookSessionId,
   moveCell,
+  resetNotebookSession,
   saveCodeCell,
   saveTextCell,
+  startNotebookSession,
+  stopNotebookSession,
 } from '@/api/notebook'
 
 const route = useRoute()
@@ -226,11 +279,21 @@ const notebook = ref(null)
 const state = ref('idle')
 const stateMessage = ref('')
 const selectedCellId = ref(null)
+const sessionStatus = ref('stopped')
+const sessionMenuOpen = ref(false)
+const sessionActionBusy = ref(false)
+const sessionActionError = ref('')
+const sessionMenuRef = ref(null)
+const sessionFiles = ref([])
 const saveTimers = new Map()
 const lastSavedContent = new Map()
 
 const notebookId = computed(() => Number(route.params.id))
 const hasValidId = computed(() => Number.isInteger(notebookId.value) && notebookId.value > 0)
+const sessionId = computed(() => {
+  if (!hasValidId.value) return ''
+  return getNotebookSessionId(notebookId.value)
+})
 
 const notebookTitle = computed(() => {
   if (notebook.value?.title) return notebook.value.title
@@ -255,8 +318,41 @@ const orderedCells = computed(() => {
   return [...list].sort((a, b) => (a.execution_order ?? 0) - (b.execution_order ?? 0))
 })
 
+const sessionIndicatorClass = computed(() => {
+  if (sessionStatus.value === 'running') return 'toolbar-session-dot--running'
+  if (sessionStatus.value === 'starting') return 'toolbar-session-dot--starting'
+  return 'toolbar-session-dot--stopped'
+})
+
+const sessionStatusLabel = computed(() => {
+  if (sessionStatus.value === 'running') return 'запущена'
+  if (sessionStatus.value === 'starting') return 'запускается'
+  return 'не запущена'
+})
+
+const canStartSession = computed(() => {
+  return hasValidId.value && !sessionActionBusy.value && sessionStatus.value !== 'running'
+})
+
+const canRestartSession = computed(() => {
+  return hasValidId.value && !sessionActionBusy.value && sessionStatus.value === 'running'
+})
+
+const canStopSession = computed(() => {
+  return hasValidId.value && !sessionActionBusy.value && sessionStatus.value === 'running'
+})
+
 const files = computed(() => {
-  return Array.isArray(notebook.value?.files) ? notebook.value.files : []
+  if (!Array.isArray(sessionFiles.value)) return []
+  return sessionFiles.value.map((file) => {
+    const path = String(file?.path || '')
+    const parts = path.split('/')
+    const name = parts[parts.length - 1] || path
+    return {
+      ...file,
+      name,
+    }
+  })
 })
 
 const toolbarActions = [
@@ -283,6 +379,97 @@ const getInsertActionLabel = (actionId, cellId) => {
   if (actionId === 'code') return `Добавить кодовую ячейку после ячейки ${cellId}`
   if (actionId === 'text') return `Добавить текстовую ячейку после ячейки ${cellId}`
   return `Добавить ячейку после ${cellId}`
+}
+
+const closeSessionMenu = () => {
+  sessionMenuOpen.value = false
+}
+
+const toggleSessionMenu = () => {
+  sessionMenuOpen.value = !sessionMenuOpen.value
+}
+
+const handleDocumentClick = (event) => {
+  if (!sessionMenuOpen.value) return
+  if (sessionMenuRef.value?.contains(event.target)) return
+  closeSessionMenu()
+}
+
+const handleEscapeKey = (event) => {
+  if (event.key !== 'Escape') return
+  closeSessionMenu()
+}
+
+const refreshSessionFiles = async ({ silent = false } = {}) => {
+  if (!hasValidId.value || !sessionId.value) {
+    sessionStatus.value = 'stopped'
+    sessionFiles.value = []
+    return
+  }
+
+  try {
+    const payload = await getNotebookSessionFiles(sessionId.value)
+    sessionFiles.value = Array.isArray(payload?.files) ? payload.files : []
+    sessionStatus.value = 'running'
+    if (!silent) {
+      sessionActionError.value = ''
+    }
+  } catch (error) {
+    sessionFiles.value = []
+    if (error?.status === 404) {
+      sessionStatus.value = 'stopped'
+      if (!silent) {
+        sessionActionError.value = 'Сессия не запущена.'
+      }
+      return
+    }
+    if (!silent) {
+      sessionActionError.value = error?.message || 'Не удалось получить файлы сессии.'
+    }
+  }
+}
+
+const runSessionAction = async (action) => {
+  if (!hasValidId.value || !sessionId.value || sessionActionBusy.value) return
+  sessionActionBusy.value = true
+  sessionActionError.value = ''
+  const previousStatus = sessionStatus.value
+  sessionStatus.value = 'starting'
+  try {
+    await action()
+  } catch (error) {
+    sessionStatus.value = previousStatus
+    sessionActionError.value = error?.message || 'Не удалось выполнить действие с сессией.'
+  } finally {
+    sessionActionBusy.value = false
+  }
+}
+
+const startSession = async () => {
+  await runSessionAction(async () => {
+    await startNotebookSession(notebookId.value)
+    sessionStatus.value = 'running'
+    await refreshSessionFiles({ silent: true })
+    closeSessionMenu()
+  })
+}
+
+const restartSession = async () => {
+  await runSessionAction(async () => {
+    await resetNotebookSession(sessionId.value)
+    sessionStatus.value = 'running'
+    await refreshSessionFiles({ silent: true })
+    closeSessionMenu()
+  })
+}
+
+const stopSession = async () => {
+  await runSessionAction(async () => {
+    await stopNotebookSession(sessionId.value)
+    sessionStatus.value = 'stopped'
+    sessionFiles.value = []
+    closeSessionMenu()
+  })
 }
 
 const seedSavedContent = (cells) => {
@@ -434,6 +621,8 @@ const loadNotebook = async () => {
     notebook.value = null
     state.value = 'error'
     stateMessage.value = 'Некорректный идентификатор блокнота.'
+    sessionStatus.value = 'stopped'
+    sessionFiles.value = []
     return
   }
 
@@ -445,12 +634,15 @@ const loadNotebook = async () => {
     if (Array.isArray(notebook.value?.cells)) {
       seedSavedContent(notebook.value.cells)
     }
+    await refreshSessionFiles({ silent: true })
     state.value = 'ready'
   } catch (err) {
     const message = err?.message || 'Не удалось загрузить блокнот.'
     state.value = message.includes('404') ? 'not_found' : 'error'
     stateMessage.value = message
     notebook.value = null
+    sessionStatus.value = 'stopped'
+    sessionFiles.value = []
   }
 }
 
@@ -458,7 +650,14 @@ watch(notebookId, () => {
   loadNotebook()
 }, { immediate: true })
 
+onMounted(() => {
+  document.addEventListener('click', handleDocumentClick)
+  document.addEventListener('keydown', handleEscapeKey)
+})
+
 onBeforeUnmount(() => {
+  document.removeEventListener('click', handleDocumentClick)
+  document.removeEventListener('keydown', handleEscapeKey)
   saveTimers.forEach((timer) => clearTimeout(timer))
   saveTimers.clear()
 })
@@ -639,11 +838,78 @@ onBeforeUnmount(() => {
   cursor: default;
 }
 
+.toolbar-session-wrap {
+  position: relative;
+}
+
+.toolbar-session {
+  justify-content: space-between;
+}
+
 .toolbar-session-dot {
   width: 10px;
   height: 10px;
   border-radius: 999px;
+}
+
+.toolbar-session-dot--running {
   background: var(--color-session-active);
+}
+
+.toolbar-session-dot--starting {
+  background: var(--color-session-starting);
+}
+
+.toolbar-session-dot--stopped {
+  background: var(--color-session-stopped);
+}
+
+
+.session-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 180px;
+  padding: 8px;
+  border-radius: 12px;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border-light);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.22);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  z-index: 20;
+}
+
+.session-menu-item {
+  border: none;
+  border-radius: 8px;
+  padding: 8px 10px;
+  text-align: left;
+  background: var(--color-button-secondary);
+  color: var(--color-text-primary);
+  cursor: pointer;
+}
+
+.session-menu-item:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.session-menu-item--danger {
+  color: var(--color-text-danger);
+}
+
+.session-menu-meta {
+  margin-top: 2px;
+  color: var(--color-text-muted);
+  font-size: 13px;
+}
+
+.session-menu-error {
+  color: var(--color-text-danger);
+  font-size: 13px;
+  line-height: 1.35;
 }
 
 .cells-list {

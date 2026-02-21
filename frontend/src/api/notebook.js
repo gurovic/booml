@@ -34,3 +34,31 @@ export function moveCell(notebookId, cellId, targetPosition) {
         target_position: targetPosition,
     })
 }
+
+export function getNotebookSessionId(notebookId) {
+    return `notebook:${notebookId}`
+}
+
+export function startNotebookSession(notebookId) {
+    return apiPost('/api/sessions/notebook/', {
+        notebook_id: notebookId,
+    })
+}
+
+export function resetNotebookSession(sessionId) {
+    return apiPost('/api/sessions/reset/', {
+        session_id: sessionId,
+    })
+}
+
+export function stopNotebookSession(sessionId) {
+    return apiPost('/api/sessions/stop/', {
+        session_id: sessionId,
+    })
+}
+
+export function getNotebookSessionFiles(sessionId) {
+    return apiGet('/api/sessions/files/', {
+        session_id: sessionId,
+    })
+}
