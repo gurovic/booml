@@ -149,11 +149,18 @@
                       v-if="cell.cell_type === 'code'"
                       class="cell-run-button"
                       type="button"
-                      disabled
-                      title="Запуск ячейки"
+                      :disabled="!canRunCells || isCellRunning(cell.id)"
+                      :title="canRunCells ? `Запустить ячейку ${cell.id}` : 'Сначала запустите сессию'"
                       :aria-label="`Запустить кодовую ячейку ${cell.id}`"
+                      @click.stop="runCodeCell(cell)"
                     >
-                      <span class="material-symbols-rounded" aria-hidden="true">play_arrow</span>
+                      <span
+                        class="material-symbols-rounded"
+                        :class="{ 'cell-run-button-icon--spinning': isCellRunning(cell.id) }"
+                        aria-hidden="true"
+                      >
+                        {{ isCellRunning(cell.id) ? 'autorenew' : 'play_arrow' }}
+                      </span>
                     </button>
 
                     <div class="cell-content">
@@ -267,6 +274,7 @@ import {
   getNotebookSessionId,
   moveCell,
   resetNotebookSession,
+  runNotebookCell,
   saveCodeCell,
   saveTextCell,
   startNotebookSession,
@@ -285,6 +293,7 @@ const sessionActionBusy = ref(false)
 const sessionActionError = ref('')
 const sessionMenuRef = ref(null)
 const sessionFiles = ref([])
+const runningCellIds = ref(new Set())
 const saveTimers = new Map()
 const lastSavedContent = new Map()
 
@@ -342,6 +351,10 @@ const canStopSession = computed(() => {
   return hasValidId.value && !sessionActionBusy.value && sessionStatus.value === 'running'
 })
 
+const canRunCells = computed(() => {
+  return hasValidId.value && sessionStatus.value === 'running' && !sessionActionBusy.value
+})
+
 const files = computed(() => {
   if (!Array.isArray(sessionFiles.value)) return []
   return sessionFiles.value.map((file) => {
@@ -379,6 +392,90 @@ const getInsertActionLabel = (actionId, cellId) => {
   if (actionId === 'code') return `Добавить кодовую ячейку после ячейки ${cellId}`
   if (actionId === 'text') return `Добавить текстовую ячейку после ячейки ${cellId}`
   return `Добавить ячейку после ${cellId}`
+}
+
+const isCellRunning = (cellId) => {
+  return runningCellIds.value.has(cellId)
+}
+
+const setCellRunning = (cellId, running) => {
+  const next = new Set(runningCellIds.value)
+  if (running) {
+    next.add(cellId)
+  } else {
+    next.delete(cellId)
+  }
+  runningCellIds.value = next
+}
+
+const escapeHtml = (value) => {
+  return String(value)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;')
+}
+
+const toHtmlBlock = (value) => {
+  if (!value) return ''
+  const safe = escapeHtml(value)
+  return `<div class="cell-output-block"><pre>${safe}</pre></div>`
+}
+
+const buildRunOutputHtml = (result) => {
+  const parts = []
+  const stdout = toHtmlBlock(result?.stdout || '')
+  const stderr = toHtmlBlock(result?.stderr || '')
+  const error = toHtmlBlock(result?.error || '')
+  if (stdout) parts.push(stdout)
+  if (stderr) parts.push(stderr)
+  if (error) parts.push(error)
+
+  const artifacts = Array.isArray(result?.artifacts) ? result.artifacts : []
+  if (artifacts.length > 0) {
+    const links = artifacts
+      .map((item) => {
+        const path = item?.path ? String(item.path) : ''
+        const name = item?.name ? String(item.name) : path
+        if (!path) return ''
+        const href = `/api/sessions/file/?session_id=${encodeURIComponent(sessionId.value)}&path=${encodeURIComponent(path)}`
+        return `<li><a href="${href}" target="_blank" rel="noopener noreferrer">${escapeHtml(name)}</a></li>`
+      })
+      .filter(Boolean)
+      .join('')
+    if (links) {
+      parts.push(`<div class="cell-output-block"><ul class="cell-output-files">${links}</ul></div>`)
+    }
+  }
+
+  if (parts.length === 0) {
+    return '<pre>Выполнено без вывода.</pre>'
+  }
+  return parts.join('')
+}
+
+const runCodeCell = async (cell) => {
+  if (!cell?.id || cell.cell_type !== 'code' || !canRunCells.value || isCellRunning(cell.id)) return
+  setCellRunning(cell.id, true)
+  try {
+    const result = await runNotebookCell(sessionId.value, cell.id)
+    const outputHtml = buildRunOutputHtml(result)
+    cell.output = outputHtml
+    await saveCodeCell(notebookId.value, cell.id, cell.content || '', outputHtml)
+    await refreshSessionFiles({ silent: true })
+  } catch (error) {
+    const message = error?.message || 'Не удалось выполнить ячейку.'
+    const outputHtml = `<pre>${escapeHtml(message)}</pre>`
+    cell.output = outputHtml
+    try {
+      await saveCodeCell(notebookId.value, cell.id, cell.content || '', outputHtml)
+    } catch (_) {
+      // No-op: local output is still shown.
+    }
+  } finally {
+    setCellRunning(cell.id, false)
+  }
 }
 
 const closeSessionMenu = () => {
@@ -978,8 +1075,8 @@ onBeforeUnmount(() => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  cursor: not-allowed;
-  opacity: 0.9;
+  cursor: pointer;
+  opacity: 1;
 }
 
 .cell-run-button .material-symbols-rounded {
@@ -987,6 +1084,24 @@ onBeforeUnmount(() => {
   line-height: 1;
   font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 20 !important;
   color: #fff;
+}
+
+.cell-run-button-icon--spinning {
+  animation: cell-run-spin 0.9s linear infinite;
+}
+
+@keyframes cell-run-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.cell-run-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
 }
 
 .cell-content {
@@ -1115,8 +1230,6 @@ onBeforeUnmount(() => {
 }
 
 .cell-output-icon {
-  width: 30px;
-  height: 30px;
   border-radius: 0;
   background: transparent;
   color: var(--color-text-muted);
@@ -1146,6 +1259,15 @@ onBeforeUnmount(() => {
   font-size: 14px;
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+.cell-output-content :deep(.cell-output-block + .cell-output-block) {
+  margin-top: 10px;
+}
+
+.cell-output-content :deep(.cell-output-files) {
+  margin: 0;
+  padding-left: 18px;
 }
 
 .cells-footer {
