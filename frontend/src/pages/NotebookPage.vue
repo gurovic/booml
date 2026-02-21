@@ -68,14 +68,13 @@
                   type="button"
                   class="toolbar-pill toolbar-session"
                   :aria-expanded="sessionMenuOpen ? 'true' : 'false'"
-                  aria-haspopup="menu"
                   aria-label="Открыть меню управления сессией"
                   @click="toggleSessionMenu"
                 >
                   <span class="toolbar-label">Сессия</span>
                   <span :class="['toolbar-session-dot', sessionIndicatorClass]" aria-hidden="true"></span>
                 </button>
-                <div v-if="sessionMenuOpen" class="session-menu" role="menu" aria-label="Меню сессии">
+                <div v-if="sessionMenuOpen" class="session-menu" aria-label="Панель управления сессией">
                   <div class="session-menu-meta">
                     Статус: {{ sessionStatusLabel }}
                   </div>
