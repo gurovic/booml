@@ -101,6 +101,16 @@
               >
                 <span class="toolbar-label">{{ action.label }}</span>
               </button>
+              <button
+                type="button"
+                class="toolbar-pill toolbar-pill--run-all"
+                :disabled="!canRunAll"
+                aria-label="Выполнить все кодовые ячейки"
+                @click="runAllCodeCells"
+              >
+                <span class="material-symbols-rounded toolbar-icon" aria-hidden="true">play_arrow</span>
+                <span class="toolbar-label">Выполнить всё</span>
+              </button>
             </div>
             <div class="toolbar-group toolbar-group--right">
               <div ref="sessionMenuRef" class="toolbar-session-wrap">
@@ -188,7 +198,7 @@
                       v-if="cell.cell_type === 'code'"
                       class="cell-run-button"
                       type="button"
-                      :disabled="!canRunCells || isCellRunning(cell.id)"
+                      :disabled="!canRunCells || isCellRunning(cell.id) || runAllInProgress"
                       :title="canRunCells ? `Запустить ячейку ${cell.id}` : 'Сначала запустите сессию'"
                       :aria-label="`Запустить кодовую ячейку ${cell.id}`"
                       @click.stop="runCodeCell(cell)"
@@ -339,6 +349,8 @@ const fileInputRef = ref(null)
 const fileActionBusy = ref(false)
 const fileActionError = ref('')
 const runningCellIds = ref(new Set())
+const runAllInProgress = ref(false)
+const queuedCellRunIds = ref([])
 const saveTimers = new Map()
 const lastSavedContent = new Map()
 
@@ -400,6 +412,14 @@ const canRunCells = computed(() => {
   return hasValidId.value && sessionStatus.value === 'running' && !sessionActionBusy.value
 })
 
+const hasCodeCells = computed(() => {
+  return orderedCells.value.some((cell) => cell.cell_type === 'code')
+})
+
+const canRunAll = computed(() => {
+  return canRunCells.value && !runAllInProgress.value && hasCodeCells.value
+})
+
 const canManageFiles = computed(() => {
   return hasValidId.value && sessionStatus.value === 'running'
 })
@@ -452,6 +472,24 @@ const handleCellCardKeydown = (event, cellId) => {
 
 const isCellRunning = (cellId) => {
   return runningCellIds.value.has(cellId)
+}
+
+const waitMs = (delay) => new Promise((resolve) => setTimeout(resolve, delay))
+
+const waitForCellIdle = async (cellId) => {
+  while (isCellRunning(cellId)) {
+    await waitMs(120)
+  }
+}
+
+const waitForNoRunningCells = async () => {
+  while (runningCellIds.value.size > 0) {
+    await waitMs(120)
+  }
+}
+
+const clearQueuedCellRuns = () => {
+  queuedCellRunIds.value = []
 }
 
 const setCellRunning = (cellId, running) => {
@@ -511,15 +549,25 @@ const buildRunOutputHtml = (result) => {
   return parts.join('')
 }
 
-const runCodeCell = async (cell) => {
+const runCodeCell = async (cell, options = {}) => {
+  const { refreshFiles = true } = options
+  if (runAllInProgress.value && !options.fromRunAll) return
   if (!cell?.id || cell.cell_type !== 'code' || !canRunCells.value || isCellRunning(cell.id)) return
   setCellRunning(cell.id, true)
   try {
+    // Avoid duplicate save request from pending autosave timer when user runs immediately after typing.
+    clearCellTimer(cell.id)
+    const content = typeof cell.content === 'string' ? cell.content : ''
+    const previousOutput = typeof cell.output === 'string' ? cell.output : ''
+    await saveCodeCell(notebookId.value, cell.id, content, previousOutput)
+    lastSavedContent.set(cell.id, content)
     const result = await runNotebookCell(sessionId.value, cell.id)
     const outputHtml = buildRunOutputHtml(result)
     cell.output = outputHtml
-    await saveCodeCell(notebookId.value, cell.id, cell.content || '', outputHtml)
-    await refreshSessionFiles({ silent: true })
+    await saveCodeCell(notebookId.value, cell.id, content, outputHtml)
+    if (refreshFiles) {
+      await refreshSessionFiles({ silent: true })
+    }
   } catch (error) {
     const message = error?.message || 'Не удалось выполнить ячейку.'
     const outputHtml = `<pre>${escapeHtml(message)}</pre>`
@@ -531,6 +579,23 @@ const runCodeCell = async (cell) => {
     }
   } finally {
     setCellRunning(cell.id, false)
+  }
+}
+
+const runAllCodeCells = async () => {
+  if (!canRunAll.value) return
+  runAllInProgress.value = true
+  clearQueuedCellRuns()
+  try {
+    await waitForNoRunningCells()
+    const codeCells = orderedCells.value.filter((cell) => cell.cell_type === 'code')
+    for (const cell of codeCells) {
+      await waitForCellIdle(cell.id)
+      await runCodeCell(cell, { refreshFiles: false, fromRunAll: true })
+    }
+    await refreshSessionFiles({ silent: true })
+  } finally {
+    runAllInProgress.value = false
   }
 }
 
@@ -1112,6 +1177,18 @@ onBeforeUnmount(() => {
   cursor: pointer;
   opacity: 1;
   user-select: none;
+}
+
+.toolbar-pill:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.toolbar-icon {
+  font-size: 18px;
+  line-height: 1;
+  color: #fff;
+  font-variation-settings: 'FILL' 1, 'wght' 500, 'GRAD' 0, 'opsz' 20;
 }
 
 .toolbar-pill--static {
