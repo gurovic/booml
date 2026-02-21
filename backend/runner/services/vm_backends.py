@@ -175,7 +175,7 @@ class LocalVmBackend(VmBackend):
 
 
 def _is_windows_host_path(path_str: str) -> bool:
-    """True if path looks like a Windows path (e.g. C:\... or C:/...)."""
+    """True if path looks like a Windows path (e.g. C:\\... or C:/...)."""
     if not path_str or not path_str.strip():
         return False
     s = path_str.strip().replace("\\", "/")
