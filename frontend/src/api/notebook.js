@@ -69,3 +69,28 @@ export function runNotebookCell(sessionId, cellId) {
         cell_id: cellId,
     })
 }
+
+export function uploadNotebookSessionFile(sessionId, file, path = '') {
+    const formData = new FormData()
+    formData.append('session_id', sessionId)
+    formData.append('file', file)
+    if (path) {
+        formData.append('path', path)
+    }
+    return apiPost('/api/sessions/files/upload/', formData)
+}
+
+export function deleteNotebookSessionFile(sessionId, path) {
+    return apiDelete('/api/sessions/file/', {
+        session_id: sessionId,
+        path,
+    })
+}
+
+export function getNotebookSessionFileDownloadUrl(sessionId, path) {
+    const query = new URLSearchParams({
+        session_id: sessionId,
+        path,
+    })
+    return `/api/sessions/file/?${query.toString()}`
+}

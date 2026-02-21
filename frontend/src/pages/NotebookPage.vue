@@ -18,34 +18,74 @@
         <aside class="notebook-files">
           <div class="files-header">
             <h2 class="files-title">Файлы</h2>
-            <button type="button" class="files-upload-button" disabled>
+            <button
+              type="button"
+              class="files-upload-button"
+              :disabled="!canManageFiles || fileActionBusy"
+              @click="openFilePicker"
+            >
               Загрузить
             </button>
+            <input
+              ref="fileInputRef"
+              type="file"
+              class="files-hidden-input"
+              @change="handleFilePicked"
+            >
           </div>
           <div class="files-list">
             <div v-if="files.length === 0" class="files-empty">
               {{ sessionStatus === 'running' ? 'В сессии пока нет файлов' : 'Файлы появятся после запуска сессии' }}
             </div>
-            <button
+            <div
               v-for="file in files"
               :key="file.path || file.name"
-              type="button"
               class="file-item"
+              role="button"
+              tabindex="0"
+              :title="`Скачать ${file.path || file.name}`"
+              @click="downloadSessionFile(file)"
+              @keydown.enter.prevent="downloadSessionFile(file)"
+              @keydown.space.prevent="downloadSessionFile(file)"
             >
-              <span class="file-icon">
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <path
-                    d="M6 3h7l5 5v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="1.6"
-                  />
-                  <path d="M13 3v6h6" fill="none" stroke="currentColor" stroke-width="1.6" />
-                </svg>
+              <span class="file-main">
+                <span class="file-icon">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path
+                      d="M6 3h7l5 5v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="1.6"
+                    />
+                    <path d="M13 3v6h6" fill="none" stroke="currentColor" stroke-width="1.6" />
+                  </svg>
+                </span>
+                <span class="file-name">{{ file.name }}</span>
               </span>
-              <span class="file-name">{{ file.name }}</span>
-            </button>
+              <span class="file-actions">
+                <button
+                  type="button"
+                  class="file-action-btn"
+                  :title="`Скачать ${file.path || file.name}`"
+                  :aria-label="`Скачать ${file.path || file.name}`"
+                  @click.stop="downloadSessionFile(file)"
+                >
+                  <span class="material-symbols-rounded" aria-hidden="true">download</span>
+                </button>
+                <button
+                  type="button"
+                  class="file-action-btn file-action-btn--danger"
+                  :title="`Удалить ${file.path || file.name}`"
+                  :aria-label="`Удалить ${file.path || file.name}`"
+                  :disabled="!canManageFiles || fileActionBusy"
+                  @click.stop="removeSessionFile(file)"
+                >
+                  <span class="material-symbols-rounded" aria-hidden="true">delete</span>
+                </button>
+              </span>
+            </div>
           </div>
+          <div v-if="fileActionError" class="files-error">{{ fileActionError }}</div>
         </aside>
 
         <section class="notebook-workspace">
@@ -267,8 +307,10 @@ import UiHeader from '@/components/ui/UiHeader.vue'
 import NotebookCodeEditor from '@/components/NotebookCodeEditor.vue'
 import {
   createCell,
+  deleteNotebookSessionFile,
   deleteCell,
   getNotebook,
+  getNotebookSessionFileDownloadUrl,
   getNotebookSessionFiles,
   getNotebookSessionId,
   moveCell,
@@ -278,6 +320,7 @@ import {
   saveTextCell,
   startNotebookSession,
   stopNotebookSession,
+  uploadNotebookSessionFile,
 } from '@/api/notebook'
 
 const route = useRoute()
@@ -292,6 +335,9 @@ const sessionActionBusy = ref(false)
 const sessionActionError = ref('')
 const sessionMenuRef = ref(null)
 const sessionFiles = ref([])
+const fileInputRef = ref(null)
+const fileActionBusy = ref(false)
+const fileActionError = ref('')
 const runningCellIds = ref(new Set())
 const saveTimers = new Map()
 const lastSavedContent = new Map()
@@ -352,6 +398,10 @@ const canStopSession = computed(() => {
 
 const canRunCells = computed(() => {
   return hasValidId.value && sessionStatus.value === 'running' && !sessionActionBusy.value
+})
+
+const canManageFiles = computed(() => {
+  return hasValidId.value && sessionStatus.value === 'running'
 })
 
 const files = computed(() => {
@@ -516,6 +566,7 @@ const refreshSessionFiles = async ({ silent = false } = {}) => {
     sessionStatus.value = 'running'
     if (!silent) {
       sessionActionError.value = ''
+      fileActionError.value = ''
     }
   } catch (error) {
     sessionFiles.value = []
@@ -529,6 +580,59 @@ const refreshSessionFiles = async ({ silent = false } = {}) => {
     if (!silent) {
       sessionActionError.value = error?.message || 'Не удалось получить файлы сессии.'
     }
+  }
+}
+
+const openFilePicker = () => {
+  if (!canManageFiles.value || fileActionBusy.value) return
+  if (fileInputRef.value) {
+    fileInputRef.value.value = ''
+    fileInputRef.value.click()
+  }
+}
+
+const handleFilePicked = async (event) => {
+  const input = event?.target
+  const file = input?.files?.[0]
+  if (!file || !sessionId.value || !canManageFiles.value) return
+  fileActionBusy.value = true
+  fileActionError.value = ''
+  try {
+    await uploadNotebookSessionFile(sessionId.value, file)
+    await refreshSessionFiles({ silent: true })
+  } catch (error) {
+    fileActionError.value = error?.message || 'Не удалось загрузить файл.'
+  } finally {
+    fileActionBusy.value = false
+    if (input) input.value = ''
+  }
+}
+
+const downloadSessionFile = (file) => {
+  const path = file?.path
+  if (!path || !sessionId.value) return
+  const href = getNotebookSessionFileDownloadUrl(sessionId.value, path)
+  const link = document.createElement('a')
+  link.href = href
+  link.download = file?.name || ''
+  link.rel = 'noopener noreferrer'
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+}
+
+const removeSessionFile = async (file) => {
+  const path = file?.path
+  if (!path || !sessionId.value || !canManageFiles.value || fileActionBusy.value) return
+  fileActionBusy.value = true
+  fileActionError.value = ''
+  try {
+    await deleteNotebookSessionFile(sessionId.value, path)
+    await refreshSessionFiles({ silent: true })
+  } catch (error) {
+    fileActionError.value = error?.message || 'Не удалось удалить файл.'
+  } finally {
+    fileActionBusy.value = false
   }
 }
 
@@ -571,6 +675,7 @@ const stopSession = async () => {
     await stopNotebookSession(sessionId.value)
     sessionStatus.value = 'stopped'
     sessionFiles.value = []
+    fileActionError.value = ''
     closeSessionMenu()
   })
 }
@@ -726,6 +831,7 @@ const loadNotebook = async () => {
     stateMessage.value = 'Некорректный идентификатор блокнота.'
     sessionStatus.value = 'stopped'
     sessionFiles.value = []
+    fileActionError.value = ''
     return
   }
 
@@ -746,6 +852,7 @@ const loadNotebook = async () => {
     notebook.value = null
     sessionStatus.value = 'stopped'
     sessionFiles.value = []
+    fileActionError.value = ''
   }
 }
 
@@ -845,8 +952,17 @@ onBeforeUnmount(() => {
   color: var(--color-button-text-primary);
   font-size: 16px;
   line-height: 1;
+  cursor: pointer;
+  opacity: 1;
+}
+
+.files-upload-button:disabled {
   cursor: not-allowed;
-  opacity: 0.9;
+  opacity: 0.75;
+}
+
+.files-hidden-input {
+  display: none;
 }
 
 .files-list {
@@ -865,12 +981,21 @@ onBeforeUnmount(() => {
 .file-item {
   display: flex;
   align-items: center;
-  gap: 5px;
+  justify-content: space-between;
+  gap: 8px;
   padding: 10px;
   border-radius: 10px;
   background: var(--color-button-secondary);
   border: none;
   text-align: left;
+  cursor: pointer;
+}
+
+.file-main {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
 }
 
 .file-icon {
@@ -888,6 +1013,58 @@ onBeforeUnmount(() => {
 .file-name {
   font-size: 16px;
   color: var(--color-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+}
+
+.file-item:hover .file-actions,
+.file-item:focus-visible .file-actions,
+.file-item:focus-within .file-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.file-action-btn {
+  width: 24px;
+  height: 24px;
+  border-radius: 8px;
+  border: none;
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.file-action-btn .material-symbols-rounded {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.file-action-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.file-action-btn--danger {
+  color: var(--color-text-danger);
+}
+
+.files-error {
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--color-text-danger);
 }
 
 .notebook-workspace {
