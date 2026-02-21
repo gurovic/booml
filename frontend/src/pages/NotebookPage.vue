@@ -138,8 +138,7 @@
                   tabindex="0"
                   :aria-label="getCellSelectionLabel(cell)"
                   @click="selectCell(cell.id)"
-                  @keydown.enter.prevent="selectCell(cell.id)"
-                  @keydown.space.prevent="selectCell(cell.id)"
+                  @keydown="(event) => handleCellCardKeydown(event, cell.id)"
                 >
                   <div
                     class="cell-body"
@@ -392,6 +391,13 @@ const getInsertActionLabel = (actionId, cellId) => {
   if (actionId === 'code') return `Добавить кодовую ячейку после ячейки ${cellId}`
   if (actionId === 'text') return `Добавить текстовую ячейку после ячейки ${cellId}`
   return `Добавить ячейку после ${cellId}`
+}
+
+const handleCellCardKeydown = (event, cellId) => {
+  if (event.target !== event.currentTarget) return
+  if (event.key !== 'Enter' && event.key !== ' ') return
+  event.preventDefault()
+  selectCell(cellId)
 }
 
 const isCellRunning = (cellId) => {
