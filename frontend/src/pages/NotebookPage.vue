@@ -198,7 +198,7 @@
                       v-if="cell.cell_type === 'code'"
                       class="cell-run-button"
                       type="button"
-                      :disabled="!canRunCells || isCellRunning(cell.id)"
+                      :disabled="!canRunCells || isCellRunning(cell.id) || runAllInProgress"
                       :title="canRunCells ? `Запустить ячейку ${cell.id}` : 'Сначала запустите сессию'"
                       :aria-label="`Запустить кодовую ячейку ${cell.id}`"
                       @click.stop="runCodeCell(cell)"
@@ -350,6 +350,7 @@ const fileActionBusy = ref(false)
 const fileActionError = ref('')
 const runningCellIds = ref(new Set())
 const runAllInProgress = ref(false)
+const queuedCellRunIds = ref([])
 const saveTimers = new Map()
 const lastSavedContent = new Map()
 
@@ -473,6 +474,24 @@ const isCellRunning = (cellId) => {
   return runningCellIds.value.has(cellId)
 }
 
+const waitMs = (delay) => new Promise((resolve) => setTimeout(resolve, delay))
+
+const waitForCellIdle = async (cellId) => {
+  while (isCellRunning(cellId)) {
+    await waitMs(120)
+  }
+}
+
+const waitForNoRunningCells = async () => {
+  while (runningCellIds.value.size > 0) {
+    await waitMs(120)
+  }
+}
+
+const clearQueuedCellRuns = () => {
+  queuedCellRunIds.value = []
+}
+
 const setCellRunning = (cellId, running) => {
   const next = new Set(runningCellIds.value)
   if (running) {
@@ -532,6 +551,7 @@ const buildRunOutputHtml = (result) => {
 
 const runCodeCell = async (cell, options = {}) => {
   const { refreshFiles = true } = options
+  if (runAllInProgress.value && !options.fromRunAll) return
   if (!cell?.id || cell.cell_type !== 'code' || !canRunCells.value || isCellRunning(cell.id)) return
   setCellRunning(cell.id, true)
   try {
@@ -565,10 +585,13 @@ const runCodeCell = async (cell, options = {}) => {
 const runAllCodeCells = async () => {
   if (!canRunAll.value) return
   runAllInProgress.value = true
+  clearQueuedCellRuns()
   try {
+    await waitForNoRunningCells()
     const codeCells = orderedCells.value.filter((cell) => cell.cell_type === 'code')
     for (const cell of codeCells) {
-      await runCodeCell(cell, { refreshFiles: false })
+      await waitForCellIdle(cell.id)
+      await runCodeCell(cell, { refreshFiles: false, fromRunAll: true })
     }
     await refreshSessionFiles({ silent: true })
   } finally {
