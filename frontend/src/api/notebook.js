@@ -62,3 +62,10 @@ export function getNotebookSessionFiles(sessionId) {
         session_id: sessionId,
     })
 }
+
+export function runNotebookCell(sessionId, cellId) {
+    return apiPost('/api/cells/run/', {
+        session_id: sessionId,
+        cell_id: cellId,
+    })
+}
