@@ -145,6 +145,79 @@ class NotebookSessionAPITests(TestCase):
         resp = self.client.get(f"{self.download_url}?session_id={session_id}&path=../secret.txt")
         self.assertEqual(resp.status_code, HTTPStatus.NOT_FOUND)
 
+    def test_session_file_delete_success(self):
+        session_id = f"notebook:{self.notebook.id}"
+        session = create_session(session_id)
+        target = session.workdir / "delete_me.txt"
+        target.write_text("bye", encoding="utf-8")
+
+        resp = self.client.delete(
+            self.download_url,
+            data={"session_id": session_id, "path": "delete_me.txt"},
+            content_type="application/json",
+        )
+
+        self.assertEqual(resp.status_code, HTTPStatus.OK)
+        data = resp.json()
+        self.assertEqual(data["session_id"], session_id)
+        self.assertEqual(data["path"], "delete_me.txt")
+        self.assertTrue(data["deleted"])
+        self.assertFalse(target.exists())
+
+    def test_session_file_delete_prevents_escape(self):
+        session_id = f"notebook:{self.notebook.id}"
+        create_session(session_id)
+
+        resp = self.client.delete(
+            self.download_url,
+            data={"session_id": session_id, "path": "../secret.txt"},
+            content_type="application/json",
+        )
+
+        self.assertEqual(resp.status_code, HTTPStatus.NOT_FOUND)
+
+    def test_session_file_delete_forbidden_for_other_user(self):
+        session_id = f"notebook:{self.notebook.id}"
+        session = create_session(session_id)
+        target = session.workdir / "private.txt"
+        target.write_text("secret", encoding="utf-8")
+
+        other = User.objects.create_user(username="other_deleter", password="pass123")
+        self.client.logout()
+        self.client.login(username="other_deleter", password="pass123")
+
+        resp = self.client.delete(
+            self.download_url,
+            data={"session_id": session_id, "path": "private.txt"},
+            content_type="application/json",
+        )
+
+        self.assertEqual(resp.status_code, HTTPStatus.FORBIDDEN)
+        self.assertTrue(target.exists())
+
+    def test_session_file_delete_missing_file_returns_404(self):
+        session_id = f"notebook:{self.notebook.id}"
+        create_session(session_id)
+
+        resp = self.client.delete(
+            self.download_url,
+            data={"session_id": session_id, "path": "missing.txt"},
+            content_type="application/json",
+        )
+
+        self.assertEqual(resp.status_code, HTTPStatus.NOT_FOUND)
+
+    def test_session_file_delete_missing_session_returns_404(self):
+        session_id = f"notebook:{self.notebook.id}"
+
+        resp = self.client.delete(
+            self.download_url,
+            data={"session_id": session_id, "path": "file.txt"},
+            content_type="application/json",
+        )
+
+        self.assertEqual(resp.status_code, HTTPStatus.NOT_FOUND)
+
     def test_session_file_upload(self):
         session_id = f"notebook:{self.notebook.id}"
         session = create_session(session_id)
