@@ -1,7 +1,9 @@
 import json
+from datetime import timedelta
 
 from django.contrib.auth import get_user_model
 from django.test import RequestFactory, TestCase
+from django.utils import timezone
 
 from runner.models import Contest, ContestProblem, Course, CourseParticipant, Problem, Section
 from runner.services.section_service import SectionCreateInput, create_section
@@ -89,6 +91,7 @@ class ContestDetailViewTests(TestCase):
         self.assertEqual(payload["access_type"], "link")
         self.assertEqual(payload["access_token"], "token123")
         self.assertEqual(payload["allowed_participants"], [])
+        self.assertTrue(payload["can_edit"])
 
     def test_student_sees_public_contest_without_token_or_allowed(self):
         request = self.factory.get("/")
@@ -100,6 +103,7 @@ class ContestDetailViewTests(TestCase):
         payload = json.loads(response.content.decode())
         self.assertIsNone(payload["access_token"])
         self.assertEqual(payload["allowed_participants"], [])
+        self.assertFalse(payload["can_edit"])
 
     def test_private_contest_access_denied_for_not_allowed_student(self):
         request = self.factory.get("/")
@@ -119,6 +123,22 @@ class ContestDetailViewTests(TestCase):
         payload = json.loads(response.content.decode())
         self.assertEqual(payload["title"], "Private")
         self.assertEqual(payload["allowed_participants"], [])
+
+    def test_scheduled_contest_hides_problems_for_student_before_start(self):
+        self.contest.start_time = timezone.now() + timedelta(hours=1)
+        self.contest.duration_minutes = 90
+        self.contest.save(update_fields=["start_time", "duration_minutes"])
+
+        request = self.factory.get("/")
+        request.user = self.student
+
+        response = contest_detail(request, contest_id=self.contest.id)
+
+        self.assertEqual(response.status_code, 200)
+        payload = json.loads(response.content.decode())
+        self.assertEqual(payload["problems"], [])
+        self.assertEqual(payload["problems_count"], 0)
+        self.assertFalse(payload["can_view_problems"])
 
     def test_problems_include_stable_letter_labels_by_contest_order(self):
         p1 = Problem.objects.create(title="P1", statement="...")

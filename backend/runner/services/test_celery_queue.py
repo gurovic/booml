@@ -16,7 +16,7 @@ from runner.services.worker import enqueue_submission_for_evaluation
     CELERY_TASK_ALWAYS_EAGER=False,
     CELERY_TASK_EAGER_PROPAGATES=True,
     CELERY_TASK_DEFAULT_QUEUE="celery_test",
-    CELERY_BROKER_URL="memory://",
+    CELERY_BROKER_URL="memory://localhost/",
     CELERY_RESULT_BACKEND="cache+memory://",
 )
 class CeleryQueueExecutionTest(TransactionTestCase):
@@ -40,7 +40,7 @@ class CeleryQueueExecutionTest(TransactionTestCase):
         configure_celery_app()
         # Pin the app to the in-memory broker so the external worker can't consume this task.
         celery_app.conf.update(
-            broker_url="memory://",
+            broker_url="memory://localhost/",
             result_backend="cache+memory://",
             task_always_eager=False,
             task_eager_propagates=True,

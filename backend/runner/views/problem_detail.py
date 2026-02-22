@@ -11,6 +11,7 @@ from django.utils import timezone
 from runner.api.views import build_descriptor_from_problem
 
 from ..forms import SubmissionUploadForm
+from ..models import Contest, ContestProblem
 from ..models.notebook import Notebook
 from ..models.problem import Problem
 from ..models.problem_data import ProblemData
@@ -216,6 +217,35 @@ def _resolve_public_problem_file(problem: Problem, kind: str, name: str, problem
     return chosen["source"], canonical_name
 
 
+def _parse_contest_id(raw_value):
+    if raw_value in (None, ""):
+        return None
+    try:
+        contest_id = int(raw_value)
+    except (TypeError, ValueError):
+        return None
+    return contest_id if contest_id > 0 else None
+
+
+def _build_contest_context(contest: Contest, user):
+    end_time = contest.get_end_time()
+    can_submit, submit_block_reason = contest.is_submission_allowed(user)
+    can_manage = contest.is_user_manager(user)
+    return {
+        "id": contest.id,
+        "title": contest.title,
+        "start_time": contest.start_time.isoformat() if contest.start_time else None,
+        "end_time": end_time.isoformat() if end_time else None,
+        "duration_minutes": contest.duration_minutes,
+        "has_time_limit": bool(contest.start_time and contest.duration_minutes),
+        "allow_upsolving": bool(contest.allow_upsolving),
+        "time_state": contest.time_state(),
+        "can_submit": bool(can_submit),
+        "submit_block_reason": submit_block_reason or None,
+        "can_manage": bool(can_manage),
+    }
+
+
 def problem_detail(request, problem_id):
     problem = get_object_or_404(Problem, id=problem_id)
     problem_data = ProblemData.objects.filter(problem=problem).first()
@@ -295,6 +325,7 @@ def problem_detail(request, problem_id):
 
 def problem_detail_api(request):
     problem_id = request.GET.get('problem_id')
+    contest_id_raw = request.GET.get("contest_id")
 
     if problem_id is None:
         return JsonResponse({'error': 'problem_id is required'}, status=400)
@@ -310,6 +341,33 @@ def problem_detail_api(request):
 
     submissions = []
     notebook_id = None
+    contest = None
+    contest_context = None
+
+    parsed_contest_id = _parse_contest_id(contest_id_raw)
+    if contest_id_raw not in (None, "") and parsed_contest_id is None:
+        return JsonResponse({"detail": "contest_id must be a positive integer"}, status=400)
+
+    if parsed_contest_id is not None:
+        if not request.user.is_authenticated:
+            return JsonResponse({"detail": "Authentication required"}, status=401)
+        contest = get_object_or_404(
+            Contest.objects.select_related("course__section")
+            .prefetch_related("allowed_participants"),
+            pk=parsed_contest_id,
+        )
+        contest_problem_exists = ContestProblem.objects.filter(
+            contest_id=contest.id,
+            problem_id=problem.id,
+            problem__is_published=True,
+        ).exists()
+        if not contest_problem_exists:
+            return JsonResponse({"detail": "Problem is not part of this contest"}, status=404)
+        if not contest.is_visible_to(request.user):
+            return JsonResponse({"detail": "Forbidden"}, status=403)
+        if not contest.are_problems_visible_to(request.user):
+            return JsonResponse({"detail": "Forbidden"}, status=403)
+        contest_context = _build_contest_context(contest, request.user)
     
     if request.user.is_authenticated:
         raw_submissions = (
@@ -318,17 +376,22 @@ def problem_detail_api(request):
             .order_by("-submitted_at")[:5]
         )
 
+        contest_end_time = contest.get_end_time() if contest is not None else None
         for submission in raw_submissions:
             metric_value = _primary_metric(submission.metrics)
             submitted = submission.submitted_at
             if submitted:
                 submitted = timezone.localtime(submitted, ZoneInfo("Europe/Moscow"))
+            is_after_deadline = False
+            if contest_end_time is not None and submission.submitted_at is not None:
+                is_after_deadline = submission.submitted_at > contest_end_time
             submissions.append({
                 "id": submission.id,
                 "submitted_at": submitted.strftime("%H:%M") if submitted else None,
                 "status": submission.status,
                 "metric": metric_value,
                 "metrics": submission.metrics,
+                "is_after_deadline": is_after_deadline,
             })
         
         # Get user's notebook for this problem
@@ -348,6 +411,7 @@ def problem_detail_api(request):
         "files": file_urls,
         "submissions": submissions,
         "notebook_id": notebook_id,
+        "contest": contest_context,
     }
 
     return JsonResponse(response)

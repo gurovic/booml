@@ -18,7 +18,16 @@
               >
                 Добавить задачу
               </button>
+              <button
+                v-if="canEditContest && contestHasTimeLimit"
+                class="button button--secondary"
+                type="button"
+                @click="openTimingDialog"
+              >
+                Изменить время
+              </button>
               <router-link
+                v-if="canOpenLeaderboard"
                 :to="leaderboardRoute"
                 class="button button--secondary contest-link"
               >
@@ -29,28 +38,57 @@
           <div v-if="contest.description" class="contest-description">
             {{ contest.description }}
           </div>
-          <UiLinkList
-            class="contest-problems-list"
-            :title="problemsTitle"
-            :items="problemItems"
-            :reorderable="canReorderProblems"
-            @reorder="onReorderProblem"
-          >
-            <template #action="{ item }">
-              <div v-if="canManageContest" class="problem-order-actions">
-                <button
-                  class="problem-order-btn problem-order-btn--danger"
-                  type="button"
-                  title="Удалить из контеста"
-                  data-hover-only="true"
-                  @click.stop.prevent="removeProblem(item)"
-                >
-                  ✕
-                </button>
-              </div>
-            </template>
-          </UiLinkList>
-          <p v-if="!problemItems.length" class="note">В этом контесте пока нет задач.</p>
+          <div v-if="contestHasTimeLimit" class="contest-timing">
+            <div class="contest-timing__top">
+              <p class="contest-timing__state">{{ contestTimeStateLabel }}</p>
+              <span class="contest-timing__chip">
+                Дорешка: {{ contestUpsolvingLabel }}
+              </span>
+            </div>
+            <div v-if="contestCountdown" class="contest-timer">
+              <p class="contest-timer__label">{{ contestCountdown.label }}</p>
+              <p class="contest-timer__value">{{ contestCountdown.value }}</p>
+            </div>
+            <p class="contest-timing__line">
+              Начало: {{ contestStartLabel }}
+            </p>
+            <p class="contest-timing__line">
+              Дедлайн: {{ contestEndLabel }}
+            </p>
+            <p
+              v-if="contestSubmitBlockedReason && !canManageContest"
+              class="contest-timing__warning"
+            >
+              {{ contestSubmitBlockedReason }}
+            </p>
+          </div>
+          <template v-if="contestCanViewProblems">
+            <UiLinkList
+              class="contest-problems-list"
+              :title="problemsTitle"
+              :items="problemItems"
+              :reorderable="canReorderProblems"
+              @reorder="onReorderProblem"
+            >
+              <template #action="{ item }">
+                <div v-if="canManageContest" class="problem-order-actions">
+                  <button
+                    class="problem-order-btn problem-order-btn--danger"
+                    type="button"
+                    title="Удалить из контеста"
+                    data-hover-only="true"
+                    @click.stop.prevent="removeProblem(item)"
+                  >
+                    ✕
+                  </button>
+                </div>
+              </template>
+            </UiLinkList>
+            <p v-if="!problemItems.length" class="note">В этом контесте пока нет задач.</p>
+          </template>
+          <p v-else class="note">
+            {{ contestProblemsLockedReason }}
+          </p>
         </template>
         <div v-else class="state">Контест не найден.</div>
       </section>
@@ -165,11 +203,60 @@
         </div>
       </div>
     </div>
+
+    <div v-if="showTimingDialog" class="dialog-overlay" @click="closeTimingDialog">
+      <div class="dialog dialog--timing" @click.stop>
+        <div class="dialog__header">
+          <h2 class="dialog__title">Изменить время контеста</h2>
+          <button class="dialog__close" @click="closeTimingDialog">×</button>
+        </div>
+        <div class="dialog__body">
+          <div class="timing-form">
+            <div class="timing-form__row">
+              <div class="timing-form__field">
+                <label for="edit-contest-start-time" class="timing-form__label">Начало</label>
+                <input
+                  id="edit-contest-start-time"
+                  v-model="editTiming.start_time"
+                  type="datetime-local"
+                  class="timing-form__input"
+                />
+              </div>
+              <div class="timing-form__field">
+                <label for="edit-contest-end-time" class="timing-form__label">Окончание</label>
+                <input
+                  id="edit-contest-end-time"
+                  v-model="editTiming.end_time"
+                  type="datetime-local"
+                  class="timing-form__input"
+                />
+              </div>
+            </div>
+            <label class="timing-form__checkbox">
+              <input type="checkbox" v-model="editTiming.allow_upsolving" />
+              <span>Разрешить дорешку после окончания</span>
+            </label>
+            <div v-if="timingError" class="form-error">{{ timingError }}</div>
+          </div>
+        </div>
+        <div class="dialog__footer">
+          <button class="button button--secondary" @click="closeTimingDialog">Отмена</button>
+          <button
+            class="button button--primary"
+            type="button"
+            :disabled="isUpdatingTiming"
+            @click="saveTimingChanges"
+          >
+            {{ isUpdatingTiming ? 'Сохранение...' : 'Сохранить' }}
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { contestApi } from '@/api'
 import { getPolygonProblems } from '@/api/polygon'
@@ -180,6 +267,7 @@ import UiLinkList from '@/components/ui/UiLinkList.vue'
 import UiIdPill from '@/components/ui/UiIdPill.vue'
 import { arrayMove } from '@/utils/arrayMove'
 import { normalizeContestProblemLabel, toContestProblemLabel } from '@/utils/contestProblemLabel'
+import { formatCountdown, formatDateTimeMsk, toTimestamp } from '@/utils/datetime'
 
 const route = useRoute()
 const userStore = useUserStore()
@@ -190,15 +278,29 @@ const contest = ref(null)
 const isLoading = ref(false)
 const error = ref('')
 const showAddProblemDialog = ref(false)
+const showTimingDialog = ref(false)
 const loadingProblems = ref(false)
 const availableProblems = ref([])
 const selectedProblemIds = ref([])
 const isAddingProblem = ref(false)
+const isUpdatingTiming = ref(false)
 const addProblemError = ref('')
+const timingError = ref('')
 const problemSearch = ref('')
 const page = ref(1)
 const totalPages = ref(1)
 const pageSize = 10
+const nowTs = ref(Date.now())
+let clockTimer = null
+let contestSyncTimer = null
+const autoUnlockSyncInFlight = ref(false)
+const lastAutoUnlockAttemptTs = ref(0)
+const periodicSyncInFlight = ref(false)
+const editTiming = ref({
+  start_time: '',
+  end_time: '',
+  allow_upsolving: false,
+})
 
 const contestTitle = computed(() => {
   if (contest.value?.title) return contest.value.title
@@ -207,15 +309,73 @@ const contestTitle = computed(() => {
 
 const problemsTitle = computed(() => (contest.value ? 'Задачи' : contestTitle.value))
 
+const contestHasTimeLimit = computed(() => !!contest.value?.has_time_limit)
+const contestStartTs = computed(() => toTimestamp(contest.value?.start_time))
+const contestEndTs = computed(() => toTimestamp(contest.value?.end_time))
+const contestStartLabel = computed(() => formatDateTimeMsk(contest.value?.start_time))
+const contestEndLabel = computed(() => formatDateTimeMsk(contest.value?.end_time))
+const contestUpsolvingLabel = computed(() => {
+  return contest.value?.allow_upsolving ? 'Да' : 'Нет'
+})
+const contestTimeState = computed(() => {
+  if (!contestHasTimeLimit.value) return 'always_open'
+  const now = nowTs.value
+  if (contestStartTs.value != null && now < contestStartTs.value) return 'not_started'
+  if (contestEndTs.value != null && now >= contestEndTs.value) {
+    return contest.value?.allow_upsolving ? 'upsolving' : 'finished'
+  }
+  return 'running'
+})
+const contestTimeStateLabel = computed(() => {
+  const state = contestTimeState.value
+  const labels = {
+    not_started: 'Контест ещё не начался',
+    running: 'Контест идёт',
+    upsolving: 'Идёт дорешка',
+    finished: 'Контест завершён',
+  }
+  return labels[state] || 'Соревновательный режим'
+})
+const contestCountdown = computed(() => {
+  if (!contestHasTimeLimit.value) return null
+  const now = nowTs.value
+  if (contestTimeState.value === 'not_started' && contestStartTs.value != null) {
+    const secondsLeft = Math.max(0, Math.ceil((contestStartTs.value - now) / 1000))
+    return { label: 'До начала', value: formatCountdown(secondsLeft) }
+  }
+  if (contestTimeState.value === 'running' && contestEndTs.value != null) {
+    const secondsLeft = Math.max(0, Math.ceil((contestEndTs.value - now) / 1000))
+    return { label: 'До конца', value: formatCountdown(secondsLeft) }
+  }
+  return null
+})
+const contestSubmitBlockedReason = computed(() => {
+  if (!contest.value) return ''
+  if (contestTimeState.value === 'not_started') return 'Контест ещё не начался.'
+  if (contestTimeState.value === 'finished') return 'Контест завершён, отправка недоступна.'
+  if (contest.value.can_submit) return ''
+  return contest.value.submit_block_reason || ''
+})
+
 const canManageContest = computed(() => {
   if (!userStore.currentUser || !contest.value) return false
   return !!contest.value.can_manage
+})
+const canEditContest = computed(() => {
+  if (!userStore.currentUser || !contest.value) return false
+  return !!contest.value.can_edit
 })
 
 const canReorderProblems = computed(() => {
   const list = Array.isArray(contest.value?.problems) ? contest.value.problems : []
   return canManageContest.value && list.length > 1
 })
+const contestCanViewProblems = computed(() => contest.value?.can_view_problems !== false)
+const canOpenLeaderboard = computed(() => canManageContest.value || contestCanViewProblems.value)
+const shouldAutoSyncContest = computed(() => contestHasTimeLimit.value && !canManageContest.value)
+const contestProblemsLockedReason = computed(
+  () => contest.value?.problems_locked_reason || 'Задачи откроются после начала контеста.'
+)
 
 const problemItems = computed(() => {
   const problems = Array.isArray(contest.value?.problems) ? contest.value.problems : []
@@ -245,22 +405,28 @@ const leaderboardRoute = computed(() => {
   return { name: 'contest-leaderboard', params: { id: contestId.value }, query }
 })
 
-const loadContest = async () => {
+const loadContest = async ({ silent = false } = {}) => {
   if (!hasValidId.value) {
     contest.value = null
     error.value = 'Некорректный id контеста.'
     return
   }
 
-  isLoading.value = true
-  error.value = ''
+  if (!silent) {
+    isLoading.value = true
+    error.value = ''
+  }
   try {
     contest.value = await contestApi.getContest(contestId.value)
   } catch (err) {
     console.error('Failed to load contest.', err)
-    error.value = err?.message || 'Не удалось загрузить контест.'
+    if (!silent) {
+      error.value = err?.message || 'Не удалось загрузить контест.'
+    }
   } finally {
-    isLoading.value = false
+    if (!silent) {
+      isLoading.value = false
+    }
   }
 }
 
@@ -287,6 +453,76 @@ const closeAddProblemDialog = () => {
   problemSearch.value = ''
   page.value = 1
   totalPages.value = 1
+}
+
+const toLocalDateTimeInput = (isoString) => {
+  if (!isoString) return ''
+  const dt = new Date(isoString)
+  if (Number.isNaN(dt.getTime())) return ''
+  const pad = (v) => String(v).padStart(2, '0')
+  const yyyy = dt.getFullYear()
+  const mm = pad(dt.getMonth() + 1)
+  const dd = pad(dt.getDate())
+  const hh = pad(dt.getHours())
+  const min = pad(dt.getMinutes())
+  return `${yyyy}-${mm}-${dd}T${hh}:${min}`
+}
+
+const toIsoDateTime = (localValue) => {
+  if (!localValue) return null
+  const dt = new Date(localValue)
+  if (Number.isNaN(dt.getTime())) return null
+  return dt.toISOString()
+}
+
+const openTimingDialog = () => {
+  if (!contest.value) return
+  editTiming.value = {
+    start_time: toLocalDateTimeInput(contest.value.start_time),
+    end_time: toLocalDateTimeInput(contest.value.end_time),
+    allow_upsolving: !!contest.value.allow_upsolving,
+  }
+  timingError.value = ''
+  showTimingDialog.value = true
+}
+
+const closeTimingDialog = (force = false) => {
+  if (!force && isUpdatingTiming.value) return
+  showTimingDialog.value = false
+  timingError.value = ''
+}
+
+const saveTimingChanges = async () => {
+  if (!contest.value) return
+
+  timingError.value = ''
+  const startIso = toIsoDateTime(editTiming.value.start_time)
+  const endIso = toIsoDateTime(editTiming.value.end_time)
+  if (!startIso || !endIso) {
+    timingError.value = 'Укажите корректные дату и время начала/окончания.'
+    return
+  }
+  if (new Date(endIso).getTime() <= new Date(startIso).getTime()) {
+    timingError.value = 'Время окончания должно быть позже времени начала.'
+    return
+  }
+
+  isUpdatingTiming.value = true
+  try {
+    await contestApi.updateContest(contest.value.id, {
+      has_time_limit: true,
+      start_time: startIso,
+      end_time: endIso,
+      allow_upsolving: !!editTiming.value.allow_upsolving,
+    })
+    await loadContest()
+    closeTimingDialog(true)
+  } catch (err) {
+    console.error('Failed to update contest timing:', err)
+    timingError.value = err?.message || 'Не удалось обновить время контеста.'
+  } finally {
+    isUpdatingTiming.value = false
+  }
 }
 
 const isProblemInContest = (problemId) => {
@@ -383,9 +619,77 @@ const removeProblem = async (item) => {
   }
 }
 
+const startClock = () => {
+  if (clockTimer != null) return
+  clockTimer = window.setInterval(() => {
+    nowTs.value = Date.now()
+  }, 1000)
+}
+
+const stopClock = () => {
+  if (clockTimer == null) return
+  window.clearInterval(clockTimer)
+  clockTimer = null
+}
+
+const syncContestSilently = async () => {
+  if (!shouldAutoSyncContest.value) return
+  if (periodicSyncInFlight.value || autoUnlockSyncInFlight.value) return
+  periodicSyncInFlight.value = true
+  try {
+    await loadContest({ silent: true })
+  } finally {
+    periodicSyncInFlight.value = false
+  }
+}
+
+const startContestSync = () => {
+  if (contestSyncTimer != null) return
+  contestSyncTimer = window.setInterval(() => {
+    void syncContestSilently()
+  }, 5000)
+}
+
+const stopContestSync = () => {
+  if (contestSyncTimer == null) return
+  window.clearInterval(contestSyncTimer)
+  contestSyncTimer = null
+}
+
+onMounted(() => {
+  startClock()
+  startContestSync()
+})
+
+onBeforeUnmount(() => {
+  stopClock()
+  stopContestSync()
+})
+
 watch(contestId, () => {
   loadContest()
 }, { immediate: true })
+
+watch(
+  [nowTs, contestHasTimeLimit, contestStartTs, contestCanViewProblems, isLoading],
+  async () => {
+    if (!contest.value) return
+    if (!contestHasTimeLimit.value) return
+    if (contestCanViewProblems.value) return
+    if (contestStartTs.value == null) return
+    if (nowTs.value < contestStartTs.value) return
+    if (isLoading.value || autoUnlockSyncInFlight.value) return
+    if (nowTs.value - lastAutoUnlockAttemptTs.value < 5000) return
+
+    lastAutoUnlockAttemptTs.value = nowTs.value
+    autoUnlockSyncInFlight.value = true
+    try {
+      await loadContest({ silent: true })
+    } finally {
+      autoUnlockSyncInFlight.value = false
+    }
+  }
+)
 
 watch(showAddProblemDialog, (newValue) => {
   if (newValue) {
@@ -479,6 +783,84 @@ watch(showAddProblemDialog, (newValue) => {
   margin-bottom: 12px;
 }
 
+.contest-timing {
+  padding: 14px 16px 16px;
+  background: var(--color-bg-card);
+  border-radius: 12px;
+  border: 1px solid var(--color-border-default);
+  margin-top: 12px;
+  margin-bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.contest-description + .contest-timing {
+  margin-top: 0;
+}
+
+.contest-timing__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.contest-timing__state {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.contest-timing__chip {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--color-border-default);
+  background: var(--color-bg-muted);
+  color: var(--color-text-secondary);
+}
+
+.contest-timer {
+  border: 1px solid var(--color-border-light);
+  border-radius: 12px;
+  background: linear-gradient(135deg, #f8fafc 0%, #eef2ff 100%);
+  padding: 12px 14px;
+}
+
+.contest-timer__label {
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #334155;
+}
+
+.contest-timer__value {
+  margin: 0;
+  font-size: clamp(26px, 3.2vw, 36px);
+  line-height: 1.05;
+  font-weight: 700;
+  color: #0f172a;
+  font-variant-numeric: tabular-nums;
+}
+
+.contest-timing__line {
+  margin: 0;
+  font-size: 14px;
+  color: var(--color-text-secondary);
+}
+
+.contest-timing__warning {
+  margin: 2px 0 0;
+  font-size: 13px;
+  color: var(--color-text-danger);
+}
+
 :deep(.contest-problems-list > h2) {
   display: none;
 }
@@ -555,6 +937,60 @@ watch(showAddProblemDialog, (newValue) => {
   gap: 12px;
   padding: 16px 24px;
   border-top: 1px solid var(--color-border-default, #e0e0e0);
+}
+
+.dialog--timing {
+  max-width: 640px;
+}
+
+.timing-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.timing-form__row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.timing-form__field {
+  min-width: 0;
+}
+
+.timing-form__label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.timing-form__input {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid var(--color-border-default, #d0d0d0);
+  border-radius: 10px;
+  padding: 9px 11px;
+  font-size: 14px;
+  font-family: inherit;
+}
+
+.timing-form__input:focus {
+  outline: none;
+  border-color: var(--color-primary, #3b82f6);
+}
+
+.timing-form__checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.timing-form__checkbox input[type='checkbox'] {
+  width: 18px;
+  height: 18px;
 }
 
 .dialog-toolbar {
@@ -799,6 +1235,12 @@ watch(showAddProblemDialog, (newValue) => {
 @media (min-width: 900px) {
   .contest-content {
     padding: 0 24px 48px;
+  }
+}
+
+@media (max-width: 700px) {
+  .timing-form__row {
+    grid-template-columns: 1fr;
   }
 }
 </style>

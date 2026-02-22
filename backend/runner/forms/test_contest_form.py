@@ -71,3 +71,24 @@ class ContestFormTests(TestCase):
         self.assertTrue(contest.is_rated)
         self.assertEqual(contest.scoring, "partial")
         self.assertEqual(contest.registration_type, "approval")
+
+    def test_form_rejects_upsolving_without_timing(self):
+        form = ContestForm(
+            data={
+                "title": "Contest",
+                "description": "",
+                "source": "",
+                "start_time": "",
+                "duration_minutes": "",
+                "allow_upsolving": True,
+                "is_published": False,
+                "status": 0,
+                "scoring": "ioi",
+                "registration_type": "open",
+                "is_rated": False,
+            },
+            course=self.course,
+        )
+
+        self.assertFalse(form.is_valid())
+        self.assertIn("allow_upsolving", form.errors)

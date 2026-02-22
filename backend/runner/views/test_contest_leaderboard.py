@@ -251,3 +251,71 @@ class ContestLeaderboardViewTests(TestCase):
         self.assertEqual(entries[self.bob.id]["penalty_minutes"], 20)
         self.assertEqual(entries[self.alice.id]["rank"], 1)
         self.assertEqual(entries[self.bob.id]["rank"], 2)
+
+    def test_upsolving_scores_are_separated_from_official_results(self):
+        start_time = timezone.now() - timedelta(hours=3)
+        timed_contest = Contest.objects.create(
+            title="Timed Upsolving Contest",
+            course=self.course,
+            created_by=self.teacher,
+            is_published=True,
+            approval_status=Contest.ApprovalStatus.APPROVED,
+            start_time=start_time,
+            duration_minutes=60,
+            allow_upsolving=True,
+        )
+        timed_contest.problems.add(self.problem_accuracy)
+
+        before_deadline = self._create_submission(
+            self.alice,
+            self.problem_accuracy,
+            "accuracy",
+            0.6,
+        )
+        after_deadline = self._create_submission(
+            self.alice,
+            self.problem_accuracy,
+            "accuracy",
+            0.95,
+        )
+        Submission.objects.filter(pk=before_deadline.pk).update(
+            submitted_at=start_time + timedelta(minutes=20)
+        )
+        Submission.objects.filter(pk=after_deadline.pk).update(
+            submitted_at=start_time + timedelta(minutes=90)
+        )
+
+        boards = build_contest_problem_leaderboards(timed_contest)
+        alice_problem_entry = next(
+            row
+            for row in boards[0]["entries"]
+            if row["user_id"] == self.alice.id
+        )
+        self.assertIsNotNone(alice_problem_entry["best_score"])
+        self.assertIsNotNone(alice_problem_entry["best_score_after_deadline"])
+        self.assertTrue(alice_problem_entry["improved_after_deadline"])
+        self.assertLess(
+            alice_problem_entry["best_score"],
+            alice_problem_entry["best_score_after_deadline"],
+        )
+
+        overall = build_contest_overall_leaderboard(timed_contest)
+        alice_overall = next(
+            row
+            for row in overall["entries"]
+            if row["user_id"] == self.alice.id
+        )
+        self.assertIsNotNone(alice_overall["total_score"])
+        self.assertIsNotNone(alice_overall["upsolving_total_score"])
+        self.assertLess(alice_overall["total_score"], alice_overall["upsolving_total_score"])
+
+    def test_student_cannot_view_leaderboard_before_start(self):
+        self.contest.start_time = timezone.now() + timedelta(hours=1)
+        self.contest.duration_minutes = 60
+        self.contest.save(update_fields=["start_time", "duration_minutes"])
+
+        request = self.factory.get("/")
+        request.user = self.alice
+        response = contest_problem_leaderboard.__wrapped__(request, contest_id=self.contest.id)
+
+        self.assertEqual(response.status_code, 403)

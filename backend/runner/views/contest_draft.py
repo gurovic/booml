@@ -1,5 +1,6 @@
 import json
 import uuid
+from datetime import datetime
 
 from django.contrib.auth import get_user_model
 from django.db import transaction
@@ -8,6 +9,7 @@ from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 
 from ..models import Contest, Course, Problem, CourseParticipant, ContestProblem
 from ..forms.contest_draft import ContestForm
@@ -15,6 +17,112 @@ from ..services.contest_labels import contest_problem_label
 from .contest_leaderboard import build_contest_leaderboards
 
 User = get_user_model()
+
+_TRUE_VALUES = {"1", "true", "yes", "on"}
+_FALSE_VALUES = {"0", "false", "no", "off", ""}
+
+
+def _parse_bool(value, *, default=None):
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in _TRUE_VALUES:
+            return True
+        if normalized in _FALSE_VALUES:
+            return False
+    return default
+
+
+def _coerce_datetime(value):
+    if value in (None, ""):
+        return None
+    if isinstance(value, datetime):
+        parsed = value
+    elif isinstance(value, str):
+        parsed = parse_datetime(value.strip())
+    else:
+        return None
+    if parsed is None:
+        return None
+    if timezone.is_naive(parsed):
+        return timezone.make_aware(parsed, timezone.get_current_timezone())
+    return parsed
+
+
+def _contest_timing_payload(contest: Contest, *, user=None, include_submit=False) -> dict:
+    end_time = contest.get_end_time()
+    payload = {
+        "start_time": contest.start_time.isoformat() if contest.start_time else None,
+        "end_time": end_time.isoformat() if end_time else None,
+        "duration_minutes": contest.duration_minutes,
+        "has_time_limit": bool(contest.start_time and contest.duration_minutes),
+        "allow_upsolving": bool(contest.allow_upsolving),
+        "time_state": contest.time_state(),
+    }
+    if include_submit:
+        can_submit, submit_block_reason = contest.is_submission_allowed(user)
+        payload["can_submit"] = bool(can_submit)
+        payload["submit_block_reason"] = submit_block_reason or None
+    return payload
+
+
+def _normalize_timing_fields(data):
+    has_time_limit_raw = data.pop("has_time_limit", None)
+    end_time_raw = data.pop("end_time", None)
+
+    allow_upsolving = _parse_bool(data.get("allow_upsolving"), default=False)
+    if allow_upsolving is None:
+        return JsonResponse({"detail": "allow_upsolving must be a boolean"}, status=400)
+    data["allow_upsolving"] = bool(allow_upsolving)
+
+    if has_time_limit_raw is None:
+        # Legacy mode (older clients may send start_time + duration_minutes only).
+        if end_time_raw not in (None, ""):
+            start_time = _coerce_datetime(data.get("start_time"))
+            end_time = _coerce_datetime(end_time_raw)
+            if start_time is None or end_time is None:
+                return JsonResponse({"detail": "start_time and end_time must be valid datetimes"}, status=400)
+            if end_time <= start_time:
+                return JsonResponse({"detail": "end_time must be after start_time"}, status=400)
+            duration_minutes = int((end_time - start_time).total_seconds() // 60)
+            if duration_minutes <= 0:
+                return JsonResponse({"detail": "Contest duration must be at least 1 minute"}, status=400)
+            data["start_time"] = start_time.isoformat()
+            data["duration_minutes"] = duration_minutes
+        return None
+
+    has_time_limit = _parse_bool(has_time_limit_raw, default=None)
+    if has_time_limit is None:
+        return JsonResponse({"detail": "has_time_limit must be a boolean"}, status=400)
+
+    if not has_time_limit:
+        data["start_time"] = ""
+        data["duration_minutes"] = ""
+        data["allow_upsolving"] = False
+        return None
+
+    start_time = _coerce_datetime(data.get("start_time"))
+    end_time = _coerce_datetime(end_time_raw)
+    if start_time is None or end_time is None:
+        return JsonResponse(
+            {"detail": "start_time and end_time are required for timed contests"},
+            status=400,
+        )
+    if end_time <= start_time:
+        return JsonResponse({"detail": "end_time must be after start_time"}, status=400)
+
+    duration_minutes = int((end_time - start_time).total_seconds() // 60)
+    if duration_minutes <= 0:
+        return JsonResponse({"detail": "Contest duration must be at least 1 minute"}, status=400)
+
+    data["start_time"] = start_time.isoformat()
+    data["duration_minutes"] = duration_minutes
+    return None
 
 def _course_is_teacher(course: Course, user) -> bool:
     if not user.is_authenticated:
@@ -24,6 +132,67 @@ def _course_is_teacher(course: Course, user) -> bool:
     if course.owner_id == user.id:
         return True
     return course.participants.filter(user=user, role=CourseParticipant.Role.TEACHER).exists()
+
+
+def _contest_can_edit(contest: Contest, user) -> bool:
+    if not getattr(user, "is_authenticated", False):
+        return False
+    if user.is_staff or user.is_superuser:
+        return True
+    return contest.created_by_id == user.id
+
+
+def _resolve_updated_timing(contest: Contest, payload: dict):
+    has_time_limit_current = bool(contest.start_time and contest.duration_minutes)
+    has_time_limit = _parse_bool(payload.get("has_time_limit"), default=has_time_limit_current)
+    if has_time_limit is None:
+        return None, JsonResponse({"detail": "has_time_limit must be a boolean"}, status=400)
+
+    if not has_time_limit:
+        return {
+            "start_time": None,
+            "duration_minutes": None,
+            "allow_upsolving": False,
+        }, None
+
+    current_end = contest.get_end_time()
+    start_time = (
+        _coerce_datetime(payload.get("start_time"))
+        if "start_time" in payload
+        else contest.start_time
+    )
+    end_time = (
+        _coerce_datetime(payload.get("end_time"))
+        if "end_time" in payload
+        else current_end
+    )
+    if start_time is None or end_time is None:
+        return (
+            None,
+            JsonResponse(
+                {"detail": "start_time and end_time are required for timed contests"},
+                status=400,
+            ),
+        )
+    if end_time <= start_time:
+        return None, JsonResponse({"detail": "end_time must be after start_time"}, status=400)
+
+    duration_minutes = int((end_time - start_time).total_seconds() // 60)
+    if duration_minutes <= 0:
+        return None, JsonResponse({"detail": "Contest duration must be at least 1 minute"}, status=400)
+
+    allow_upsolving = _parse_bool(
+        payload.get("allow_upsolving"),
+        default=bool(contest.allow_upsolving),
+    )
+    if allow_upsolving is None:
+        return None, JsonResponse({"detail": "allow_upsolving must be a boolean"}, status=400)
+
+    return {
+        "start_time": start_time,
+        "duration_minutes": duration_minutes,
+        "allow_upsolving": bool(allow_upsolving),
+    }, None
 
 @login_required
 def create_contest(request, course_id):
@@ -53,7 +222,15 @@ def create_contest(request, course_id):
         data = request.POST
 
     # The model has defaults for these; the form still treats them as required unless provided.
-    data = dict(data) if not hasattr(data, "copy") else data.copy()
+    if hasattr(data, "lists"):
+        data = {key: values[-1] if values else "" for key, values in data.lists()}
+    elif hasattr(data, "copy"):
+        data = data.copy()
+    else:
+        data = dict(data)
+    timing_error = _normalize_timing_fields(data)
+    if timing_error is not None:
+        return timing_error
     data.setdefault("status", Contest.Status.GOING)
     data.setdefault("scoring", Contest.Scoring.IOI)
     data.setdefault("registration_type", Contest.Registration.OPEN)
@@ -71,8 +248,8 @@ def create_contest(request, course_id):
                 "is_rated": contest.is_rated,
                 "scoring": contest.scoring,
                 "registration_type": contest.registration_type,
-                "duration_minutes": contest.duration_minutes,
                 "created_by_id": contest.created_by_id,
+                **_contest_timing_payload(contest, user=request.user, include_submit=True),
             },
             status=201,
         )
@@ -134,12 +311,11 @@ def list_contests(request):
                 "is_rated": contest.is_rated,
                 "scoring": contest.scoring,
                 "registration_type": contest.registration_type,
-                "duration_minutes": contest.duration_minutes,
-                "start_time": contest.start_time.isoformat() if contest.start_time else None,
                 "problems_count": contest.problems_count,
                 "access_token": contest.access_token
                 if contest.access_type == Contest.AccessType.LINK and (is_teacher or is_admin)
                 else None,
+                **_contest_timing_payload(contest),
             }
         )
 
@@ -165,6 +341,44 @@ def delete_contest(request, contest_id):
     contest.delete()
     return JsonResponse({"success": True, "deleted_id": contest_id}, status=200)
 
+
+@login_required
+def update_contest(request, contest_id):
+    if request.method != "POST":
+        return JsonResponse({"detail": "Method not allowed"}, status=405)
+
+    contest = get_object_or_404(
+        Contest.objects.select_related("course__section", "course__owner"),
+        pk=contest_id,
+    )
+    if not _contest_can_edit(contest, request.user):
+        return JsonResponse({"detail": "Only contest owner can update this contest"}, status=403)
+
+    try:
+        payload = json.loads(request.body or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"detail": "Invalid JSON payload"}, status=400)
+    if not isinstance(payload, dict):
+        return JsonResponse({"detail": "JSON payload must be an object"}, status=400)
+
+    timing_values, timing_error = _resolve_updated_timing(contest, payload)
+    if timing_error is not None:
+        return timing_error
+
+    contest.start_time = timing_values["start_time"]
+    contest.duration_minutes = timing_values["duration_minutes"]
+    contest.allow_upsolving = timing_values["allow_upsolving"]
+    contest.save(update_fields=["start_time", "duration_minutes", "allow_upsolving", "updated_at"])
+
+    return JsonResponse(
+        {
+            "id": contest.id,
+            "title": contest.title,
+            **_contest_timing_payload(contest, user=request.user, include_submit=True),
+        },
+        status=200,
+    )
+
 def contest_detail(request, contest_id):
     if request.method != "GET":
         return JsonResponse({"detail": "Method not allowed"}, status=405)
@@ -182,28 +396,38 @@ def contest_detail(request, contest_id):
 
     is_admin = request.user.is_staff or request.user.is_superuser
     can_manage = bool(_course_is_teacher(contest.course, request.user) or is_admin)
+    can_edit = bool(_contest_can_edit(contest, request.user))
     allowed_participants = []
     if can_manage:
         allowed_participants = list(
             contest.allowed_participants.values("id", "username")
         )
 
-    problem_links = (
-        ContestProblem.objects.filter(contest_id=contest.id, problem__is_published=True)
-        .select_related("problem")
-        .order_by("position", "id")
-    )
-    problems = [
-        {
-            "id": link.problem_id,
-            "title": link.problem.title,
-            "position": link.position,
-            "index": index,
-            "label": contest_problem_label(index),
+    can_view_problems = contest.are_problems_visible_to(request.user)
+    problems = []
+    if can_view_problems:
+        problem_links = (
+            ContestProblem.objects.filter(contest_id=contest.id, problem__is_published=True)
+            .select_related("problem")
+            .order_by("position", "id")
+        )
+        problems = [
+            {
+                "id": link.problem_id,
+                "title": link.problem.title,
+                "position": link.position,
+                "index": index,
+                "label": contest_problem_label(index),
+            }
+            for index, link in enumerate(problem_links)
+        ]
+        leaderboards, overall_leaderboard = build_contest_leaderboards(contest)
+    else:
+        leaderboards, overall_leaderboard = [], {
+            "scoring": contest.scoring,
+            "problems_count": 0,
+            "entries": [],
         }
-        for index, link in enumerate(problem_links)
-    ]
-    leaderboards, overall_leaderboard = build_contest_leaderboards(contest)
 
     return JsonResponse(
         {
@@ -222,15 +446,19 @@ def contest_detail(request, contest_id):
             "is_rated": contest.is_rated,
             "scoring": contest.scoring,
             "registration_type": contest.registration_type,
-            "duration_minutes": contest.duration_minutes,
-            "start_time": contest.start_time.isoformat() if contest.start_time else None,
             "problems_count": len(problems),
             "allowed_participants": allowed_participants,
             "problems": problems,
             "leaderboards": leaderboards,
             "overall_leaderboard": overall_leaderboard,
             "can_manage": can_manage,
+            "can_edit": can_edit,
+            "can_view_problems": can_view_problems,
+            "problems_locked_reason": (
+                None if can_view_problems else "Задачи откроются после начала контеста."
+            ),
             "course_owner_id": contest.course.owner_id,
+            **_contest_timing_payload(contest, user=request.user, include_submit=True),
         },
         status=200,
     )

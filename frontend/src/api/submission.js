@@ -18,9 +18,12 @@ async function fetchJsonWithFriendlyErrors(url, options = {}) {
 }
 
 export async function submitSolution(problemId, payload = {}) {
-  const { file = null, rawText = '' } = payload
+  const { file = null, rawText = '', contestId = null } = payload
   const formData = new FormData()
   formData.append('problem_id', problemId)
+  if (contestId != null && contestId !== '') {
+    formData.append('contest_id', contestId)
+  }
   if (file) {
     formData.append('file', file)
   }

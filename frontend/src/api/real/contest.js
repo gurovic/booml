@@ -91,3 +91,12 @@ export async function deleteContest(contestId) {
     throw err
   }
 }
+
+export async function updateContest(contestId, contestData) {
+  try {
+    return await apiPost(`backend/contest/${contestId}/update/`, contestData)
+  } catch (err) {
+    console.error('Failed to update contest.', err)
+    throw err
+  }
+}

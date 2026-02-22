@@ -1,17 +1,22 @@
 import tempfile
 from pathlib import Path
-from datetime import date
+from datetime import date, timedelta
 from unittest import mock
 from unittest.mock import patch
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 from django.urls import reverse
+from django.utils import timezone
 from rest_framework.test import APIRequestFactory, force_authenticate
+from ...models.contest import Contest
+from ...models.course import Course, CourseParticipant
 from ...models.problem import Problem
 from ...models.problem_desriptor import ProblemDescriptor
+from ...models.section import Section
 from ...models.submission import Submission
 from ...models.prevalidation import PreValidation
+from ...services.section_service import SectionCreateInput, create_section
 from .submissions import SubmissionCreateView, SubmissionDetailView, ProblemSubmissionsListView
 
 User = get_user_model()
@@ -33,6 +38,42 @@ class SubmissionAPITests(TestCase):
             target_column="pred",
             target_type="float",
         )
+        self.teacher = User.objects.create_user(username="teacher_submissions", password="pass")
+        root_section = Section.objects.get(title="Авторские", parent__isnull=True)
+        section = create_section(
+            SectionCreateInput(
+                title="Submissions Section",
+                owner=self.teacher,
+                parent=root_section,
+            )
+        )
+        self.course = Course.objects.create(
+            title="Submissions Course",
+            owner=self.teacher,
+            section=section,
+        )
+        CourseParticipant.objects.create(
+            course=self.course,
+            user=self.teacher,
+            role=CourseParticipant.Role.TEACHER,
+            is_owner=True,
+        )
+        CourseParticipant.objects.create(
+            course=self.course,
+            user=self.user,
+            role=CourseParticipant.Role.STUDENT,
+        )
+        self.contest = Contest.objects.create(
+            title="Timed Contest",
+            course=self.course,
+            created_by=self.teacher,
+            is_published=True,
+            approval_status=Contest.ApprovalStatus.APPROVED,
+            start_time=timezone.now() - timedelta(hours=2),
+            duration_minutes=60,
+            allow_upsolving=False,
+        )
+        self.contest.problems.add(self.problem)
         self.url = reverse("submission-create")
         self.factory = APIRequestFactory()
 
@@ -84,6 +125,55 @@ class SubmissionAPITests(TestCase):
 
         self.assertEqual(resp.status_code, 400)
         self.assertIn("non_field_errors", resp.json())
+
+    @override_settings(MEDIA_ROOT=tempfile.gettempdir())
+    def test_reject_submission_after_deadline_without_upsolving(self):
+        resp = self.client.post(
+            self.url,
+            {
+                "problem_id": self.problem.id,
+                "contest_id": self.contest.id,
+                "raw_text": "id,pred\n1,0.1\n",
+            },
+        )
+
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("contest_id", resp.json())
+
+    @override_settings(MEDIA_ROOT=tempfile.gettempdir())
+    def test_reject_submission_before_contest_start(self):
+        self.contest.start_time = timezone.now() + timedelta(hours=1)
+        self.contest.save(update_fields=["start_time"])
+
+        resp = self.client.post(
+            self.url,
+            {
+                "problem_id": self.problem.id,
+                "contest_id": self.contest.id,
+                "raw_text": "id,pred\n1,0.1\n",
+            },
+        )
+
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("contest_id", resp.json())
+
+    @override_settings(MEDIA_ROOT=tempfile.gettempdir())
+    @patch("runner.api.views.submissions.enqueue_submission_for_evaluation")
+    def test_allow_submission_after_deadline_with_upsolving(self, mock_enqueue):
+        self.contest.allow_upsolving = True
+        self.contest.save(update_fields=["allow_upsolving"])
+
+        resp = self.client.post(
+            self.url,
+            {
+                "problem_id": self.problem.id,
+                "contest_id": self.contest.id,
+                "raw_text": "id,pred\n1,0.1\n",
+            },
+        )
+
+        self.assertEqual(resp.status_code, 201)
+        self.assertTrue(mock_enqueue.called)
 
     @override_settings(MEDIA_ROOT=tempfile.gettempdir())
     @patch("runner.api.views.submissions.enqueue_submission_for_evaluation")

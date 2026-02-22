@@ -1,8 +1,10 @@
 import json
+from datetime import timedelta
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AnonymousUser
 from django.test import RequestFactory, TestCase
+from django.utils import timezone
 
 from runner.models import Contest, Course, CourseParticipant, Section
 from runner.services.section_service import SectionCreateInput, create_section
@@ -147,3 +149,22 @@ class ContestListViewTests(TestCase):
         resp_outsider = list_contests(request_outsider)
         titles_outsider = {item["title"] for item in json.loads(resp_outsider.content.decode())["items"]}
         self.assertNotIn("Private", titles_outsider)
+
+    def test_student_sees_scheduled_contest_before_start(self):
+        scheduled = Contest.objects.create(
+            title="Scheduled",
+            course=self.course,
+            created_by=self.teacher,
+            is_published=True,
+            approval_status=Contest.ApprovalStatus.APPROVED,
+            start_time=timezone.now() + timedelta(hours=2),
+            duration_minutes=90,
+        )
+
+        request = self.factory.get("/")
+        request.user = self.student
+        response = list_contests(request)
+
+        self.assertEqual(response.status_code, 200)
+        titles = {item["title"] for item in json.loads(response.content.decode())["items"]}
+        self.assertIn(scheduled.title, titles)
