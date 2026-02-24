@@ -181,6 +181,10 @@ const refresh = async () => {
     }
   }
 
+  if (name === 'course-leaderboard') {
+    courseId = Number(routeId.value)
+  }
+
   if (name === 'problem') {
     contestId = contestFromQuery.value
 
@@ -302,6 +306,16 @@ const refresh = async () => {
       label: title,
       title,
       to: { name: 'contest', params: { id: contestId }, query: { title } },
+    })
+  }
+
+  // If we're on course leaderboard page, add the "Таблица результатов" crumb.
+  if (name === 'course-leaderboard') {
+    list.push({
+      key: 'course-leaderboard',
+      label: 'Таблица результатов',
+      title: 'Таблица результатов',
+      to: null,
     })
   }
 
