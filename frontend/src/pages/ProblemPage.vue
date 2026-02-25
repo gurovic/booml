@@ -86,10 +86,7 @@
               <textarea
                 v-model="textSubmission"
                 class="problem__text-input"
-                placeholder="Или вставьте CSV прямо сюда, например:
-id,pred
-1,0.42
-2,0.75"
+                :placeholder="sampleSubmissionPlaceholder ?? 'Или вставьте CSV прямо сюда, например:\nid,pred\n1,0.42\n2,0.75'"
               ></textarea>
               <button 
                 @click="handleSubmit"
@@ -180,6 +177,7 @@ let problem = ref(null)
 let selectedFile = ref(null)
 let textSubmission = ref('')
 let isSubmitting = ref(false)
+const sampleSubmissionPlaceholder = ref(null)
 let submitMessage = ref(null)
 let fileInputKey = ref(0)
 let isCreatingNotebook = ref(false)
@@ -237,6 +235,28 @@ const resolveContestProblemLabel = async () => {
   }
 }
 
+const SAMPLE_SUBMISSION_PREVIEW_LINES = 5
+
+const loadSampleSubmission = async () => {
+  const url = problem.value?.files?.sample_submission
+  if (!url) {
+    sampleSubmissionPlaceholder.value = null
+    return
+  }
+  try {
+    const res = await fetch(url, { credentials: 'include' })
+    if (res.ok) {
+      const text = await res.text()
+      const lines = text.replace(/\r\n?/g, '\n').split('\n')
+      sampleSubmissionPlaceholder.value = lines.slice(0, SAMPLE_SUBMISSION_PREVIEW_LINES).join('\n')
+    } else {
+      sampleSubmissionPlaceholder.value = null
+    }
+  } catch {
+    sampleSubmissionPlaceholder.value = null
+  }
+}
+
 const loadProblem = async () => {
   contestProblemLabel.value = ''
   try {
@@ -249,6 +269,7 @@ const loadProblem = async () => {
       problem.value.rendered_statement = renderStatement(problem.value.statement)
       await resolveContestProblemLabel()
     }
+    await loadSampleSubmission()
   }
 }
 
