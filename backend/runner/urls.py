@@ -39,7 +39,7 @@ from .views.contest_draft import (
     set_contest_access,
     update_contest,
 )
-from .views.contest_leaderboard import contest_problem_leaderboard
+from .views.contest_leaderboard import contest_problem_leaderboard, course_leaderboard
 from .views.course import course_contests, course_detail
 from .views.course import (
     update_course,
@@ -92,6 +92,7 @@ urlpatterns = [
     path('course/<int:course_id>/contests/', course_contests, name='course_contests'),
     path('backend/course/<int:course_id>/update/', update_course, name='backend_course_update'),
     path('backend/course/<int:course_id>/delete/', delete_course, name='backend_course_delete'),
+    path('backend/course/<int:course_id>/leaderboard/', course_leaderboard, name='backend_course_leaderboard'),
     path('backend/course/<int:course_id>/participants/update/', update_course_participants, name='backend_course_participants_update'),
     path('backend/course/<int:course_id>/participants/remove/', remove_course_participants, name='backend_course_participants_remove'),
     path('backend/course/<int:course_id>/contests/reorder/', reorder_course_contests, name='backend_course_contests_reorder'),

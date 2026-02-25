@@ -32,7 +32,15 @@
             </div>
             <div class="course-header__actions">
               <button
+                class="button button--secondary"
+                type="button"
+                @click="goToLeaderboard"
+              >
+                Таблица результатов курса
+              </button>
+              <button
                 v-if="canCreateContest"
+                type="button"
                 class="button button--primary create-contest-btn"
                 @click="showCreateDialog = true"
               >
@@ -535,6 +543,12 @@ const deleteContest = async (item) => {
     console.error('Failed to delete contest:', err)
     error.value = err?.message || 'Не удалось удалить контест'
   }
+}
+
+const goToLeaderboard = () => {
+  const title = course.value?.title || queryTitle.value
+  const query = title ? { title } : {}
+  router.push({ name: 'course-leaderboard', params: { id: courseId.value }, query })
 }
 
 const saveCourseSettings = async () => {
