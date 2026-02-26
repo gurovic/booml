@@ -143,13 +143,10 @@ def _build_contest_leaderboard_data(contest: Contest) -> Dict[str, Any]:
     attempts_before_deadline: Dict[Tuple[int, int], int] = defaultdict(int)
     attempts_after_deadline: Dict[Tuple[int, int], int] = defaultdict(int)
     best_results: Dict[Tuple[int, int], Dict[str, Any]] = {}
-    best_results_any: Dict[Tuple[int, int], Dict[str, Any]] = {}
     best_results_after_deadline: Dict[Tuple[int, int], Dict[str, Any]] = {}
     first_valid: Dict[Tuple[int, int], Dict[str, Any]] = {}
-    first_valid_any: Dict[Tuple[int, int], Dict[str, Any]] = {}
     first_valid_after_deadline: Dict[Tuple[int, int], Dict[str, Any]] = {}
     wrong_attempts_before: Dict[Tuple[int, int], int] = defaultdict(int)
-    wrong_attempts_before_any: Dict[Tuple[int, int], int] = defaultdict(int)
     earliest_submission_at = None
     end_time = contest.get_end_time()
 
@@ -191,17 +188,10 @@ def _build_contest_leaderboard_data(contest: Contest) -> Dict[str, Any]:
 
             is_valid = row["status"] in _VALID_STATUSES
             if not is_valid:
-                if key not in first_valid_any:
-                    wrong_attempts_before_any[key] += 1
                 if not is_after_deadline and key not in first_valid:
                     wrong_attempts_before[key] += 1
                 continue
 
-            if key not in first_valid_any:
-                first_valid_any[key] = {
-                    "submission_id": row["id"],
-                    "submitted_at": submitted_at,
-                }
             if is_after_deadline:
                 if key not in first_valid_after_deadline:
                     first_valid_after_deadline[key] = {
@@ -220,19 +210,6 @@ def _build_contest_leaderboard_data(contest: Contest) -> Dict[str, Any]:
             score_100 = _extract_score_value(row["metrics"], settings)
             if score_100 is None:
                 continue
-
-            current_any = best_results_any.get(key)
-            if current_any is None or _is_better(
-                score_100,
-                submitted_at,
-                current_any["score_100"],
-                current_any["submitted_at"],
-            ):
-                best_results_any[key] = {
-                    "score_100": score_100,
-                    "submission_id": row["id"],
-                    "submitted_at": submitted_at,
-                }
 
             if is_after_deadline:
                 current_after = best_results_after_deadline.get(key)
@@ -270,13 +247,10 @@ def _build_contest_leaderboard_data(contest: Contest) -> Dict[str, Any]:
         "attempts_before_deadline": attempts_before_deadline,
         "attempts_after_deadline": attempts_after_deadline,
         "best_results": best_results,
-        "best_results_any": best_results_any,
         "best_results_after_deadline": best_results_after_deadline,
         "first_valid": first_valid,
-        "first_valid_any": first_valid_any,
         "first_valid_after_deadline": first_valid_after_deadline,
         "wrong_attempts_before": wrong_attempts_before,
-        "wrong_attempts_before_any": wrong_attempts_before_any,
         "earliest_submission_at": earliest_submission_at,
         "contest_end_time": end_time,
     }
@@ -296,8 +270,7 @@ def build_contest_problem_leaderboards(
     attempts = data["attempts"]
     attempts_before_deadline = data["attempts_before_deadline"]
     attempts_after_deadline = data["attempts_after_deadline"]
-    best_results_before_deadline = data["best_results"]
-    best_results_any = data.get("best_results_any", best_results_before_deadline)
+    best_results = data["best_results"]
     best_results_after_deadline = data["best_results_after_deadline"]
 
     leaderboards: List[Dict[str, Any]] = []
@@ -314,19 +287,18 @@ def build_contest_problem_leaderboards(
         entries: List[Dict[str, Any]] = []
         for participant in participants:
             key = (problem.id, participant["id"])
-            best_before_deadline = best_results_before_deadline.get(key)
-            best = best_results_any.get(key)
+            best = best_results.get(key)
             best_after_deadline = best_results_after_deadline.get(key)
             improved_after_deadline = False
             if best_after_deadline is not None:
-                if best_before_deadline is None:
+                if best is None:
                     improved_after_deadline = True
                 else:
                     improved_after_deadline = _is_better(
                         best_after_deadline["score_100"],
                         best_after_deadline["submitted_at"],
-                        best_before_deadline["score_100"],
-                        best_before_deadline["submitted_at"],
+                        best["score_100"],
+                        best["submitted_at"],
                     )
             entries.append(
                 {
@@ -415,14 +387,11 @@ def build_contest_overall_leaderboard(
 
     participants = data["participants"]
     problem_settings = data["problem_settings"]
-    best_results_before_deadline = data["best_results"]
-    best_results_any = data.get("best_results_any", best_results_before_deadline)
+    best_results = data["best_results"]
     best_results_after_deadline = data["best_results_after_deadline"]
-    first_valid_before_deadline = data["first_valid"]
-    first_valid_any = data.get("first_valid_any", first_valid_before_deadline)
+    first_valid = data["first_valid"]
     first_valid_after_deadline = data["first_valid_after_deadline"]
     wrong_attempts_before = data["wrong_attempts_before"]
-    wrong_attempts_before_any = data.get("wrong_attempts_before_any", wrong_attempts_before)
     include_upsolving = bool(contest.allow_upsolving and data.get("contest_end_time"))
 
     start_reference = contest.start_time or data["earliest_submission_at"]
@@ -442,7 +411,7 @@ def build_contest_overall_leaderboard(
         if contest.scoring == Contest.Scoring.ICPC:
             for problem in problems:
                 key = (problem.id, user_id)
-                solved = first_valid_any.get(key)
+                solved = first_valid.get(key)
                 if solved is None:
                     continue
                 solved_count += 1
@@ -451,7 +420,7 @@ def build_contest_overall_leaderboard(
                     delta_minutes = max(int(delta.total_seconds() // 60), 0)
                 else:
                     delta_minutes = 0
-                penalty_minutes += delta_minutes + wrong_attempts_before_any.get(key, 0) * 20
+                penalty_minutes += delta_minutes + wrong_attempts_before.get(key, 0) * 20
                 if solved["submitted_at"] is not None:
                     last_time = solved["submitted_at"] if last_time is None else max(last_time, solved["submitted_at"])
                 if include_upsolving and first_valid_after_deadline.get(key) is not None:
@@ -478,7 +447,7 @@ def build_contest_overall_leaderboard(
         else:
             for problem in problems:
                 key = (problem.id, user_id)
-                best = best_results_any.get(key)
+                best = best_results.get(key)
                 if best is None:
                     best_after = best_results_after_deadline.get(key)
                     if include_upsolving and best_after is not None:
