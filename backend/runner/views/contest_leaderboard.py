@@ -210,6 +210,7 @@ def _build_contest_leaderboard_data(contest: Contest) -> Dict[str, Any]:
             score_100 = _extract_score_value(row["metrics"], settings)
             if score_100 is None:
                 continue
+
             if is_after_deadline:
                 current_after = best_results_after_deadline.get(key)
                 if current_after is None or _is_better(

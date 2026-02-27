@@ -309,6 +309,68 @@ class ContestLeaderboardViewTests(TestCase):
         self.assertIsNotNone(alice_overall["upsolving_total_score"])
         self.assertLess(alice_overall["total_score"], alice_overall["upsolving_total_score"])
 
+    def test_same_problem_submissions_are_shared_across_contests(self):
+        earlier_contest = Contest.objects.create(
+            title="Earlier Contest",
+            course=self.course,
+            created_by=self.teacher,
+            is_published=True,
+            approval_status=Contest.ApprovalStatus.APPROVED,
+        )
+        target_contest_start = timezone.now() - timedelta(hours=3)
+        target_contest = Contest.objects.create(
+            title="Target Contest",
+            course=self.course,
+            created_by=self.teacher,
+            is_published=True,
+            approval_status=Contest.ApprovalStatus.APPROVED,
+            start_time=target_contest_start,
+            duration_minutes=60,
+            allow_upsolving=False,
+        )
+        earlier_contest.problems.add(self.problem_accuracy)
+        target_contest.problems.add(self.problem_accuracy)
+
+        before_end_submission = self._create_submission(
+            self.alice,
+            self.problem_accuracy,
+            "accuracy",
+            0.82,
+        )
+        after_end_submission = self._create_submission(
+            self.alice,
+            self.problem_accuracy,
+            "accuracy",
+            0.96,
+        )
+        # Submission made before target contest start (e.g. in another contest)
+        # should be counted automatically in the timed contest.
+        Submission.objects.filter(pk=before_end_submission.pk).update(
+            submitted_at=target_contest_start - timedelta(hours=1)
+        )
+        # Better submission after target contest end (e.g. in another contest) must not
+        # affect the official frozen results of the timed contest.
+        Submission.objects.filter(pk=after_end_submission.pk).update(
+            submitted_at=target_contest_start + timedelta(hours=2)
+        )
+
+        problem_boards = build_contest_problem_leaderboards(target_contest)
+        alice_problem_entry = next(
+            row for row in problem_boards[0]["entries"] if row["user_id"] == self.alice.id
+        )
+        self.assertIsNotNone(alice_problem_entry["best_score"])
+        self.assertIsNotNone(alice_problem_entry["best_score_after_deadline"])
+        self.assertLess(
+            alice_problem_entry["best_score"],
+            alice_problem_entry["best_score_after_deadline"],
+        )
+
+        overall = build_contest_overall_leaderboard(target_contest)
+        alice_overall = next(row for row in overall["entries"] if row["user_id"] == self.alice.id)
+        self.assertEqual(alice_overall["solved_count"], 1)
+        self.assertIsNotNone(alice_overall["total_score"])
+        self.assertIsNone(alice_overall["upsolving_total_score"])
+
     def test_student_cannot_view_leaderboard_before_start(self):
         self.contest.start_time = timezone.now() + timedelta(hours=1)
         self.contest.duration_minutes = 60
