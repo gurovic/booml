@@ -273,6 +273,25 @@ class SubmissionAPITests(TestCase):
         # Should return 404 since the submission doesn't belong to the authenticated user
         self.assertEqual(resp.status_code, 404)
 
+    @override_settings(MEDIA_ROOT=tempfile.gettempdir())
+    def test_teacher_can_view_student_submission_with_contest_id(self):
+        f = SimpleUploadedFile("preds.csv", b"id,pred\n1,0.1\n", content_type="text/csv")
+        submission = Submission.objects.create(
+            user=self.user,
+            problem=self.problem,
+            file=f,
+            status=Submission.STATUS_ACCEPTED,
+        )
+
+        self.client.logout()
+        self.client.login(username="teacher_submissions", password="pass")
+
+        detail_url = reverse("submission-detail", kwargs={"pk": submission.id})
+        resp = self.client.get(f"{detail_url}?contest_id={self.contest.id}")
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json().get("id"), submission.id)
+
 
 class ProblemSubmissionsListTests(TestCase):
     def setUp(self):

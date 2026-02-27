@@ -46,6 +46,21 @@ export async function createContest(courseId, contestData) {
   }
 }
 
+export async function getContestSubmissions(contestId, { page = 1, pageSize = 20 } = {}) {
+  if (contestId == null || contestId === '') {
+    return null
+  }
+  const params = {}
+  if (page != null) params.page = page
+  if (pageSize != null) params.page_size = pageSize
+  try {
+    return await apiGet(`backend/contest/${contestId}/submissions/`, params)
+  } catch (err) {
+    console.error('Failed to load contest submissions.', err)
+    throw err
+  }
+}
+
 export async function addProblemToContest(contestId, problemId) {
   try {
     // Use /backend/* so Vue devServer proxy forwards to Django backend.

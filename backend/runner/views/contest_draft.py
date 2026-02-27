@@ -1,6 +1,7 @@
 import json
 import uuid
 from datetime import datetime
+from pathlib import Path
 
 from django.contrib.auth import get_user_model
 from django.db import transaction
@@ -11,10 +12,11 @@ from django.contrib.auth.decorators import login_required
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
-from ..models import Contest, Course, Problem, CourseParticipant, ContestProblem
+from ..models import Contest, Course, Problem, CourseParticipant, ContestProblem, Submission
 from ..forms.contest_draft import ContestForm
 from ..services.contest_labels import contest_problem_label
 from .contest_leaderboard import build_contest_leaderboards
+from .submissions import _primary_metric
 
 User = get_user_model()
 
@@ -193,6 +195,41 @@ def _resolve_updated_timing(contest: Contest, payload: dict):
         "duration_minutes": duration_minutes,
         "allow_upsolving": bool(allow_upsolving),
     }, None
+
+
+def _parse_positive_int(value, *, default: int) -> int:
+    if value in (None, ""):
+        return default
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return -1
+    return parsed if parsed > 0 else -1
+
+
+def _contest_student_ids(contest: Contest) -> list[int]:
+    teacher_ids = set(
+        CourseParticipant.objects.filter(
+            course=contest.course,
+            role=CourseParticipant.Role.TEACHER,
+        ).values_list("user_id", flat=True)
+    )
+    if contest.course and contest.course.owner_id:
+        teacher_ids.add(contest.course.owner_id)
+
+    if contest.access_type == Contest.AccessType.PRIVATE:
+        candidate_ids = set(contest.allowed_participants.values_list("id", flat=True))
+    else:
+        candidate_ids = set(
+            CourseParticipant.objects.filter(
+                course=contest.course,
+                role=CourseParticipant.Role.STUDENT,
+            ).values_list("user_id", flat=True)
+        )
+        candidate_ids |= set(contest.allowed_participants.values_list("id", flat=True))
+
+    candidate_ids -= teacher_ids
+    return sorted(uid for uid in candidate_ids if uid is not None)
 
 @login_required
 def create_contest(request, course_id):
@@ -459,6 +496,113 @@ def contest_detail(request, contest_id):
             ),
             "course_owner_id": contest.course.owner_id,
             **_contest_timing_payload(contest, user=request.user, include_submit=True),
+        },
+        status=200,
+    )
+
+
+@login_required
+def contest_submissions(request, contest_id):
+    if request.method != "GET":
+        return JsonResponse({"detail": "Method not allowed"}, status=405)
+
+    contest = get_object_or_404(
+        Contest.objects.select_related("course__section", "course__owner").prefetch_related(
+            "allowed_participants"
+        ),
+        pk=contest_id,
+    )
+    if not contest.is_user_manager(request.user):
+        return JsonResponse({"detail": "Only contest teachers can view all submissions"}, status=403)
+
+    page = _parse_positive_int(request.GET.get("page"), default=1)
+    if page <= 0:
+        return JsonResponse({"detail": "page must be a positive integer"}, status=400)
+
+    page_size = _parse_positive_int(request.GET.get("page_size"), default=20)
+    if page_size <= 0:
+        return JsonResponse({"detail": "page_size must be a positive integer"}, status=400)
+    page_size = min(page_size, 100)
+
+    problem_links = list(
+        ContestProblem.objects.filter(contest_id=contest.id, problem__is_published=True)
+        .select_related("problem")
+        .order_by("position", "id")
+    )
+    problem_id_set = {link.problem_id for link in problem_links}
+    student_ids = _contest_student_ids(contest)
+
+    if not problem_id_set or not student_ids:
+        return JsonResponse(
+            {
+                "count": 0,
+                "page": page,
+                "page_size": page_size,
+                "total_pages": 1,
+                "next": None,
+                "previous": page - 1 if page > 1 else None,
+                "results": [],
+            },
+            status=200,
+        )
+
+    problem_meta = {
+        link.problem_id: {
+            "title": link.problem.title,
+            "label": contest_problem_label(index),
+        }
+        for index, link in enumerate(problem_links)
+    }
+
+    submissions_qs = (
+        Submission.objects.filter(
+            problem_id__in=problem_id_set,
+            user_id__in=student_ids,
+        )
+        .select_related("problem", "user")
+        .order_by("-submitted_at", "-id")
+    )
+
+    total = submissions_qs.count()
+    total_pages = max(1, (total + page_size - 1) // page_size)
+    offset = (page - 1) * page_size
+    page_rows = list(submissions_qs[offset : offset + page_size])
+
+    results = []
+    for submission in page_rows:
+        problem_info = problem_meta.get(submission.problem_id, {})
+        file_url = submission.file.url if submission.file else None
+        file_name = Path(submission.file.name).name if submission.file else None
+        is_csv_file = bool(file_name and file_name.lower().endswith(".csv"))
+        results.append(
+            {
+                "id": submission.id,
+                "user_id": submission.user_id,
+                "username": submission.user.username if submission.user_id else "",
+                "problem_id": submission.problem_id,
+                "problem_title": problem_info.get("title") or submission.problem.title,
+                "problem_label": problem_info.get("label"),
+                "submitted_at": submission.submitted_at.isoformat() if submission.submitted_at else None,
+                "status": submission.status,
+                "metrics": submission.metrics,
+                "score": _primary_metric(submission.metrics),
+                "file_url": file_url,
+                "file_name": file_name,
+                "is_csv_file": is_csv_file,
+            }
+        )
+
+    has_next = page < total_pages
+    has_previous = page > 1
+    return JsonResponse(
+        {
+            "count": total,
+            "page": page,
+            "page_size": page_size,
+            "total_pages": total_pages,
+            "next": page + 1 if has_next else None,
+            "previous": page - 1 if has_previous else None,
+            "results": results,
         },
         status=200,
     )

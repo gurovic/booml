@@ -27,6 +27,7 @@ from .views.contest_draft import (
     add_problem_to_contest,
     bulk_add_problems_to_contest,
     contest_detail,
+    contest_submissions,
     create_contest,
     contest_success,
     delete_contest,
@@ -98,6 +99,7 @@ urlpatterns = [
     path('backend/course/<int:course_id>/contests/reorder/', reorder_course_contests, name='backend_course_contests_reorder'),
     path('contest/', list_contests, name='contest_list'),
     path('contest/<int:contest_id>/', contest_detail, name='contest_detail'),
+    path('contest/<int:contest_id>/submissions/', contest_submissions, name='contest_submissions'),
     path('contest/<int:contest_id>/leaderboard/', contest_problem_leaderboard, name='contest_problem_leaderboard'),
     path('contest/<int:course_id>/new/', create_contest, name='create_contest'),
     path('contest/<int:contest_id>/delete/', delete_contest, name='delete_contest'),
@@ -151,6 +153,11 @@ urlpatterns = [
     path('backend/course/<int:course_id>/', course_detail, name='backend_course_detail'),
     path('backend/contest/', list_contests, name='backend_contest_list'),
     path('backend/contest/<int:contest_id>/', contest_detail, name='backend_contest_detail'),
+    path(
+        'backend/contest/<int:contest_id>/submissions/',
+        contest_submissions,
+        name='backend_contest_submissions',
+    ),
     # Frontend talks to backend through /backend/* (see frontend devServer proxy).
     path('backend/contest/<int:course_id>/new/', create_contest, name='backend_create_contest'),
     path('backend/contest/<int:contest_id>/delete/', delete_contest, name='backend_delete_contest'),
