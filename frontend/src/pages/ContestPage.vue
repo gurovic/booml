@@ -33,6 +33,13 @@
               >
                 Результаты
               </router-link>
+              <router-link
+                v-if="canManageContest"
+                :to="contestSubmissionsRoute"
+                class="button button--secondary contest-link"
+              >
+                Все посылки
+              </router-link>
             </div>
           </div>
           <div v-if="contest.description" class="contest-description">
@@ -403,6 +410,12 @@ const leaderboardRoute = computed(() => {
   const title = contest.value?.title
   const query = title ? { title } : {}
   return { name: 'contest-leaderboard', params: { id: contestId.value }, query }
+})
+
+const contestSubmissionsRoute = computed(() => {
+  const title = contest.value?.title
+  const query = title ? { title } : {}
+  return { name: 'contest-submissions', params: { id: contestId.value }, query }
 })
 
 const loadContest = async ({ silent = false } = {}) => {

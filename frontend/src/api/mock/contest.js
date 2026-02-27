@@ -98,6 +98,41 @@ const mockLeaderboards = {
   },
 }
 
+const mockContestSubmissions = {
+  1001: [
+    {
+      id: 501,
+      user_id: 1,
+      username: 'alice',
+      problem_id: 101,
+      problem_title: 'Linear Regression',
+      problem_label: 'A',
+      submitted_at: new Date().toISOString(),
+      status: 'accepted',
+      metrics: { score: 95.2 },
+      score: 95.2,
+      file_url: '/media/submissions/alice_501.csv',
+      file_name: 'alice_501.csv',
+      is_csv_file: true,
+    },
+    {
+      id: 502,
+      user_id: 2,
+      username: 'bob',
+      problem_id: 102,
+      problem_title: 'Gradient Descent',
+      problem_label: 'B',
+      submitted_at: new Date(Date.now() - 3600 * 1000).toISOString(),
+      status: 'failed',
+      metrics: {},
+      score: null,
+      file_url: '/media/submissions/bob_502.csv',
+      file_name: 'bob_502.csv',
+      is_csv_file: true,
+    },
+  ],
+}
+
 const buildProblems = (contest) => {
   const count = Number(contest?.problems_count ?? 0)
   if (!count) return []
@@ -173,6 +208,25 @@ export async function addProblemToContest(contestId, problemId) {
     },
     added: true,
     problems_count: 1,
+  })
+}
+
+export function getContestSubmissions(contestId, { page = 1, pageSize = 20 } = {}) {
+  const numericId = Number(contestId)
+  const allRows = mockContestSubmissions[numericId] || []
+  const safePageSize = Math.max(1, Number(pageSize) || 20)
+  const safePage = Math.max(1, Number(page) || 1)
+  const offset = (safePage - 1) * safePageSize
+  const slice = allRows.slice(offset, offset + safePageSize)
+  const totalPages = Math.max(1, Math.ceil(allRows.length / safePageSize))
+  return Promise.resolve({
+    count: allRows.length,
+    page: safePage,
+    page_size: safePageSize,
+    total_pages: totalPages,
+    next: safePage < totalPages ? safePage + 1 : null,
+    previous: safePage > 1 ? safePage - 1 : null,
+    results: slice,
   })
 }
 

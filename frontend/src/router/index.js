@@ -7,6 +7,7 @@ import SectionPage from '@/pages/SectionPage.vue'
 import CoursePage from '@/pages/CoursePage.vue'
 import CourseLeaderboardPage from '@/pages/CourseLeaderboardPage.vue'
 import ContestPage from '@/pages/ContestPage.vue'
+import ContestSubmissionsPage from '@/pages/ContestSubmissionsPage.vue'
 import CoursesPage from '@/pages/CoursesPage.vue'
 import ContestLeaderboardPage from '@/pages/ContestLeaderboardPage.vue'
 import LoginPage from '@/pages/LoginPage.vue'
@@ -74,6 +75,11 @@ const router = createRouter({
       path: '/contest/:id',
       name: 'contest',
       component: ContestPage,
+    },
+    {
+      path: '/contest/:id/submissions',
+      name: 'contest-submissions',
+      component: ContestSubmissionsPage,
     },
     {
       path: '/contest/:id/leaderboard',
