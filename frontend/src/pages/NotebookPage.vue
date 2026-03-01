@@ -236,22 +236,151 @@
                   </div>
 
                 <div v-if="cell.output" class="cell-output">
-                  <span
-                    class="cell-output-icon"
-                    :class="{ 'cell-output-icon--error': isErrorOutput(cell.output) }"
+                  <div
+                    class="cell-output-menu-wrap"
+                    @click.stop
                   >
-                    <span
-                      v-if="isErrorOutput(cell.output)"
-                      class="material-symbols-rounded"
-                      aria-hidden="true"
+                    <button
+                      type="button"
+                      class="cell-output-icon cell-output-menu-trigger"
+                      :class="{ 'cell-output-icon--error': isErrorOutput(cell) }"
+                      title="Действия с выводом"
+                      aria-label="Открыть меню вывода"
+                      @click.stop="toggleOutputMenu(cell.id)"
                     >
-                      error
-                    </span>
-                    <span v-else class="material-symbols-rounded" aria-hidden="true">
-                      more_horiz
-                    </span>
-                  </span>
-                  <div class="cell-output-content" v-html="cell.output"></div>
+                      <span
+                        v-if="isErrorOutput(cell)"
+                        class="material-symbols-rounded"
+                        aria-hidden="true"
+                      >
+                        error
+                      </span>
+                      <span v-else class="material-symbols-rounded" aria-hidden="true">
+                        more_horiz
+                      </span>
+                    </button>
+                    <div
+                      v-if="outputMenuCellId === cell.id"
+                      class="cell-output-menu"
+                      aria-label="Меню вывода"
+                    >
+                      <button
+                        type="button"
+                        class="cell-output-menu-item"
+                        @click.stop="copyOutput(cell)"
+                      >
+                        Копировать вывод
+                      </button>
+                      <button
+                        type="button"
+                        class="cell-output-menu-item"
+                        @click.stop="downloadOutput(cell)"
+                      >
+                        Скачать вывод (.txt)
+                      </button>
+                      <button
+                        type="button"
+                        class="cell-output-menu-item"
+                        @click.stop="clearOutput(cell)"
+                      >
+                        Очистить вывод
+                      </button>
+                    </div>
+                  </div>
+                  <div class="cell-output-content">
+                    <template v-if="hasStructuredOutput(cell)">
+                      <div
+                        v-for="stream in getStructuredOutput(cell).streams"
+                        :key="`${cell.id}-stream-${stream.channel}`"
+                        :class="[
+                          'cell-output-stream',
+                          stream.channel === 'stderr' ? 'cell-output-stream--stderr' : 'cell-output-stream--stdout',
+                        ]"
+                      >
+                        <div class="cell-output-stream-label">{{ stream.channel }}</div>
+                        <pre>{{ stream.text }}</pre>
+                      </div>
+
+                      <div
+                        v-for="(item, index) in getStructuredOutput(cell).rich_outputs"
+                        :key="`${cell.id}-rich-${index}`"
+                        class="cell-output-rich-item"
+                      >
+                        <iframe
+                          v-if="isHtmlOutput(item) && richOutputNeedsIframe(item)"
+                          class="cell-output-iframe"
+                          :srcdoc="buildRichOutputSrcDoc(item)"
+                          sandbox="allow-scripts allow-same-origin"
+                          loading="lazy"
+                          title="HTML output"
+                        ></iframe>
+                        <div
+                          v-else-if="isHtmlOutput(item)"
+                          class="cell-output-html"
+                          v-html="item.data"
+                        ></div>
+                        <div
+                          v-else-if="item.type === 'text/markdown'"
+                          class="cell-output-markdown"
+                          v-html="renderMarkdownOutput(item.data)"
+                        ></div>
+                        <img
+                          v-else-if="isRichOutputImage(item)"
+                          class="cell-output-image"
+                          :src="getRichOutputImageSrc(item)"
+                          :alt="item.name || 'Output image'"
+                        >
+                        <pre v-else>{{ formatRichOutputText(item) }}</pre>
+
+                        <div v-if="item.metadata" class="cell-output-metadata">
+                          {{ formatOutputMetadata(item.metadata) }}
+                        </div>
+                      </div>
+
+                      <div v-if="getStructuredOutput(cell).error" class="cell-output-error">
+                        <pre>{{ getStructuredOutput(cell).error }}</pre>
+                      </div>
+
+                      <div
+                        v-if="getStructuredOutput(cell).artifacts.length > 0"
+                        class="cell-output-artifacts"
+                      >
+                        <div class="cell-output-artifacts-title">Artifacts</div>
+                        <ul class="cell-output-files">
+                          <li
+                            v-for="artifact in getStructuredOutput(cell).artifacts"
+                            :key="artifact.path || artifact.name || artifact.url"
+                          >
+                            <a
+                              v-if="artifact.url"
+                              :href="artifact.url"
+                              target="_blank"
+                              rel="noopener noreferrer"
+                            >
+                              {{ artifact.name || artifact.path || artifact.url }}
+                            </a>
+                            <span v-else>{{ artifact.name || artifact.path }}</span>
+                            <img
+                              v-if="isArtifactImage(artifact)"
+                              class="cell-output-image cell-output-image--artifact"
+                              :src="artifact.url"
+                              :alt="artifact.name || artifact.path || 'Artifact image'"
+                            >
+                          </li>
+                        </ul>
+                      </div>
+
+                      <div class="cell-output-meta">
+                        <span :class="['cell-output-status', `cell-output-status--${getStructuredOutput(cell).status}`]">
+                          {{ getOutputStatusLabel(getStructuredOutput(cell).status) }}
+                        </span>
+                        <span>время: {{ formatDurationMs(getStructuredOutput(cell).meta.duration_ms) }}</span>
+                        <span>память: {{ formatMemoryBytes(getStructuredOutput(cell).meta.memory_bytes) }}</span>
+                      </div>
+                    </template>
+
+                    <div v-else v-html="cell.output"></div>
+                  </div>
                 </div>
                 </article>
 
@@ -313,8 +442,10 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
+import MarkdownIt from 'markdown-it'
 import UiHeader from '@/components/ui/UiHeader.vue'
 import NotebookCodeEditor from '@/components/NotebookCodeEditor.vue'
+import markdownKatex from '@/utils/markdownKatex'
 import {
   createCell,
   deleteNotebookSessionFile,
@@ -351,8 +482,19 @@ const fileActionError = ref('')
 const runningCellIds = ref(new Set())
 const runAllInProgress = ref(false)
 const queuedCellRunIds = ref([])
+const outputMenuCellId = ref(null)
 const saveTimers = new Map()
 const lastSavedContent = new Map()
+
+const OUTPUT_STORAGE_PREFIX = '__booml_output_v2__:'
+const markdownRenderer = new MarkdownIt({
+  html: false,
+  linkify: true,
+  breaks: true,
+})
+markdownRenderer.use(markdownKatex, {
+  throwOnError: false,
+})
 
 const notebookId = computed(() => Number(route.params.id))
 const hasValidId = computed(() => Number.isInteger(notebookId.value) && notebookId.value > 0)
@@ -502,51 +644,362 @@ const setCellRunning = (cellId, running) => {
   runningCellIds.value = next
 }
 
-const escapeHtml = (value) => {
-  return String(value)
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#39;')
+const OUTPUT_MODEL_FORMAT = 'booml_output_v2'
+
+const buildSessionFileUrl = (sessionIdentifier, path) => {
+  if (!sessionIdentifier || !path) return ''
+  return `/api/sessions/file/?session_id=${encodeURIComponent(sessionIdentifier)}&path=${encodeURIComponent(path)}`
 }
 
-const toHtmlBlock = (value) => {
-  if (!value) return ''
-  const safe = escapeHtml(value)
-  return `<div class="cell-output-block"><pre>${safe}</pre></div>`
+const detectMimeFromName = (name) => {
+  const normalized = String(name || '').toLowerCase()
+  if (normalized.endsWith('.png')) return 'image/png'
+  if (normalized.endsWith('.jpg') || normalized.endsWith('.jpeg')) return 'image/jpeg'
+  if (normalized.endsWith('.gif')) return 'image/gif'
+  if (normalized.endsWith('.webp')) return 'image/webp'
+  if (normalized.endsWith('.svg')) return 'image/svg+xml'
+  return ''
 }
 
-const buildRunOutputHtml = (result) => {
-  const parts = []
-  const stdout = toHtmlBlock(result?.stdout || '')
-  const stderr = toHtmlBlock(result?.stderr || '')
-  const error = toHtmlBlock(result?.error || '')
-  if (stdout) parts.push(stdout)
-  if (stderr) parts.push(stderr)
-  if (error) parts.push(error)
+const normalizeRichOutputItem = (item, sessionIdentifier) => {
+  if (!item || typeof item !== 'object') return null
+  const type = String(item.type || 'text/plain')
+  const path = item.path ? String(item.path) : ''
+  const name = item.name ? String(item.name) : ''
+  const url = item.url ? String(item.url) : buildSessionFileUrl(sessionIdentifier, path)
+  return {
+    type,
+    data: item.data ?? '',
+    metadata: item.metadata ?? null,
+    name,
+    path,
+    url,
+  }
+}
 
-  const artifacts = Array.isArray(result?.artifacts) ? result.artifacts : []
-  if (artifacts.length > 0) {
-    const links = artifacts
-      .map((item) => {
-        const path = item?.path ? String(item.path) : ''
-        const name = item?.name ? String(item.name) : path
-        if (!path) return ''
-        const href = `/api/sessions/file/?session_id=${encodeURIComponent(sessionId.value)}&path=${encodeURIComponent(path)}`
-        return `<li><a href="${href}" target="_blank" rel="noopener noreferrer">${escapeHtml(name)}</a></li>`
-      })
+const normalizeArtifactItem = (item, sessionIdentifier) => {
+  if (!item || typeof item !== 'object') return null
+  const path = item.path ? String(item.path) : ''
+  const name = item.name ? String(item.name) : path
+  if (!name && !path) return null
+  const url = item.url ? String(item.url) : buildSessionFileUrl(sessionIdentifier, path)
+  return {
+    name,
+    path,
+    url,
+    mime: detectMimeFromName(name || path),
+  }
+}
+
+const normalizeStructuredOutput = (payload) => {
+  const streams = Array.isArray(payload?.streams)
+    ? payload.streams
+      .filter((item) => item && typeof item === 'object' && item.text)
+      .map((item) => ({
+        channel: String(item.channel || 'stdout').toLowerCase() === 'stderr' ? 'stderr' : 'stdout',
+        text: String(item.text),
+      }))
+    : []
+  const richOutputs = Array.isArray(payload?.rich_outputs)
+    ? payload.rich_outputs
+      .filter((item) => item && typeof item === 'object')
+      .map((item) => ({
+        type: String(item.type || 'text/plain'),
+        data: item.data ?? '',
+        metadata: item.metadata ?? null,
+        name: item.name ? String(item.name) : '',
+        path: item.path ? String(item.path) : '',
+        url: item.url ? String(item.url) : '',
+      }))
+    : []
+  const artifacts = Array.isArray(payload?.artifacts)
+    ? payload.artifacts
+      .filter((item) => item && typeof item === 'object')
+      .map((item) => ({
+        name: item.name ? String(item.name) : '',
+        path: item.path ? String(item.path) : '',
+        url: item.url ? String(item.url) : '',
+        mime: item.mime ? String(item.mime) : detectMimeFromName(item.name || item.path || ''),
+      }))
+    : []
+  const meta = payload?.meta && typeof payload.meta === 'object' ? payload.meta : {}
+  const durationMsRaw = Number(meta.duration_ms)
+  const memoryBytesRaw = Number(meta.memory_bytes)
+  return {
+    kind: 'structured',
+    format: OUTPUT_MODEL_FORMAT,
+    version: Number(payload?.version || 2),
+    status: String(payload?.status || 'success'),
+    meta: {
+      duration_ms: Number.isFinite(durationMsRaw) && durationMsRaw >= 0 ? Math.round(durationMsRaw) : null,
+      memory_bytes: Number.isFinite(memoryBytesRaw) && memoryBytesRaw >= 0 ? Math.round(memoryBytesRaw) : null,
+    },
+    created_at: payload?.created_at ? String(payload.created_at) : '',
+    streams,
+    rich_outputs: richOutputs,
+    artifacts,
+    error: payload?.error ? String(payload.error) : '',
+  }
+}
+
+const extractMemoryBytes = (result) => {
+  const direct = Number(result?.memory_bytes)
+  if (Number.isFinite(direct) && direct >= 0) return Math.round(direct)
+
+  const statsMemoryBytes = Number(result?.stats?.memory_bytes)
+  if (Number.isFinite(statsMemoryBytes) && statsMemoryBytes >= 0) return Math.round(statsMemoryBytes)
+
+  const statsMemMb = Number(result?.stats?.mem_mb)
+  if (Number.isFinite(statsMemMb) && statsMemMb >= 0) return Math.round(statsMemMb * 1024 * 1024)
+
+  const outputs = Array.isArray(result?.outputs) ? result.outputs : []
+  for (const item of outputs) {
+    const bytes = Number(item?.metadata?.memory_bytes)
+    if (Number.isFinite(bytes) && bytes >= 0) return Math.round(bytes)
+  }
+  return null
+}
+
+const buildStructuredOutput = (result, options = {}) => {
+  const durationMsRaw = Number(options?.durationMs)
+  const durationMs = Number.isFinite(durationMsRaw) && durationMsRaw >= 0 ? Math.round(durationMsRaw) : null
+  const memoryBytes = extractMemoryBytes(result)
+  const currentSessionId = String(result?.session_id || sessionId.value || '')
+  const streams = []
+  if (result?.stdout) streams.push({ channel: 'stdout', text: String(result.stdout) })
+  if (result?.stderr) streams.push({ channel: 'stderr', text: String(result.stderr) })
+
+  const richOutputs = Array.isArray(result?.outputs)
+    ? result.outputs
+      .map((item) => normalizeRichOutputItem(item, currentSessionId))
       .filter(Boolean)
-      .join('')
-    if (links) {
-      parts.push(`<div class="cell-output-block"><ul class="cell-output-files">${links}</ul></div>`)
+    : []
+  const artifacts = Array.isArray(result?.artifacts)
+    ? result.artifacts
+      .map((item) => normalizeArtifactItem(item, currentSessionId))
+      .filter(Boolean)
+    : []
+
+  return normalizeStructuredOutput({
+    format: OUTPUT_MODEL_FORMAT,
+    version: 2,
+    status: String(result?.status || (result?.error ? 'error' : 'success')),
+    meta: {
+      duration_ms: durationMs,
+      memory_bytes: memoryBytes,
+    },
+    created_at: new Date().toISOString(),
+    streams,
+    rich_outputs: richOutputs,
+    artifacts,
+    error: result?.error || '',
+  })
+}
+
+const serializeOutputModel = (model) => {
+  return `${OUTPUT_STORAGE_PREFIX}${JSON.stringify(model)}`
+}
+
+const parseCellOutput = (raw) => {
+  if (!raw || typeof raw !== 'string') return null
+  const trimmed = raw.trim()
+  let payloadText = ''
+
+  if (trimmed.startsWith(OUTPUT_STORAGE_PREFIX)) {
+    payloadText = trimmed.slice(OUTPUT_STORAGE_PREFIX.length)
+  } else if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+    payloadText = trimmed
+  }
+
+  if (payloadText) {
+    try {
+      const parsed = JSON.parse(payloadText)
+      if (parsed?.format === OUTPUT_MODEL_FORMAT) {
+        return normalizeStructuredOutput(parsed)
+      }
+    } catch (_) {
+      // fall through to legacy output
     }
   }
 
-  if (parts.length === 0) {
-    return '<pre>Выполнено без вывода.</pre>'
+  return {
+    kind: 'legacy',
+    html: raw,
   }
-  return parts.join('')
+}
+
+const setCellOutput = (cell, output, parsedModel = null) => {
+  if (!cell) return
+  cell.output = output
+  cell._outputRaw = output
+  cell._outputModel = parsedModel || parseCellOutput(output)
+}
+
+const getCellOutputModel = (cell) => {
+  if (!cell?.output || typeof cell.output !== 'string') return null
+  if (cell._outputRaw === cell.output && cell._outputModel) return cell._outputModel
+  const parsed = parseCellOutput(cell.output)
+  cell._outputRaw = cell.output
+  cell._outputModel = parsed
+  return parsed
+}
+
+const hasStructuredOutput = (cell) => {
+  const parsed = getCellOutputModel(cell)
+  return parsed?.kind === 'structured'
+}
+
+const getStructuredOutput = (cell) => {
+  const parsed = getCellOutputModel(cell)
+  return parsed?.kind === 'structured' ? parsed : null
+}
+
+const stripHtmlTags = (value) => {
+  if (!value || typeof value !== 'string') return ''
+  const container = document.createElement('div')
+  container.innerHTML = value
+  return (container.innerText || container.textContent || '').trim()
+}
+
+const renderMarkdownOutput = (value) => {
+  const source = String(value || '')
+  if (!source) return ''
+  return markdownRenderer.render(source)
+}
+
+const isHtmlOutput = (item) => {
+  const type = String(item?.type || '').toLowerCase()
+  return type === 'text/html'
+}
+
+const richOutputNeedsIframe = (item) => {
+  if (!isHtmlOutput(item)) return false
+  const html = String(item?.data || '')
+  return html.includes('<script')
+}
+
+const buildRichOutputSrcDoc = (item) => {
+  const html = String(item?.data || '')
+  return [
+    '<!doctype html>',
+    '<html>',
+    '<head><meta charset="utf-8"><style>body{margin:0;padding:0;font-family:Roboto,sans-serif;background:transparent;}</style></head>',
+    '<body>',
+    html,
+    '</body>',
+    '</html>',
+  ].join('')
+}
+
+const isImageMime = (mime) => {
+  return String(mime || '').toLowerCase().startsWith('image/')
+}
+
+const isRichOutputImage = (item) => {
+  if (!item) return false
+  if (isImageMime(item.type)) return Boolean(item.data || item.url || item.path)
+  return false
+}
+
+const getRichOutputImageSrc = (item) => {
+  if (!item) return ''
+  const type = String(item.type || 'image/png')
+  if (item.data) {
+    const data = String(item.data)
+    if (data.startsWith('data:')) return data
+    return `data:${type};base64,${data}`
+  }
+  if (item.url) return String(item.url)
+  return ''
+}
+
+const isArtifactImage = (artifact) => {
+  return Boolean(artifact?.url) && isImageMime(artifact?.mime)
+}
+
+const formatRichOutputText = (item) => {
+  if (!item) return ''
+  if (typeof item.data === 'string') return item.data
+  if (item.data == null) return ''
+  try {
+    return JSON.stringify(item.data, null, 2)
+  } catch (_) {
+    return String(item.data)
+  }
+}
+
+const formatOutputMetadata = (metadata) => {
+  if (!metadata || typeof metadata !== 'object') return ''
+  const pairs = Object.entries(metadata)
+    .slice(0, 8)
+    .map(([key, value]) => `${key}: ${typeof value === 'object' ? JSON.stringify(value) : value}`)
+  return pairs.join(' | ')
+}
+
+const getOutputStatusLabel = (status) => {
+  if (status === 'success') return 'Успешно'
+  if (status === 'error') return 'Ошибка'
+  if (status === 'input_required') return 'Нужен ввод'
+  if (status === 'running') return 'Выполняется'
+  return status || 'Готово'
+}
+
+const formatDurationMs = (value) => {
+  const ms = Number(value)
+  if (!Number.isFinite(ms) || ms < 0) return '—'
+  if (ms < 1000) return `${Math.round(ms)} мс`
+  return `${(ms / 1000).toFixed(ms >= 10000 ? 0 : 2)} с`
+}
+
+const formatMemoryBytes = (value) => {
+  const bytes = Number(value)
+  if (!Number.isFinite(bytes) || bytes < 0) return '—'
+  if (bytes < 1024) return `${Math.round(bytes)} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`
+}
+
+const structuredOutputToText = (model) => {
+  if (!model || model.kind !== 'structured') return ''
+  const chunks = []
+  model.streams.forEach((stream) => {
+    if (stream?.text) {
+      chunks.push(`[${stream.channel}]`)
+      chunks.push(stream.text)
+    }
+  })
+  model.rich_outputs.forEach((item) => {
+    const type = String(item?.type || '').toLowerCase()
+    if (type === 'text/plain') {
+      chunks.push(formatRichOutputText(item))
+      return
+    }
+    if (type === 'text/markdown') {
+      chunks.push(String(item?.data || ''))
+      return
+    }
+    if (type === 'text/html') {
+      chunks.push(stripHtmlTags(String(item?.data || '')))
+      return
+    }
+    if (isImageMime(type)) {
+      chunks.push(`[image ${item?.name || item?.path || ''}]`.trim())
+      return
+    }
+    chunks.push(formatRichOutputText(item))
+  })
+  if (model.error) {
+    chunks.push('[error]')
+    chunks.push(model.error)
+  }
+  if (Array.isArray(model.artifacts) && model.artifacts.length > 0) {
+    chunks.push('[artifacts]')
+    model.artifacts.forEach((artifact) => {
+      chunks.push(artifact?.name || artifact?.path || '')
+    })
+  }
+  return chunks.filter(Boolean).join('\n')
 }
 
 const runCodeCell = async (cell, options = {}) => {
@@ -554,6 +1007,7 @@ const runCodeCell = async (cell, options = {}) => {
   if (runAllInProgress.value && !options.fromRunAll) return
   if (!cell?.id || cell.cell_type !== 'code' || !canRunCells.value || isCellRunning(cell.id)) return
   setCellRunning(cell.id, true)
+  const startedAt = typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now()
   try {
     // Avoid duplicate save request from pending autosave timer when user runs immediately after typing.
     clearCellTimer(cell.id)
@@ -562,18 +1016,30 @@ const runCodeCell = async (cell, options = {}) => {
     await saveCodeCell(notebookId.value, cell.id, content, previousOutput)
     lastSavedContent.set(cell.id, content)
     const result = await runNotebookCell(sessionId.value, cell.id)
-    const outputHtml = buildRunOutputHtml(result)
-    cell.output = outputHtml
-    await saveCodeCell(notebookId.value, cell.id, content, outputHtml)
+    const finishedAt = typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now()
+    const outputModel = buildStructuredOutput(result, { durationMs: finishedAt - startedAt })
+    const outputPayload = serializeOutputModel(outputModel)
+    setCellOutput(cell, outputPayload, outputModel)
+    await saveCodeCell(notebookId.value, cell.id, content, outputPayload)
     if (refreshFiles) {
       await refreshSessionFiles({ silent: true })
     }
   } catch (error) {
     const message = error?.message || 'Не удалось выполнить ячейку.'
-    const outputHtml = `<pre>${escapeHtml(message)}</pre>`
-    cell.output = outputHtml
+    const failedAt = typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now()
+    const outputModel = buildStructuredOutput({
+      status: 'error',
+      error: message,
+      stdout: '',
+      stderr: '',
+      outputs: [],
+      artifacts: [],
+      session_id: sessionId.value,
+    }, { durationMs: failedAt - startedAt })
+    const outputPayload = serializeOutputModel(outputModel)
+    setCellOutput(cell, outputPayload, outputModel)
     try {
-      await saveCodeCell(notebookId.value, cell.id, cell.content || '', outputHtml)
+      await saveCodeCell(notebookId.value, cell.id, cell.content || '', outputPayload)
     } catch (_) {
       // No-op: local output is still shown.
     }
@@ -607,15 +1073,96 @@ const toggleSessionMenu = () => {
   sessionMenuOpen.value = !sessionMenuOpen.value
 }
 
+const closeOutputMenu = () => {
+  outputMenuCellId.value = null
+}
+
+const toggleOutputMenu = (cellId) => {
+  outputMenuCellId.value = outputMenuCellId.value === cellId ? null : cellId
+}
+
+const extractCellOutputText = (cell) => {
+  if (!cell?.output) return ''
+  const model = getCellOutputModel(cell)
+  if (model?.kind === 'structured') {
+    return structuredOutputToText(model)
+  }
+  if (model?.kind === 'legacy') {
+    return stripHtmlTags(model.html)
+  }
+  return stripHtmlTags(cell.output)
+}
+
+const copyOutput = async (cell) => {
+  if (!cell?.output) return
+  const text = extractCellOutputText(cell)
+  if (!text) {
+    closeOutputMenu()
+    return
+  }
+  try {
+    if (navigator?.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text)
+    } else {
+      const textarea = document.createElement('textarea')
+      textarea.value = text
+      textarea.setAttribute('readonly', '')
+      textarea.style.position = 'fixed'
+      textarea.style.left = '-9999px'
+      document.body.appendChild(textarea)
+      textarea.select()
+      document.execCommand('copy')
+      document.body.removeChild(textarea)
+    }
+  } catch (error) {
+    console.warn('Failed to copy output', error)
+  } finally {
+    closeOutputMenu()
+  }
+}
+
+const downloadOutput = (cell) => {
+  if (!cell?.id || !cell.output) return
+  const text = extractCellOutputText(cell)
+  const blob = new Blob([text], { type: 'text/plain;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `notebook-${notebookId.value}-cell-${cell.id}-output.txt`
+  link.rel = 'noopener noreferrer'
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  URL.revokeObjectURL(url)
+  closeOutputMenu()
+}
+
+const clearOutput = async (cell) => {
+  if (!cell?.id || !hasValidId.value || cell.cell_type !== 'code') return
+  const content = typeof cell.content === 'string' ? cell.content : ''
+  try {
+    await saveCodeCell(notebookId.value, cell.id, content, '')
+    setCellOutput(cell, '')
+  } catch (error) {
+    console.warn('Failed to clear output', cell.id, error)
+  } finally {
+    closeOutputMenu()
+  }
+}
+
 const handleDocumentClick = (event) => {
-  if (!sessionMenuOpen.value) return
-  if (sessionMenuRef.value?.contains(event.target)) return
-  closeSessionMenu()
+  if (sessionMenuOpen.value && !sessionMenuRef.value?.contains(event.target)) {
+    closeSessionMenu()
+  }
+  if (outputMenuCellId.value && !event.target?.closest?.('.cell-output-menu-wrap')) {
+    closeOutputMenu()
+  }
 }
 
 const handleEscapeKey = (event) => {
   if (event.key !== 'Escape') return
   closeSessionMenu()
+  closeOutputMenu()
 }
 
 const refreshSessionFiles = async ({ silent = false } = {}) => {
@@ -883,9 +1430,13 @@ const removeCell = async (cell) => {
   }
 }
 
-const isErrorOutput = (output) => {
-  if (!output || typeof output !== 'string') return false
-  const text = output.toLowerCase()
+const isErrorOutput = (cell) => {
+  if (!cell?.output || typeof cell.output !== 'string') return false
+  const model = getCellOutputModel(cell)
+  if (model?.kind === 'structured') {
+    return model.status === 'error' || Boolean(model.error)
+  }
+  const text = cell.output.toLowerCase()
   return text.includes('error') || text.includes('exception') || text.includes('traceback')
 }
 
@@ -903,9 +1454,19 @@ const loadNotebook = async () => {
   state.value = 'loading'
   stateMessage.value = ''
   selectedCellId.value = null
+  closeOutputMenu()
   try {
     notebook.value = await getNotebook(notebookId.value)
     if (Array.isArray(notebook.value?.cells)) {
+      notebook.value.cells.forEach((cell) => {
+        if (typeof cell.output === 'string' && cell.output) {
+          cell._outputRaw = cell.output
+          cell._outputModel = parseCellOutput(cell.output)
+        } else {
+          cell._outputRaw = ''
+          cell._outputModel = null
+        }
+      })
       seedSavedContent(notebook.value.cells)
     }
     await refreshSessionFiles({ silent: true })
@@ -1492,11 +2053,58 @@ onBeforeUnmount(() => {
 .cell-output-icon {
   border-radius: 0;
   background: transparent;
+  border: none;
+  padding: 0;
   color: var(--color-text-muted);
   display: inline-flex;
   align-items: flex-start;
   justify-content: center;
   margin-top: 0;
+}
+
+.cell-output-menu-wrap {
+  position: relative;
+  display: inline-flex;
+  width: 30px;
+  justify-content: center;
+  align-items: flex-start;
+}
+
+.cell-output-menu-trigger {
+  cursor: pointer;
+}
+
+.cell-output-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  min-width: 170px;
+  padding: 6px;
+  border-radius: 10px;
+  border: 1px solid var(--color-border-light);
+  background: var(--color-bg-card);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.22);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  z-index: 12;
+}
+
+.cell-output-menu-item {
+  border: none;
+  border-radius: 8px;
+  background: var(--color-button-secondary);
+  color: var(--color-text-primary);
+  text-align: left;
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.3;
+  padding: 7px 8px;
+  cursor: pointer;
+}
+
+.cell-output-menu-item:hover {
+  filter: brightness(0.98);
 }
 
 .cell-output-icon--error {
@@ -1507,6 +2115,126 @@ onBeforeUnmount(() => {
   flex: 1;
   min-width: 0;
   margin-left: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cell-output-stream {
+  border-radius: 8px;
+  border: 1px solid var(--color-border-light);
+  background: rgba(255, 255, 255, 0.24);
+  padding: 8px;
+}
+
+.cell-output-stream--stderr {
+  border-color: var(--color-border-danger, #ff8d93);
+  background: rgba(255, 56, 60, 0.08);
+}
+
+.cell-output-stream-label {
+  font-size: 12px;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+
+.cell-output-rich-item,
+.cell-output-error,
+.cell-output-artifacts {
+  border-radius: 8px;
+  border: 1px solid var(--color-border-light);
+  background: rgba(255, 255, 255, 0.24);
+  padding: 8px;
+}
+
+.cell-output-error {
+  border-color: var(--color-border-danger, #ff8d93);
+  background: rgba(255, 56, 60, 0.08);
+}
+
+.cell-output-html :deep(table),
+.cell-output-markdown :deep(table) {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.cell-output-html :deep(td),
+.cell-output-html :deep(th),
+.cell-output-markdown :deep(td),
+.cell-output-markdown :deep(th) {
+  border: 1px solid var(--color-border-light);
+  padding: 4px 6px;
+}
+
+.cell-output-iframe {
+  width: 100%;
+  min-height: 220px;
+  border: 1px solid var(--color-border-light);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.cell-output-image {
+  max-width: min(100%, 900px);
+  border-radius: 8px;
+  border: 1px solid var(--color-border-light);
+  background: #fff;
+}
+
+.cell-output-image--artifact {
+  margin-top: 6px;
+  max-width: 320px;
+}
+
+.cell-output-metadata {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.cell-output-artifacts-title {
+  margin-bottom: 6px;
+  font-size: 12px;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.cell-output-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.cell-output-status {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 12px;
+  line-height: 1.2;
+  border: 1px solid transparent;
+}
+
+.cell-output-status--success {
+  color: #1a7f37;
+  background: rgba(26, 127, 55, 0.12);
+  border-color: rgba(26, 127, 55, 0.26);
+}
+
+.cell-output-status--error {
+  color: #b42318;
+  background: rgba(255, 56, 60, 0.12);
+  border-color: rgba(255, 56, 60, 0.28);
+}
+
+.cell-output-status--running,
+.cell-output-status--input_required {
+  color: #8a6d1b;
+  background: rgba(236, 209, 0, 0.2);
+  border-color: rgba(236, 209, 0, 0.35);
 }
 
 .cell-output-content :deep(:first-child) {
