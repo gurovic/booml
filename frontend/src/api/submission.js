@@ -17,10 +17,19 @@ async function fetchJsonWithFriendlyErrors(url, options = {}) {
   return await res.json()
 }
 
-export async function submitSolution(problemId, file) {
+export async function submitSolution(problemId, payload = {}) {
+  const { file = null, rawText = '', contestId = null } = payload
   const formData = new FormData()
   formData.append('problem_id', problemId)
-  formData.append('file', file)
+  if (contestId != null && contestId !== '') {
+    formData.append('contest_id', contestId)
+  }
+  if (file) {
+    formData.append('file', file)
+  }
+  if (typeof rawText === 'string' && rawText.length > 0) {
+    formData.append('raw_text', rawText)
+  }
 
   const csrftoken = await ensureCsrfToken()
   return await fetchJsonWithFriendlyErrors('/api/submissions/', {
@@ -33,8 +42,17 @@ export async function submitSolution(problemId, file) {
   })
 }
 
-export async function getSubmission(submissionId) {
-  return await fetchJsonWithFriendlyErrors(`/api/submissions/${submissionId}/`, {
+export async function getSubmission(submissionId, { contestId = null } = {}) {
+  const params = new URLSearchParams()
+  if (contestId != null && contestId !== '') {
+    params.set('contest_id', String(contestId))
+  }
+  const query = params.toString()
+  const url = query
+    ? `/api/submissions/${submissionId}/?${query}`
+    : `/api/submissions/${submissionId}/`
+
+  return await fetchJsonWithFriendlyErrors(url, {
     method: 'GET',
     credentials: 'include'
   })

@@ -1,5 +1,8 @@
+from datetime import timedelta
+
 from django.contrib.auth import get_user_model
 from django.test import TestCase
+from django.utils import timezone
 
 from runner.models import Contest, Course, CourseParticipant, Section
 from runner.services.section_service import SectionCreateInput, create_section
@@ -123,3 +126,62 @@ class ContestVisibilityTests(TestCase):
 
         self.assertTrue(contest.is_visible_to(self.student))
         self.assertFalse(contest.is_visible_to(self.outsider))
+
+    def test_scheduled_contest_visible_but_locked_before_start(self):
+        contest = Contest.objects.create(
+            course=self.course,
+            title="Scheduled",
+            created_by=self.teacher,
+            is_published=True,
+            approval_status=Contest.ApprovalStatus.APPROVED,
+            start_time=timezone.now() + timedelta(hours=1),
+            duration_minutes=60,
+        )
+
+        self.assertTrue(contest.is_visible_to(self.teacher))
+        self.assertTrue(contest.is_visible_to(self.student))
+        self.assertFalse(contest.are_problems_visible_to(self.student))
+
+    def test_published_pending_contest_visible_to_course_student(self):
+        contest = Contest.objects.create(
+            course=self.course,
+            title="Pending Moderation Contest",
+            created_by=self.teacher,
+            is_published=True,
+            approval_status=Contest.ApprovalStatus.PENDING,
+        )
+
+        self.assertTrue(contest.is_visible_to(self.student))
+
+    def test_submission_not_allowed_after_deadline_without_upsolving(self):
+        contest = Contest.objects.create(
+            course=self.course,
+            title="No Upsolving",
+            created_by=self.teacher,
+            is_published=True,
+            approval_status=Contest.ApprovalStatus.APPROVED,
+            start_time=timezone.now() - timedelta(hours=2),
+            duration_minutes=60,
+            allow_upsolving=False,
+        )
+
+        can_submit, reason = contest.is_submission_allowed(self.student)
+
+        self.assertFalse(can_submit)
+        self.assertIn("заверш", reason.lower())
+
+    def test_submission_allowed_after_deadline_with_upsolving(self):
+        contest = Contest.objects.create(
+            course=self.course,
+            title="With Upsolving",
+            created_by=self.teacher,
+            is_published=True,
+            approval_status=Contest.ApprovalStatus.APPROVED,
+            start_time=timezone.now() - timedelta(hours=2),
+            duration_minutes=60,
+            allow_upsolving=True,
+        )
+
+        can_submit, _ = contest.is_submission_allowed(self.student)
+
+        self.assertTrue(can_submit)

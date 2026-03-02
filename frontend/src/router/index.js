@@ -7,6 +7,7 @@ import SectionPage from '@/pages/SectionPage.vue'
 import CoursePage from '@/pages/CoursePage.vue'
 import CourseLeaderboardPage from '@/pages/CourseLeaderboardPage.vue'
 import ContestPage from '@/pages/ContestPage.vue'
+import ContestSubmissionsPage from '@/pages/ContestSubmissionsPage.vue'
 import CoursesPage from '@/pages/CoursesPage.vue'
 import ContestLeaderboardPage from '@/pages/ContestLeaderboardPage.vue'
 import LoginPage from '@/pages/LoginPage.vue'
@@ -15,6 +16,7 @@ import PolygonPage from '@/pages/PolygonPage.vue'
 import PolygonProblemEditPage from '@/pages/PolygonProblemEditPage.vue'
 import SubmissionListPage from '@/pages/SubmissionListPage.vue'
 import NotebookPage from '@/pages/NotebookPage.vue'
+import ProfilePage from '@/pages/ProfilePage.vue'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -75,6 +77,11 @@ const router = createRouter({
       component: ContestPage,
     },
     {
+      path: '/contest/:id/submissions',
+      name: 'contest-submissions',
+      component: ContestSubmissionsPage,
+    },
+    {
       path: '/contest/:id/leaderboard',
       name: 'contest-leaderboard',
       component: ContestLeaderboardPage,
@@ -98,6 +105,11 @@ const router = createRouter({
       path: '/notebook/:id',
       name: 'notebook',
       component: NotebookPage,
+    },
+    {
+      path: '/profile',
+      name: 'profile',
+      component: ProfilePage,
     }
   ],
 })

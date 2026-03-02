@@ -2,6 +2,7 @@ import tempfile
 from importlib import import_module
 from pathlib import Path
 from types import SimpleNamespace
+from datetime import timedelta
 from unittest.mock import ANY, patch
 
 from django.contrib.auth import get_user_model
@@ -9,8 +10,20 @@ from django.core.files.base import ContentFile
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 from django.urls import reverse
+from django.utils import timezone
 
-from runner.models import Problem, Submission, ProblemData, ProblemDescriptor
+from runner.models import (
+    Contest,
+    ContestProblem,
+    Course,
+    CourseParticipant,
+    Problem,
+    ProblemData,
+    ProblemDescriptor,
+    Section,
+    Submission,
+)
+from runner.services.section_service import SectionCreateInput, create_section
 
 problem_detail_view = import_module("runner.views.problem_detail")
 
@@ -274,6 +287,96 @@ class ProblemDetailViewTests(TestCase):
         feedback = response.context["submission_feedback"]
         self.assertEqual(feedback["level"], "error")
         self.assertEqual(feedback["details"], "Single error message")
+
+    def test_problem_detail_api_includes_contest_context(self):
+        root_section = Section.objects.get(title="Авторские", parent__isnull=True)
+        section = create_section(
+            SectionCreateInput(
+                title="Problem API Section",
+                owner=self.user,
+                parent=root_section,
+            )
+        )
+        course = Course.objects.create(
+            title="Problem API Course",
+            owner=self.user,
+            section=section,
+        )
+        CourseParticipant.objects.create(
+            course=course,
+            user=self.user,
+            role=CourseParticipant.Role.TEACHER,
+            is_owner=True,
+        )
+        contest = Contest.objects.create(
+            title="Problem API Contest",
+            course=course,
+            created_by=self.user,
+            is_published=True,
+            approval_status=Contest.ApprovalStatus.APPROVED,
+            start_time=timezone.now() - timedelta(minutes=30),
+            duration_minutes=120,
+            allow_upsolving=True,
+        )
+        ContestProblem.objects.create(contest=contest, problem=self.problem, position=0)
+
+        self.client.force_login(self.user)
+        response = self.client.get(
+            self._problem_api_url(),
+            {"problem_id": self.problem.id, "contest_id": contest.id},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertIn("contest", payload)
+        self.assertEqual(payload["contest"]["id"], contest.id)
+        self.assertTrue(payload["contest"]["can_submit"])
+        self.assertEqual(payload["contest"]["time_state"], "running")
+
+    def test_problem_detail_api_forbids_scheduled_contest_for_student(self):
+        teacher = get_user_model().objects.create_user(username="teacher_api", password="pass12345")
+        root_section = Section.objects.get(title="Авторские", parent__isnull=True)
+        section = create_section(
+            SectionCreateInput(
+                title="Scheduled API Section",
+                owner=teacher,
+                parent=root_section,
+            )
+        )
+        course = Course.objects.create(
+            title="Scheduled API Course",
+            owner=teacher,
+            section=section,
+        )
+        CourseParticipant.objects.create(
+            course=course,
+            user=teacher,
+            role=CourseParticipant.Role.TEACHER,
+            is_owner=True,
+        )
+        CourseParticipant.objects.create(
+            course=course,
+            user=self.user,
+            role=CourseParticipant.Role.STUDENT,
+        )
+        contest = Contest.objects.create(
+            title="Scheduled Contest",
+            course=course,
+            created_by=teacher,
+            is_published=True,
+            approval_status=Contest.ApprovalStatus.APPROVED,
+            start_time=timezone.now() + timedelta(hours=2),
+            duration_minutes=60,
+        )
+        ContestProblem.objects.create(contest=contest, problem=self.problem, position=0)
+
+        self.client.force_login(self.user)
+        response = self.client.get(
+            self._problem_api_url(),
+            {"problem_id": self.problem.id, "contest_id": contest.id},
+        )
+
+        self.assertEqual(response.status_code, 403)
 
     def test_problem_detail_api_returns_full_file_list_from_root_and_hides_answer(self):
         problem_data_root = self.media_root / "problem_data_root"

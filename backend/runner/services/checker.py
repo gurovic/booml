@@ -73,7 +73,7 @@ class SubmissionChecker:
                     False,
                     errors="ProblemDescriptor not found and cannot infer schema from data files",
                 )
-            logger.warning(
+            logger.info(
                 "ProblemDescriptor missing for problem %s; using inferred schema (id=%s, target=%s, metric=%s)",
                 getattr(problem, "id", "?"),
                 getattr(descriptor, "id_column", None),
@@ -846,4 +846,3 @@ def check_submission(submission: Submission) -> CheckResult:
     """Основная функция для проверки submission (используется worker'ом)"""
     checker = SubmissionChecker()
     return checker.check_submission(submission)
-

@@ -201,10 +201,7 @@ class HomeSidebarView(APIView):
                         return True
                     if getattr(contest, "is_course_teacher", False):
                         return True
-                    if (
-                        not contest.is_published
-                        or contest.approval_status != Contest.ApprovalStatus.APPROVED
-                    ):
+                    if not contest.is_published:
                         return False
                     if contest.access_type == Contest.AccessType.PRIVATE:
                         return bool(getattr(contest, "is_allowed", False))

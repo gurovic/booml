@@ -13,3 +13,4 @@ from .tag import Tag
 from .section import Section, SectionTeacher
 from .course import Course, CourseParticipant, FavoriteCourse
 from .site_update import SiteUpdate
+from .profile import Profile

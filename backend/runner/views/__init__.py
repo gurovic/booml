@@ -9,6 +9,7 @@ from .contest_draft import (
     moderate_contest,
     set_contest_access,
     manage_contest_participants,
+    update_contest,
 )
 from .course import course_detail, course_contests
 from .problems import problem_list

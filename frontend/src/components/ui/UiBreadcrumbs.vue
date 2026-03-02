@@ -33,6 +33,7 @@ const props = defineProps({
   course: { type: Object, default: null },
   contest: { type: Object, default: null },
   problem: { type: Object, default: null },
+  profile: { type: Object, default: null },
 })
 
 const route = useRoute()
@@ -146,6 +147,17 @@ const refresh = async () => {
   const list = []
   _pushHome(list)
 
+  if (name === 'profile') {
+    list.push({
+      key: 'profile',
+      label: 'Профиль',
+      title: 'Профиль пользователя',
+      to: null,
+    })
+    items.value = list
+    return
+  }
+
   if (name === 'courses') {
     list.push({
       key: 'courses',
@@ -192,6 +204,10 @@ const refresh = async () => {
         // ignore
       }
     }
+  }
+
+  if (name === 'course-leaderboard') {
+    courseId = Number(routeId.value)
   }
 
   if (name === 'problem') {
@@ -315,6 +331,16 @@ const refresh = async () => {
       label: title,
       title,
       to: { name: 'contest', params: { id: contestId }, query: { title } },
+    })
+  }
+
+  // If we're on course leaderboard page, add the "Таблица результатов" crumb.
+  if (name === 'course-leaderboard') {
+    list.push({
+      key: 'course-leaderboard',
+      label: 'Таблица результатов',
+      title: 'Таблица результатов',
+      to: null,
     })
   }
 

@@ -19,6 +19,8 @@ def notebook_detail_api(request, notebook_id):
     return JsonResponse({
         "id": notebook.id,
         "title": notebook.title,
+        "problem_id": notebook.problem_id,
+        "problem_title": notebook.problem.title if notebook.problem else None,
         "compute_device": notebook.compute_device,
         "owner_id": notebook.owner_id,
         "created_at": notebook.created_at.isoformat() if notebook.created_at else None,

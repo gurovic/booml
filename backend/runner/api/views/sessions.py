@@ -395,6 +395,38 @@ class SessionFileDownloadView(APIView):
 
         return FileResponse(candidate.open("rb"), as_attachment=True, filename=candidate.name)
 
+    def delete(self, request):
+        serializer = SessionFileDownloadSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        session_id = serializer.validated_data["session_id"]
+        relative_path = serializer.validated_data["path"]
+
+        session = get_session(session_id, touch=False)
+        if session is None:
+            raise Http404("Session not found")
+
+        notebook_id = extract_notebook_id(session_id)
+        if notebook_id is not None:
+            notebook = get_object_or_404(Notebook, pk=notebook_id)
+            if notebook.owner_id is not None and not getattr(request.user, "is_authenticated", False):
+                raise PermissionDenied("Недостаточно прав для работы с этим блокнотом")
+            ensure_notebook_access(request.user, notebook)
+
+        candidate = (session.workdir / relative_path).resolve()
+        try:
+            candidate.relative_to(session.workdir.resolve())
+        except ValueError:
+            raise Http404("File outside sandbox")
+
+        if not candidate.exists() or not candidate.is_file():
+            raise Http404("File not found")
+
+        candidate.unlink()
+        return Response(
+            {"session_id": session_id, "path": relative_path, "deleted": True},
+            status=status.HTTP_200_OK,
+        )
+
 
 class SessionFilePreviewView(APIView):
     permission_classes = [permissions.AllowAny]

@@ -6,6 +6,8 @@ from rest_framework.pagination import PageNumberPagination
 
 from ...models.submission import Submission
 from ...models.problem import Problem
+from ...models.contest import Contest
+from ...models.course import CourseParticipant
 from ..serializers import SubmissionCreateSerializer, SubmissionReadSerializer, SubmissionDetailSerializer
 
 from ...services import validation_service
@@ -38,10 +40,34 @@ def build_descriptor_from_problem(problem) -> dict:
     }
 
 
+def _contest_student_ids(contest: Contest) -> set[int]:
+    teacher_ids = set(
+        CourseParticipant.objects.filter(
+            course=contest.course,
+            role=CourseParticipant.Role.TEACHER,
+        ).values_list("user_id", flat=True)
+    )
+    if contest.course and contest.course.owner_id:
+        teacher_ids.add(contest.course.owner_id)
+
+    if contest.access_type == Contest.AccessType.PRIVATE:
+        candidate_ids = set(contest.allowed_participants.values_list("id", flat=True))
+    else:
+        candidate_ids = set(
+            CourseParticipant.objects.filter(
+                course=contest.course,
+                role=CourseParticipant.Role.STUDENT,
+            ).values_list("user_id", flat=True)
+        )
+        candidate_ids |= set(contest.allowed_participants.values_list("id", flat=True))
+
+    return {uid for uid in candidate_ids if uid and uid not in teacher_ids}
+
+
 class SubmissionCreateView(generics.CreateAPIView):
     """
     POST /api/submissions/
-    multipart/form-data: { problem_id, file: <csv> }
+    multipart/form-data / JSON: { problem_id, file: <csv> } или { problem_id, raw_text: "<csv>" }
     1) создаём Submission (pending)
     2) синхронно запускаем pre-validation
     3) при успехе ставим в очередь основную обработку, отвечаем 201
@@ -50,7 +76,7 @@ class SubmissionCreateView(generics.CreateAPIView):
     queryset = Submission.objects.all()
     serializer_class = SubmissionCreateSerializer
     permission_classes = [permissions.IsAuthenticated]
-    parser_classes = [parsers.MultiPartParser, parsers.FormParser]
+    parser_classes = [parsers.MultiPartParser, parsers.FormParser, parsers.JSONParser]
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
@@ -133,7 +159,33 @@ class SubmissionDetailView(generics.RetrieveAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        return Submission.objects.filter(user=self.request.user).select_related("problem", "prevalidation")
+        base_qs = Submission.objects.select_related("problem", "prevalidation")
+        contest_id_raw = self.request.query_params.get("contest_id")
+        if contest_id_raw in (None, ""):
+            return base_qs.filter(user=self.request.user)
+
+        try:
+            contest_id = int(contest_id_raw)
+        except (TypeError, ValueError):
+            return Submission.objects.none()
+        if contest_id <= 0:
+            return Submission.objects.none()
+
+        contest = (
+            Contest.objects.select_related("course")
+            .prefetch_related("allowed_participants")
+            .filter(pk=contest_id)
+            .first()
+        )
+        if contest is None or not contest.is_user_manager(self.request.user):
+            return Submission.objects.none()
+
+        problem_ids = set(contest.problems.filter(is_published=True).values_list("id", flat=True))
+        student_ids = _contest_student_ids(contest)
+        if not problem_ids or not student_ids:
+            return Submission.objects.none()
+
+        return base_qs.filter(problem_id__in=problem_ids, user_id__in=student_ids)
 
 
 class SubmissionsPagination(PageNumberPagination):

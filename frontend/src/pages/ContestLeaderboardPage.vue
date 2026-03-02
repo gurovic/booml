@@ -57,7 +57,7 @@
                       :key="column.id"
                       class="leaderboard-cell leaderboard-cell--problem"
                     >
-                      {{ formatMetric(problemResults[entry.user_id]?.[column.id]) }}
+                      <span>{{ formatMetric(problemResults[entry.user_id]?.[column.id]) }}</span>
                     </td>
                   </tr>
                 </tbody>
@@ -197,7 +197,7 @@ const loadLeaderboard = async () => {
   try {
     const [leaderboardData, contestData] = await Promise.all([
       contestApi.getContestLeaderboard(contestId.value),
-      queryTitle.value ? Promise.resolve(null) : contestApi.getContest(contestId.value),
+      contestApi.getContest(contestId.value),
     ])
     contest.value = contestData
     overallLeaderboard.value = leaderboardData?.overall_leaderboard ?? null

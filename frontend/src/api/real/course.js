@@ -70,3 +70,7 @@ export async function browseCourses({ tab = 'mine', q = '', page = 1, page_size 
   }
   return await apiGet('api/courses/browse/', params)
 }
+
+export async function getCourseLeaderboard(courseId) {
+  return await apiGet(`backend/course/${courseId}/leaderboard/`)
+}

@@ -11,6 +11,18 @@ from ..services.user_access import is_platform_admin
 User = get_user_model()
 
 
+def _contest_timing_payload(contest: Contest) -> dict:
+    end_time = contest.get_end_time()
+    return {
+        "start_time": contest.start_time.isoformat() if contest.start_time else None,
+        "end_time": end_time.isoformat() if end_time else None,
+        "duration_minutes": contest.duration_minutes,
+        "has_time_limit": bool(contest.start_time and contest.duration_minutes),
+        "allow_upsolving": bool(contest.allow_upsolving),
+        "time_state": contest.time_state(),
+    }
+
+
 def _course_is_teacher(course: Course, user) -> bool:
     if not user.is_authenticated:
         return False
@@ -128,12 +140,11 @@ def course_contests(request, course_id):
                 "is_rated": contest.is_rated,
                 "scoring": contest.scoring,
                 "registration_type": contest.registration_type,
-                "duration_minutes": contest.duration_minutes,
-                "start_time": contest.start_time.isoformat() if contest.start_time else None,
                 "problems_count": contest.problems_count,
                 "access_token": contest.access_token
                 if contest.access_type == Contest.AccessType.LINK and (is_teacher or is_admin)
                 else None,
+                **_contest_timing_payload(contest),
             }
         )
     return JsonResponse({"items": items}, status=200)
