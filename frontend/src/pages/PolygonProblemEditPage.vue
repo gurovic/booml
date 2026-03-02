@@ -125,9 +125,6 @@
                 <button class="statement-tool-btn" type="button" @click="insertOrderedList" title="Нумерованный список">
                   1. Список
                 </button>
-                <button class="statement-tool-btn" type="button" @click="insertChecklist" title="Чек-лист">
-                  ☑ Чек-лист
-                </button>
                 <button class="statement-tool-btn" type="button" @click="insertTableTemplate" title="Таблица">
                   Таблица
                 </button>
@@ -764,10 +761,6 @@ const insertOrderedList = () => {
   insertAtCursor('1. Пункт 1\n2. Пункт 2\n3. Пункт 3\n')
 }
 
-const insertChecklist = () => {
-  insertAtCursor('- [ ] Шаг 1\n- [ ] Шаг 2\n- [ ] Шаг 3\n')
-}
-
 const insertTableTemplate = () => {
   insertAtCursor('| Колонка | Описание |\n|---|---|\n| feature_1 | Что это за признак |\n| target | Что нужно предсказать |\n')
 }
@@ -958,7 +951,6 @@ const handleStatementKeydown = (event) => {
   if (start !== currentLineEnd) return
 
   const line = source.slice(lineStart, currentLineEnd)
-  const checkMatch = line.match(/^(\s*)- \[(?: |x|X)\]\s?(.*)$/)
   const unorderedMatch = line.match(/^(\s*)([-*+])\s+(.*)$/)
   const orderedMatch = line.match(/^(\s*)(\d+)\.\s+(.*)$/)
 
@@ -972,17 +964,6 @@ const handleStatementKeydown = (event) => {
     event.preventDefault()
     const nextValue = source.slice(0, lineStart) + source.slice(currentLineEnd)
     setStatementValueAndCaret(nextValue, lineStart)
-  }
-
-  if (checkMatch) {
-    const indent = checkMatch[1] || ''
-    const content = checkMatch[2] || ''
-    if (!content.trim()) {
-      stopList()
-      return
-    }
-    continueWith(`${indent}- [ ] `)
-    return
   }
 
   if (unorderedMatch) {
