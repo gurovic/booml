@@ -46,13 +46,32 @@ export async function createContest(courseId, contestData) {
   }
 }
 
-export async function getContestSubmissions(contestId, { page = 1, pageSize = 20 } = {}) {
+export async function getContestSubmissions(contestId, options = {}) {
   if (contestId == null || contestId === '') {
     return null
   }
+  const {
+    page = 1,
+    pageSize = 20,
+    ...filters
+  } = options
   const params = {}
   if (page != null) params.page = page
   if (pageSize != null) params.page_size = pageSize
+  const allowedFilterKeys = [
+    'problem_id',
+    'user_id',
+    'status',
+    'q',
+    'submitted_from',
+    'submitted_to',
+    'has_file',
+  ]
+  for (const key of allowedFilterKeys) {
+    const value = filters[key]
+    if (value === null || value === undefined || value === '') continue
+    params[key] = value
+  }
   try {
     return await apiGet(`backend/contest/${contestId}/submissions/`, params)
   } catch (err) {

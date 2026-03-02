@@ -1,10 +1,11 @@
 import json
 import tempfile
-from datetime import date
+from datetime import date, timedelta
 
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import RequestFactory, TestCase, override_settings
+from django.utils import timezone
 
 from runner.models import Contest, ContestProblem, Course, CourseParticipant, Problem, Section, Submission
 from runner.services.section_service import SectionCreateInput, create_section
@@ -94,6 +95,15 @@ class ContestSubmissionsViewTests(TestCase):
             status=Submission.STATUS_ACCEPTED,
             metrics={"score": 77},
         )
+        now = timezone.now()
+        Submission.objects.filter(pk=self.student_submission_with_file.id).update(
+            submitted_at=now - timedelta(days=2)
+        )
+        Submission.objects.filter(pk=self.student_submission_plain.id).update(
+            submitted_at=now - timedelta(hours=3)
+        )
+        self.student_submission_with_file.refresh_from_db()
+        self.student_submission_plain.refresh_from_db()
 
     def _request(self, user, *, query: str = ""):
         request = self.factory.get(f"/backend/contest/{self.contest.id}/submissions/{query}")
@@ -110,6 +120,10 @@ class ContestSubmissionsViewTests(TestCase):
 
         self.assertEqual(ids, {self.student_submission_with_file.id, self.student_submission_plain.id})
         self.assertEqual(payload["count"], 2)
+        self.assertIn("filters", payload)
+        self.assertIn("problems", payload["filters"])
+        self.assertIn("students", payload["filters"])
+        self.assertIn("statuses", payload["filters"])
 
         row_by_id = {row["id"]: row for row in payload["results"]}
         file_row = row_by_id[self.student_submission_with_file.id]
@@ -144,3 +158,27 @@ class ContestSubmissionsViewTests(TestCase):
         self.assertEqual(payload["page_size"], 10)
         self.assertEqual(payload["total_pages"], 3)
         self.assertEqual(len(payload["results"]), 10)
+
+    def test_filters_by_problem_user_status_search_date_and_file(self):
+        submitted_from = (timezone.now() - timedelta(days=3)).date().isoformat()
+        submitted_to = (timezone.now() - timedelta(days=1)).date().isoformat()
+        response = self._request(
+            self.teacher,
+            query=(
+                f"?problem_id={self.problem_1.id}"
+                f"&user_id={self.student_1.id}"
+                f"&status={Submission.STATUS_ACCEPTED}"
+                f"&q={self.student_1.username}"
+                f"&submitted_from={submitted_from}"
+                f"&submitted_to={submitted_to}"
+                "&has_file=true"
+            ),
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = json.loads(response.content.decode())
+        self.assertEqual(payload["count"], 1)
+        self.assertEqual(payload["results"][0]["id"], self.student_submission_with_file.id)
+
+    def test_invalid_status_filter_returns_400(self):
+        response = self._request(self.teacher, query="?status=unknown_status")
+        self.assertEqual(response.status_code, 400)

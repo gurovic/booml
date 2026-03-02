@@ -133,6 +133,15 @@ const mockContestSubmissions = {
   ],
 }
 
+const STATUS_OPTIONS = [
+  { value: 'pending', label: '⏳ В очереди' },
+  { value: 'running', label: '🏃 Выполняется' },
+  { value: 'accepted', label: '✅ Протестировано' },
+  { value: 'failed', label: '❌ Ошибка' },
+  { value: 'validation_error', label: '⚠️ Ошибка валидации' },
+  { value: 'validated', label: '✅ Валидировано' },
+]
+
 const buildProblems = (contest) => {
   const count = Number(contest?.problems_count ?? 0)
   if (!count) return []
@@ -211,22 +220,108 @@ export async function addProblemToContest(contestId, problemId) {
   })
 }
 
-export function getContestSubmissions(contestId, { page = 1, pageSize = 20 } = {}) {
+export function getContestSubmissions(contestId, options = {}) {
+  const {
+    page = 1,
+    pageSize = 20,
+    problem_id = '',
+    user_id = '',
+    status = '',
+    q = '',
+    submitted_from = '',
+    submitted_to = '',
+    has_file = '',
+  } = options
   const numericId = Number(contestId)
   const allRows = mockContestSubmissions[numericId] || []
+  const problemOptions = Array.from(
+    new Map(
+      allRows
+        .filter(row => row.problem_id != null)
+        .map(row => [row.problem_id, {
+          id: row.problem_id,
+          title: row.problem_title || `Задача ${row.problem_id}`,
+          label: row.problem_label || '',
+        }])
+    ).values()
+  )
+  const studentOptions = Array.from(
+    new Map(
+      allRows
+        .filter(row => row.user_id != null)
+        .map(row => [row.user_id, {
+          id: row.user_id,
+          username: row.username || `user_${row.user_id}`,
+        }])
+    ).values()
+  )
+
+  const searchNeedle = String(q || '').trim().toLowerCase()
+  const parsedProblemId = Number(problem_id)
+  const parsedUserId = Number(user_id)
+  const fromTs = submitted_from ? new Date(submitted_from).getTime() : null
+  const toTs = submitted_to ? new Date(submitted_to).getTime() : null
+  const hasFileEnabled = String(has_file).toLowerCase() === 'true'
+
+  const filteredRows = allRows.filter((row) => {
+    if (problem_id !== '' && Number.isFinite(parsedProblemId) && row.problem_id !== parsedProblemId) {
+      return false
+    }
+    if (user_id !== '' && Number.isFinite(parsedUserId) && row.user_id !== parsedUserId) {
+      return false
+    }
+    if (status && row.status !== status) {
+      return false
+    }
+    if (hasFileEnabled && !row.file_url) {
+      return false
+    }
+
+    if (fromTs != null || toTs != null) {
+      const submittedTs = row.submitted_at ? new Date(row.submitted_at).getTime() : null
+      if (submittedTs == null || Number.isNaN(submittedTs)) {
+        return false
+      }
+      if (fromTs != null && !Number.isNaN(fromTs) && submittedTs < fromTs) {
+        return false
+      }
+      if (toTs != null && !Number.isNaN(toTs) && submittedTs > toTs) {
+        return false
+      }
+    }
+
+    if (searchNeedle) {
+      const haystack = [
+        String(row.id || ''),
+        String(row.username || ''),
+        String(row.problem_title || ''),
+      ].join(' ').toLowerCase()
+      if (!haystack.includes(searchNeedle)) {
+        return false
+      }
+    }
+
+    return true
+  })
+
   const safePageSize = Math.max(1, Number(pageSize) || 20)
   const safePage = Math.max(1, Number(page) || 1)
   const offset = (safePage - 1) * safePageSize
-  const slice = allRows.slice(offset, offset + safePageSize)
-  const totalPages = Math.max(1, Math.ceil(allRows.length / safePageSize))
+  const slice = filteredRows.slice(offset, offset + safePageSize)
+  const totalPages = Math.max(1, Math.ceil(filteredRows.length / safePageSize))
   return Promise.resolve({
-    count: allRows.length,
+    count: filteredRows.length,
     page: safePage,
     page_size: safePageSize,
     total_pages: totalPages,
     next: safePage < totalPages ? safePage + 1 : null,
     previous: safePage > 1 ? safePage - 1 : null,
     results: slice,
+    filters: {
+      problems: problemOptions,
+      students: studentOptions,
+      statuses: STATUS_OPTIONS,
+    },
   })
 }
 
