@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import date, timedelta
 
 from django.contrib.auth import get_user_model
 from django.db.models import Count
@@ -71,7 +71,6 @@ class ProfileDetailSerializer(serializers.ModelSerializer):
     avatar_url = serializers.SerializerMethodField()
     recent_submissions = serializers.SerializerMethodField()
     activity_heatmap = serializers.SerializerMethodField()
-
     ACTIVITY_HEATMAP_DAYS = 365
 
     class Meta:
@@ -133,8 +132,34 @@ class ProfileDetailSerializer(serializers.ModelSerializer):
         return current_streak, best_streak
 
     def get_activity_heatmap(self, obj):
-        end_date = timezone.localdate()
-        start_date = end_date - timedelta(days=self.ACTIVITY_HEATMAP_DAYS - 1)
+        today = timezone.localdate()
+        current_year = today.year
+
+        joined_at = getattr(obj.user, 'date_joined', None)
+        if joined_at is not None:
+            if timezone.is_aware(joined_at):
+                registration_year = timezone.localtime(joined_at).year
+            else:
+                registration_year = joined_at.year
+        else:
+            registration_year = current_year
+        registration_year = min(registration_year, current_year)
+
+        available_years = list(range(registration_year, current_year + 1))
+        requested_year = self.context.get('activity_year')
+        is_year_mode = isinstance(requested_year, int) and requested_year in available_years
+
+        selected_year = requested_year if is_year_mode else None
+        period_type = 'year' if is_year_mode else 'rolling_365'
+
+        if is_year_mode:
+            start_date = date(selected_year, 1, 1)
+            end_date = date(selected_year, 12, 31)
+            if selected_year == current_year:
+                end_date = today
+        else:
+            end_date = today
+            start_date = end_date - timedelta(days=self.ACTIVITY_HEATMAP_DAYS - 1)
 
         submissions_by_day = (
             obj.user.submissions
@@ -172,6 +197,9 @@ class ProfileDetailSerializer(serializers.ModelSerializer):
         return {
             'start_date': start_date.isoformat(),
             'end_date': end_date.isoformat(),
+            'period_type': period_type,
+            'selected_year': selected_year,
+            'available_years': available_years,
             'total_submissions': total_submissions,
             'active_days': active_days,
             'max_count': max_count,

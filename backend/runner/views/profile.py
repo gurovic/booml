@@ -9,12 +9,25 @@ from ..models import Profile
 User = get_user_model()
 
 
+def _get_activity_year(request):
+    raw_value = request.query_params.get('year')
+    if raw_value in (None, ''):
+        return None
+    try:
+        return int(raw_value)
+    except (TypeError, ValueError):
+        return None
+
+
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_my_profile(request):
     profile, created = Profile.objects.get_or_create(user=request.user)
 
-    serializer = ProfileDetailSerializer(profile, context={'request': request})
+    serializer = ProfileDetailSerializer(
+        profile,
+        context={'request': request, 'activity_year': _get_activity_year(request)}
+    )
     return Response(serializer.data)
 
 
@@ -31,7 +44,10 @@ def get_profile_by_id(request, user_id):
                 status=status.HTTP_404_NOT_FOUND
             )
 
-        serializer = ProfileDetailSerializer(profile, context={'request': request})
+        serializer = ProfileDetailSerializer(
+            profile,
+            context={'request': request, 'activity_year': _get_activity_year(request)}
+        )
         return Response(serializer.data)
 
     except User.DoesNotExist:

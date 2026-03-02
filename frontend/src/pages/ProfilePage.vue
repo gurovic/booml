@@ -90,7 +90,41 @@
 
             <section class="profile__activity activity-section">
               <div class="activity-section__header">
-                <h3 class="activity-section__title">Активность за 365 дней</h3>
+                <h3 class="activity-section__title">Календарь активности</h3>
+                <div class="activity-section__controls">
+                  <button
+                    class="activity-section__mode-button"
+                    :class="{ 'activity-section__mode-button--active': isRollingHeatmapMode }"
+                    :disabled="activityYearLoading"
+                    @click="selectRollingWindow"
+                  >
+                    Последние 365 дней
+                  </button>
+
+                  <label
+                    v-if="availableActivityYears.length > 0"
+                    class="activity-section__year-picker"
+                    :class="{ 'activity-section__year-picker--active': !isRollingHeatmapMode }"
+                  >
+                    <span class="activity-section__year-label">Год</span>
+                    <select
+                      class="activity-section__year-select"
+                      :class="{ 'activity-section__year-select--active': !isRollingHeatmapMode }"
+                      :value="selectedHeatmapYear ?? ''"
+                      :disabled="activityYearLoading"
+                      @change="handleActivityYearChange"
+                    >
+                      <option value="">Выбрать</option>
+                      <option
+                        v-for="year in availableActivityYears"
+                        :key="`activity-year-option-${year}`"
+                        :value="year"
+                      >
+                        {{ year }}
+                      </option>
+                    </select>
+                  </label>
+                </div>
               </div>
 
               <div v-if="activityHeatmap" class="activity-section__stats">
@@ -244,6 +278,7 @@ export default {
       isEditingName: false,
       editFirstName: '',
       editLastName: '',
+      activityYearLoading: false,
       userStore: null
     }
   },
@@ -286,6 +321,27 @@ export default {
 
     activityHeatmap() {
       return this.profile?.activity_heatmap || null
+    },
+
+    selectedHeatmapYear() {
+      const fromApi = Number(this.activityHeatmap?.selected_year)
+      return Number.isInteger(fromApi) ? fromApi : null
+    },
+
+    isRollingHeatmapMode() {
+      return this.activityHeatmap?.period_type !== 'year'
+    },
+
+    availableActivityYears() {
+      const years = this.activityHeatmap?.available_years
+      if (!Array.isArray(years)) {
+        return []
+      }
+
+      return years
+        .map(value => Number(value))
+        .filter(value => Number.isInteger(value))
+        .sort((a, b) => b - a)
     },
 
     heatmapDays() {
@@ -343,6 +399,52 @@ export default {
     }
   },
   methods: {
+    async selectRollingWindow() {
+      if (this.isRollingHeatmapMode || this.activityYearLoading) {
+        return
+      }
+
+      this.activityYearLoading = true
+      try {
+        await this.loadProfileData({ silent: true })
+      } finally {
+        this.activityYearLoading = false
+      }
+    },
+
+    async selectActivityYear(year) {
+      const parsedYear = Number(year)
+      if (!Number.isInteger(parsedYear)) {
+        return
+      }
+      if (
+        !this.isRollingHeatmapMode &&
+        parsedYear === this.selectedHeatmapYear
+      ) {
+        return
+      }
+      if (this.activityYearLoading) {
+        return
+      }
+
+      this.activityYearLoading = true
+      try {
+        await this.loadProfileData({ year: parsedYear, silent: true })
+      } finally {
+        this.activityYearLoading = false
+      }
+    },
+
+    async handleActivityYearChange(event) {
+      const value = event?.target?.value ?? ''
+      if (!value) {
+        await this.selectRollingWindow()
+        return
+      }
+
+      await this.selectActivityYear(Number(value))
+    },
+
     parseIsoDate(value) {
       if (typeof value !== 'string') {
         return new Date(NaN)
@@ -547,30 +649,46 @@ export default {
       }
     },
 
-    async loadProfileData() {
+    async loadProfileData(options = {}) {
+      const { year = null, silent = false } = options
+
+      if (!silent) {
         this.loading = true
         this.error = null
+      }
 
-        try {
-            if (!this.isAuthenticated) {
-                await this.userStore.checkAuth()
-            }
-
-            this.profile = await getCurrentProfile()
-
-            if (!this.profile) {
-                throw new Error('Профиль не найден')
-            }
-
-            this.submissions = this.profile.recent_submissions || []
-
-        } catch (err) {
-            console.error('Failed to load profile:', err)
-            this.error = 'Не удалось загрузить профиль'
-            this.submissions = []
-        } finally {
-            this.loading = false
+      try {
+        if (!this.isAuthenticated) {
+          await this.userStore.checkAuth()
         }
+
+        const params = {}
+        const parsedYear = Number(year)
+        if (Number.isInteger(parsedYear)) {
+          params.year = parsedYear
+        }
+
+        this.profile = await getCurrentProfile(params)
+
+        if (!this.profile) {
+          throw new Error('Профиль не найден')
+        }
+
+        this.submissions = this.profile.recent_submissions || []
+      } catch (err) {
+        console.error('Failed to load profile:', err)
+        if (silent) {
+          alert('Не удалось загрузить активность за выбранный год')
+          return
+        }
+
+        this.error = 'Не удалось загрузить профиль'
+        this.submissions = []
+      } finally {
+        if (!silent) {
+          this.loading = false
+        }
+      }
     }
   },
   async created() {
@@ -790,6 +908,103 @@ export default {
   gap: 16px;
   margin-bottom: 20px;
   flex-wrap: wrap;
+}
+
+.activity-section__controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.activity-section__mode-button {
+  border: 1px solid var(--color-border-default);
+  background: var(--color-bg-card);
+  color: var(--color-text-primary);
+  border-radius: 999px;
+  padding: 7px 14px;
+  font-size: 13px;
+  line-height: 1;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.activity-section__mode-button:hover:not(:disabled) {
+  border-color: var(--color-primary);
+  background: #eef2ff;
+  color: var(--color-primary);
+}
+
+.activity-section__mode-button--active {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: #fff;
+}
+
+.activity-section__mode-button--active:hover:not(:disabled) {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: #fff;
+}
+
+.activity-section__mode-button:disabled {
+  opacity: 0.65;
+  cursor: default;
+}
+
+.activity-section__year-picker {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.activity-section__year-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text-muted);
+}
+
+.activity-section__year-select {
+  border: 1px solid var(--color-border-default);
+  background: var(--color-bg-card);
+  color: var(--color-text-primary);
+  border-radius: 10px;
+  padding: 6px 10px;
+  font-size: 13px;
+  line-height: 1;
+  font-weight: 500;
+  min-width: 96px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.activity-section__year-select:hover:not(:disabled),
+.activity-section__year-select:focus-visible {
+  border-color: var(--color-primary);
+  outline: none;
+}
+
+.activity-section__year-select:disabled {
+  opacity: 0.65;
+  cursor: default;
+}
+
+.activity-section__year-picker--active .activity-section__year-label {
+  color: var(--color-primary);
+}
+
+.activity-section__year-select--active {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: #fff;
+}
+
+.activity-section__year-select--active:hover:not(:disabled),
+.activity-section__year-select--active:focus-visible {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: #fff;
 }
 
 .activity-section__title {

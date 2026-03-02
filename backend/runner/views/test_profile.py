@@ -1,12 +1,13 @@
 from django.test import TestCase
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.utils import timezone
 from rest_framework.test import APIRequestFactory, force_authenticate
 from rest_framework import status
 from unittest.mock import patch, MagicMock
 import tempfile
 
-from ..models import Profile
+from ..models import Profile, Problem, Submission
 from ..views.profile import (
     get_my_profile,
     get_profile_by_id,
@@ -95,6 +96,38 @@ class GetMyProfileTests(ProfileViewsTests):
         # Проверяем что профиль создался
         profile = Profile.objects.get(user=new_user)
         self.assertIsNotNone(profile)
+
+    def test_get_my_profile_supports_activity_year_query(self):
+        """Тест выбора года активности через query-параметр"""
+        from datetime import datetime
+
+        current_year = timezone.localdate().year
+        target_year = current_year - 1
+
+        self.user.date_joined = timezone.make_aware(
+            datetime(target_year - 1, 1, 1, 12, 0, 0)
+        )
+        self.user.save(update_fields=['date_joined'])
+
+        problem = Problem.objects.create(title='Тестовая задача')
+        submission = Submission.objects.create(
+            user=self.user,
+            problem=problem,
+            status='pending',
+            metrics={'accuracy': 0.95}
+        )
+        submission.submitted_at = timezone.make_aware(
+            datetime(target_year, 6, 15, 12, 0, 0)
+        )
+        submission.save(update_fields=['submitted_at'])
+
+        request = self.factory.get(f'{self.get_my_profile_url}?year={target_year}')
+        force_authenticate(request, user=self.user)
+        response = get_my_profile(request)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['activity_heatmap']['selected_year'], target_year)
+        self.assertIn(target_year, response.data['activity_heatmap']['available_years'])
 
 
 class GetProfileByIdTests(ProfileViewsTests):
