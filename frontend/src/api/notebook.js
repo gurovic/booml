@@ -35,6 +35,18 @@ export function moveCell(notebookId, cellId, targetPosition) {
     })
 }
 
+export function renameNotebook(notebookId, title) {
+    return apiPost(`/backend/notebook/${notebookId}/rename/`, { title })
+}
+
+export function deleteNotebook(notebookId) {
+    return apiPost(
+        `/backend/notebook/${notebookId}/delete/`,
+        {},
+        { headers: { 'X-Requested-With': 'XMLHttpRequest' } },
+    )
+}
+
 export function getNotebookSessionId(notebookId) {
     return `notebook:${notebookId}`
 }

@@ -165,8 +165,60 @@
                   </div>
                 </div>
               </div>
-              <div class="toolbar-pill toolbar-pill--static">
-                <span class="toolbar-label">Настройки</span>
+              <div ref="settingsMenuRef" class="toolbar-settings-wrap">
+                <button
+                  type="button"
+                  class="toolbar-pill toolbar-settings-button"
+                  :aria-expanded="settingsMenuOpen ? 'true' : 'false'"
+                  aria-label="Открыть настройки блокнота"
+                  @click="toggleSettingsMenu"
+                >
+                  <span class="toolbar-label">Настройки</span>
+                </button>
+                <div v-if="settingsMenuOpen" class="settings-menu" aria-label="Панель настроек блокнота">
+                  <h3 class="settings-menu-title">Настройки</h3>
+                  <div class="settings-row">
+                    <label class="settings-label" for="notebook-title-input">Название:</label>
+                    <input
+                      id="notebook-title-input"
+                      v-model="notebookTitleDraft"
+                      type="text"
+                      class="settings-input"
+                      maxlength="200"
+                      placeholder="Название блокнота"
+                    >
+                  </div>
+                  <div class="settings-row">
+                    <span class="settings-label">Задача:</span>
+                    <button
+                      type="button"
+                      class="settings-problem-link"
+                      :disabled="!linkedProblemId"
+                      @click="goToLinkedProblem"
+                    >
+                      {{ linkedProblemTitle }}
+                    </button>
+                  </div>
+                  <div class="settings-actions">
+                    <button
+                      type="button"
+                      class="settings-action settings-action--danger"
+                      :disabled="settingsBusy"
+                      @click="removeNotebookFromSettings"
+                    >
+                      Удалить блокнот
+                    </button>
+                    <button
+                      type="button"
+                      class="settings-action"
+                      :disabled="settingsBusy"
+                      @click="saveNotebookTitle"
+                    >
+                      Сохранить
+                    </button>
+                  </div>
+                  <div v-if="settingsError" class="settings-error">{{ settingsError }}</div>
+                </div>
               </div>
             </div>
           </div>
@@ -312,19 +364,21 @@
 
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import UiHeader from '@/components/ui/UiHeader.vue'
 import NotebookCodeEditor from '@/components/NotebookCodeEditor.vue'
 import {
   createCell,
   deleteNotebookSessionFile,
   deleteCell,
+  deleteNotebook,
   getNotebook,
   getNotebookSessionFileDownloadUrl,
   getNotebookSessionFiles,
   getNotebookSessionId,
   moveCell,
   resetNotebookSession,
+  renameNotebook,
   runNotebookCell,
   saveCodeCell,
   saveTextCell,
@@ -334,6 +388,7 @@ import {
 } from '@/api/notebook'
 
 const route = useRoute()
+const router = useRouter()
 
 const notebook = ref(null)
 const state = ref('idle')
@@ -341,9 +396,11 @@ const stateMessage = ref('')
 const selectedCellId = ref(null)
 const sessionStatus = ref('stopped')
 const sessionMenuOpen = ref(false)
+const settingsMenuOpen = ref(false)
 const sessionActionBusy = ref(false)
 const sessionActionError = ref('')
 const sessionMenuRef = ref(null)
+const settingsMenuRef = ref(null)
 const sessionFiles = ref([])
 const fileInputRef = ref(null)
 const fileActionBusy = ref(false)
@@ -351,6 +408,9 @@ const fileActionError = ref('')
 const runningCellIds = ref(new Set())
 const runAllInProgress = ref(false)
 const queuedCellRunIds = ref([])
+const settingsBusy = ref(false)
+const settingsError = ref('')
+const notebookTitleDraft = ref('')
 const saveTimers = new Map()
 const lastSavedContent = new Map()
 
@@ -364,6 +424,17 @@ const sessionId = computed(() => {
 const notebookTitle = computed(() => {
   if (notebook.value?.title) return notebook.value.title
   return hasValidId.value ? `Блокнот ${notebookId.value}` : 'Блокнот'
+})
+
+const linkedProblemId = computed(() => {
+  const value = Number(notebook.value?.problem_id)
+  return Number.isInteger(value) && value > 0 ? value : null
+})
+
+const linkedProblemTitle = computed(() => {
+  if (notebook.value?.problem_title) return notebook.value.problem_title
+  if (linkedProblemId.value) return `Задача ${linkedProblemId.value}`
+  return 'Задача не привязана'
 })
 
 const viewState = computed(() => {
@@ -603,19 +674,85 @@ const closeSessionMenu = () => {
   sessionMenuOpen.value = false
 }
 
+const closeSettingsMenu = () => {
+  settingsMenuOpen.value = false
+  settingsError.value = ''
+}
+
 const toggleSessionMenu = () => {
+  closeSettingsMenu()
   sessionMenuOpen.value = !sessionMenuOpen.value
 }
 
-const handleDocumentClick = (event) => {
-  if (!sessionMenuOpen.value) return
-  if (sessionMenuRef.value?.contains(event.target)) return
+const toggleSettingsMenu = () => {
   closeSessionMenu()
+  settingsError.value = ''
+  notebookTitleDraft.value = notebook.value?.title || ''
+  settingsMenuOpen.value = !settingsMenuOpen.value
+}
+
+const saveNotebookTitle = async () => {
+  if (!hasValidId.value || settingsBusy.value) return
+  const title = (notebookTitleDraft.value || '').trim()
+  if (!title) {
+    settingsError.value = 'Название блокнота не может быть пустым.'
+    return
+  }
+  if (title.length > 200) {
+    settingsError.value = 'Максимальная длина названия: 200 символов.'
+    return
+  }
+
+  settingsBusy.value = true
+  settingsError.value = ''
+  try {
+    const result = await renameNotebook(notebookId.value, title)
+    if (notebook.value) {
+      notebook.value.title = result?.title || title
+    }
+    closeSettingsMenu()
+  } catch (error) {
+    settingsError.value = error?.message || 'Не удалось сохранить название.'
+  } finally {
+    settingsBusy.value = false
+  }
+}
+
+const goToLinkedProblem = async () => {
+  if (!linkedProblemId.value) return
+  closeSettingsMenu()
+  await router.push(`/problem/${linkedProblemId.value}`)
+}
+
+const removeNotebookFromSettings = async () => {
+  if (!hasValidId.value || settingsBusy.value) return
+  settingsBusy.value = true
+  settingsError.value = ''
+  try {
+    await deleteNotebook(notebookId.value)
+    const fallbackTarget = linkedProblemId.value ? `/problem/${linkedProblemId.value}` : '/'
+    await router.push(fallbackTarget)
+  } catch (error) {
+    settingsError.value = error?.message || 'Не удалось удалить блокнот.'
+  } finally {
+    settingsBusy.value = false
+  }
+}
+
+const handleDocumentClick = (event) => {
+  const target = event.target
+  if (sessionMenuOpen.value && !sessionMenuRef.value?.contains(target)) {
+    closeSessionMenu()
+  }
+  if (settingsMenuOpen.value && !settingsMenuRef.value?.contains(target)) {
+    closeSettingsMenu()
+  }
 }
 
 const handleEscapeKey = (event) => {
   if (event.key !== 'Escape') return
   closeSessionMenu()
+  closeSettingsMenu()
 }
 
 const refreshSessionFiles = async ({ silent = false } = {}) => {
@@ -905,6 +1042,7 @@ const loadNotebook = async () => {
   selectedCellId.value = null
   try {
     notebook.value = await getNotebook(notebookId.value)
+    notebookTitleDraft.value = notebook.value?.title || ''
     if (Array.isArray(notebook.value?.cells)) {
       seedSavedContent(notebook.value.cells)
     }
@@ -1191,8 +1329,12 @@ onBeforeUnmount(() => {
   font-variation-settings: 'FILL' 1, 'wght' 500, 'GRAD' 0, 'opsz' 20;
 }
 
-.toolbar-pill--static {
-  cursor: default;
+.toolbar-settings-wrap {
+  position: relative;
+}
+
+.toolbar-settings-button {
+  justify-content: center;
 }
 
 .toolbar-session-wrap {
@@ -1267,6 +1409,99 @@ onBeforeUnmount(() => {
   color: var(--color-text-danger);
   font-size: 13px;
   line-height: 1.35;
+}
+
+.settings-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 340px;
+  max-width: min(92vw, 340px);
+  padding: 8px;
+  border-radius: 12px;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border-light);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.22);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  z-index: 30;
+}
+
+.settings-menu-title {
+  margin: 0;
+  font-size: 16px;
+  line-height: 1.2;
+}
+
+.settings-row {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 8px;
+}
+
+.settings-label {
+  font-size: 14px;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.settings-input,
+.settings-problem-link {
+  width: 100%;
+  min-height: 28px;
+  border: none;
+  border-radius: 8px;
+  padding: 4px 10px;
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  text-decoration: none;
+}
+
+.settings-problem-link {
+  cursor: pointer;
+}
+
+.settings-problem-link:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.settings-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.settings-action {
+  border: none;
+  border-radius: 8px;
+  background: var(--color-button-primary);
+  color: var(--color-button-text-primary);
+  padding: 6px 10px;
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.settings-action:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.settings-action--danger {
+  background: var(--color-button-primary);
+}
+
+.settings-error {
+  font-size: 12px;
+  color: var(--color-text-danger);
+  line-height: 1.25;
 }
 
 .cells-list {
