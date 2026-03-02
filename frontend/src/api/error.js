@@ -168,5 +168,6 @@ export function toApiError(status, responseText = '') {
   const message = getApiErrorMessage(status, responseText)
   const error = new Error(message)
   error.status = status
+  error.data = parseJsonMaybe(responseText)
   return error
 }
