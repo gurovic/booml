@@ -12,7 +12,7 @@
             <div class="leaderboard-head">
               <div>
                 <h2 class="leaderboard-title">Таблица результатов курса "{{ courseTitle }}"</h2>
-                <p v-if="entries.length" class="leaderboard-meta">Участников: {{ entries.length }}</p>
+                <p v-if="hasParticipantsWithScores" class="leaderboard-meta">Участников: {{ filteredEntries.length }}</p>
               </div>
               <router-link
                 :to="courseRoute"
@@ -22,8 +22,8 @@
               </router-link>
             </div>
 
-            <p v-if="!contests.length" class="note">Пока нет участников.</p>
-            <p v-else-if="!entries.length" class="note">Пока нет участников.</p>
+            <p v-if="!contests.length" class="note">Пока нет контестов.</p>
+            <p v-else-if="!hasParticipantsWithScores" class="note">Пока нет участников.</p>
             <div v-else class="leaderboard-table-wrap">
               <table class="leaderboard-table">
                 <thead>
@@ -48,7 +48,7 @@
                   </tr>
                 </thead>
                 <tbody>
-                  <tr v-for="entry in entries" :key="entry.user_id">
+                  <tr v-for="entry in filteredEntries" :key="entry.user_id">
                     <td class="leaderboard-cell leaderboard-cell--rank">
                       {{ entry.rank }}
                     </td>
@@ -129,10 +129,18 @@ const formatScore = (score) => {
   if (score === null || score === undefined) return '-'
   const numeric = Number(score)
   if (Number.isFinite(numeric)) {
-    return numeric.toFixed(4)
+    return numeric.toFixed(2)
   }
   return String(score)
 }
+
+const hasParticipantsWithScores = computed(() => {
+  return entries.value.some(e => (e.total_score ?? 0) > 0 || (e.problems_solved ?? 0) > 0)
+})
+
+const filteredEntries = computed(() => {
+  return entries.value.filter(e => (e.total_score ?? 0) > 0 || (e.problems_solved ?? 0) > 0)
+})
 
 const loadLeaderboard = async () => {
   if (!hasValidId.value) {

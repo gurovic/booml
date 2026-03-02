@@ -473,9 +473,40 @@ def build_course_leaderboard(course) -> Dict[str, Any]:
         for participant in CourseParticipant.objects.filter(course=course).select_related("user")
     }
 
-    student_ids = [pid for pid, p in participants.items() if p.get("role") == CourseParticipant.Role.STUDENT]
-    if not student_ids:
+    participant_ids = list(participants.keys())
+    
+    problem_ids = []
+    for contest in contests:
+        for problem in contest.problems.all():
+            problem_ids.append(problem.id)
+    
+    if problem_ids:
+        solvers = Submission.objects.filter(
+            problem_id__in=problem_ids,
+            status__in=_VALID_STATUSES,
+        ).values_list('user_id', flat=True).distinct()
+        solver_ids = list(solvers)
+        
+        for solver_id in solver_ids:
+            if solver_id and solver_id not in participant_ids:
+                participant_ids.append(solver_id)
+    
+    if not participant_ids:
         return {"course_id": course.id, "contests": [], "entries": []}
+
+    from django.contrib.auth import get_user_model
+    User = get_user_model()
+    
+    for uid in participant_ids:
+        if uid not in participants:
+            user = User.objects.filter(id=uid).first()
+            if user:
+                participants[uid] = {
+                    "user_id": uid,
+                    "username": user.username,
+                    "role": None,
+                    "is_owner": False,
+                }
 
     problem_descriptors = {}
     contest_problems = {}
@@ -501,7 +532,7 @@ def build_course_leaderboard(course) -> Dict[str, Any]:
         "contests_completed": 0,
         "problems_solved": 0,
         "contest_details": [],
-    } for uid in student_ids}
+    } for uid in participant_ids}
 
     for contest in contests:
         problems = contest_problems.get(contest.id, [])
@@ -511,7 +542,7 @@ def build_course_leaderboard(course) -> Dict[str, Any]:
         problem_ids = [p.id for p in problems]
         contest_score_lower_is_better = contest.scoring == Contest.Scoring.ICPC
 
-        for user_id in student_ids:
+        for user_id in participant_ids:
             user_results[user_id]["contest_details"].append({
                 "contest_id": contest.id,
                 "contest_title": contest.title,
@@ -520,11 +551,11 @@ def build_course_leaderboard(course) -> Dict[str, Any]:
                 "problems_total": len(problems),
             })
 
-        last_contest_idx = {uid: len(user_results[uid]["contest_details"]) - 1 for uid in student_ids}
+        last_contest_idx = {uid: len(user_results[uid]["contest_details"]) - 1 for uid in participant_ids}
 
         submissions = Submission.objects.filter(
             problem_id__in=problem_ids,
-            user_id__in=student_ids,
+            user_id__in=participant_ids,
             status__in=_VALID_STATUSES,
         ).values("id", "problem_id", "user_id", "metrics", "submitted_at")
 
@@ -534,43 +565,42 @@ def build_course_leaderboard(course) -> Dict[str, Any]:
             descriptor = problem_descriptors.get(row["problem_id"])
             if descriptor is None:
                 continue
-            metric = _extract_metric_value(row["metrics"], descriptor["metric"])
-            if metric is None:
+            raw_metric = _extract_metric_value(row["metrics"], descriptor["metric"])
+            if raw_metric is None:
                 continue
+            
+            score_value = raw_metric * 100
+                
             current = contest_best.get(key)
             if current is None or _is_better(
-                metric, row["submitted_at"],
-                current["metric"], current["submitted_at"],
-                descriptor["lower_is_better"]
+                score_value, row["submitted_at"],
+                current.get("score_value", 0), current.get("submitted_at"),
+                False
             ):
                 contest_best[key] = {
-                    "metric": metric,
+                    "score_value": score_value,
                     "submitted_at": row["submitted_at"],
                 }
 
         for problem in problems:
-            descriptor = problem_descriptors.get(problem.id, {"metric": "metric", "lower_is_better": False})
-            lower_is_better = descriptor["lower_is_better"]
-            for user_id in student_ids:
+            for user_id in participant_ids:
                 key = (problem.id, user_id)
                 best = contest_best.get(key)
                 if best:
-                    score = best["metric"]
-                    if lower_is_better:
-                        score = -score
+                    score = best["score_value"]
                     contest_entry = user_results[user_id]["contest_details"][last_contest_idx[user_id]]
-                    contest_entry["score"] = contest_entry["score"] or 0 + abs(best["metric"])
+                    contest_entry["score"] = (contest_entry["score"] or 0) + score
                     contest_entry["problems_solved"] += 1
                     user_results[user_id]["problems_solved"] += 1
 
-        for user_id in student_ids:
+        for user_id in participant_ids:
             contest_entry = user_results[user_id]["contest_details"][last_contest_idx[user_id]]
             if contest_entry["problems_solved"] > 0:
                 user_results[user_id]["contests_completed"] += 1
                 user_results[user_id]["total_score"] += contest_entry["score"] or 0
 
     entries = list(user_results.values())
-    entries.sort(key=lambda x: (-x["total_score"], x.get("problems_solved", 0), x.get("contests_completed", 0)), reverse=True)
+    entries.sort(key=lambda x: (-x["total_score"], x.get("problems_solved", 0), x.get("contests_completed", 0)), reverse=False)
 
     rank = 0
     last_score = None
