@@ -141,7 +141,7 @@ id,pred
                     <p class="problem__submission-date">{{ submission.formattedDateTime.date }}</p>
                     <p class="problem__submission-time">{{ submission.formattedDateTime.time }}</p>
                   </div>
-                  <p>{{ getStatusLabel(submission.status) }}</p>
+                  <p>{{ getSubmissionStatusLabel(submission) }}</p>
                   <p>{{ formatSubmissionMetric(submission) }}</p>
                 </router-link>
               </li>
@@ -475,6 +475,14 @@ const formatSubmissionDateTime = (dateTimeString) => {
     console.error('Error formatting date:', error)
     return { date: '-', time: '-' }
   }
+}
+
+const getSubmissionStatusLabel = (submission) => {
+  const base = getStatusLabel(submission?.status)
+  if (submission?.is_after_deadline) {
+    return `${base} (дорешка)`
+  }
+  return base
 }
 
 const handleFileChange = (event) => {
