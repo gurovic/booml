@@ -422,6 +422,7 @@ onMounted(loadProblems)
   align-items: center;
   gap: 12px;
   padding: 16px 16px 0;
+  margin-bottom: 16px;
 }
 
 .pager__btn {
