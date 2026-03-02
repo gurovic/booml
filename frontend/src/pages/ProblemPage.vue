@@ -159,19 +159,12 @@ import { getProblem } from '@/api/problem'
 import { submitSolution } from '@/api/submission'
 import { createNotebook } from '@/api/notebook'
 import { useUserStore } from '@/stores/UserStore'
-import MarkdownIt from 'markdown-it'
-import markdownKatex from '@/utils/markdownKatex'
+import { renderProblemStatement } from '@/utils/problemMarkdown'
 import UiHeader from '@/components/ui/UiHeader.vue'
 import UiBreadcrumbs from '@/components/ui/UiBreadcrumbs.vue'
 import UiIdPill from '@/components/ui/UiIdPill.vue'
 import { normalizeContestProblemLabel, toContestProblemLabel } from '@/utils/contestProblemLabel'
 import { formatCountdown, formatDateTimeMsk, toTimestamp } from '@/utils/datetime'
-
-const md = new MarkdownIt({
-  html: false,
-  breaks: false,
-  linkify: true,
-}).use(markdownKatex, { throwOnError: false })
 
 const route = useRoute()
 const userStore = useUserStore()
@@ -190,28 +183,7 @@ let clockTimer = null
 let contestSyncTimer = null
 const contestSyncInFlight = ref(false)
 
-const stripLeadingH1 = (statement) => {
-  if (typeof statement !== 'string' || !statement) return ''
-
-  const lines = statement.replace(/\r\n?/g, '\n').split('\n')
-  let firstContentLine = 0
-
-  while (firstContentLine < lines.length && !lines[firstContentLine].trim()) {
-    firstContentLine += 1
-  }
-
-  if (firstContentLine >= lines.length) return statement
-  if (!/^#\s+/.test(lines[firstContentLine])) return statement
-
-  lines.splice(firstContentLine, 1)
-  while (firstContentLine < lines.length && !lines[firstContentLine].trim()) {
-    lines.splice(firstContentLine, 1)
-  }
-
-  return lines.join('\n')
-}
-
-const renderStatement = (statement) => md.render(stripLeadingH1(statement))
+const renderStatement = (statement) => renderProblemStatement(statement)
 
 const queryValue = (raw) => (Array.isArray(raw) ? raw[0] : raw)
 const contestIdFromQuery = computed(() => {
@@ -629,6 +601,16 @@ const handleCreateNotebook = async () => {
   color: var(--color-text-primary);
 }
 
+.problem__text :deep(img) {
+  display: block;
+  max-width: min(100%, 920px);
+  height: auto;
+  margin: 18px 0;
+  border-radius: 12px;
+  border: 1px solid var(--color-border-light);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+}
+
 .problem__text :deep(a) {
   color: var(--color-primary);
   text-decoration: underline;
@@ -691,6 +673,58 @@ const handleCreateNotebook = async () => {
 
 .problem__text :deep(p) {
   margin-bottom: 16px;
+}
+
+.problem__text :deep(ul),
+.problem__text :deep(ol) {
+  margin: 14px 0 18px 24px;
+  padding-left: 10px;
+}
+
+.problem__text :deep(ul li) {
+  list-style: disc;
+}
+
+.problem__text :deep(ol li) {
+  list-style: decimal;
+}
+
+.problem__text :deep(li + li) {
+  margin-top: 6px;
+}
+
+.problem__text :deep(pre) {
+  margin: 16px 0 20px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1px solid var(--color-border-default);
+  background: #0f172a;
+  color: #e2e8f0;
+  overflow-x: auto;
+}
+
+.problem__text :deep(code) {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+.problem__text :deep(p code),
+.problem__text :deep(li code),
+.problem__text :deep(td code) {
+  padding: 0.1em 0.35em;
+  border-radius: 6px;
+  background: rgba(15, 23, 42, 0.08);
+}
+
+.problem__text :deep(blockquote) {
+  margin: 16px 0;
+  padding: 10px 14px;
+  border-left: 4px solid var(--color-primary);
+  background: var(--color-bg-muted);
+  border-radius: 0 10px 10px 0;
+}
+
+.problem__text :deep(.statement-color) {
+  font-weight: 700;
 }
 
 .problem__text :deep(.math-block) {
