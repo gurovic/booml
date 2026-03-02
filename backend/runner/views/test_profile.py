@@ -69,6 +69,7 @@ class GetMyProfileTests(ProfileViewsTests):
         self.assertEqual(response.data['first_name'], 'Иван')
         self.assertEqual(response.data['last_name'], 'Петров')
         self.assertIn('recent_submissions', response.data)
+        self.assertIn('activity_heatmap', response.data)
 
     def test_get_my_profile_creates_profile_if_not_exists(self):
         """Тест что профиль создается автоматически если его нет"""

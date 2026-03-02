@@ -88,6 +88,96 @@
               </div>
             </div>
 
+            <section class="profile__activity activity-section">
+              <div class="activity-section__header">
+                <h3 class="activity-section__title">Активность за 365 дней</h3>
+              </div>
+
+              <div v-if="activityHeatmap" class="activity-section__stats">
+                <div class="activity-stat">
+                  <p class="activity-stat__value">{{ activityHeatmap.total_submissions || 0 }}</p>
+                  <p class="activity-stat__label">всего посылок</p>
+                </div>
+                <div class="activity-stat">
+                  <p class="activity-stat__value">{{ activityHeatmap.active_days || 0 }}</p>
+                  <p class="activity-stat__label">активных {{ getDaysWord(activityHeatmap.active_days || 0) }}</p>
+                </div>
+                <div class="activity-stat">
+                  <p class="activity-stat__value">{{ activityHeatmap.current_streak || 0 }}</p>
+                  <p class="activity-stat__label">текущая серия дней</p>
+                </div>
+                <div class="activity-stat">
+                  <p class="activity-stat__value">{{ activityHeatmap.best_streak || 0 }}</p>
+                  <p class="activity-stat__label">лучшая серия дней</p>
+                </div>
+              </div>
+
+              <div v-if="heatmapWeeks.length > 0" class="activity-heatmap">
+                <div class="activity-heatmap__scroll">
+                  <div
+                    class="activity-heatmap__months"
+                    :style="{ gridTemplateColumns: `repeat(${heatmapWeeks.length}, var(--heatmap-cell-size))` }"
+                  >
+                    <span
+                      v-for="marker in heatmapMonthMarkers"
+                      :key="`month-${marker.index}-${marker.label}`"
+                      class="activity-heatmap__month"
+                      :style="{ gridColumn: marker.index + 1 }"
+                    >
+                      {{ marker.label }}
+                    </span>
+                  </div>
+
+                  <div class="activity-heatmap__content">
+                    <div class="activity-heatmap__weekdays">
+                      <span>Пн</span>
+                      <span></span>
+                      <span>Ср</span>
+                      <span></span>
+                      <span>Пт</span>
+                      <span></span>
+                      <span>Вс</span>
+                    </div>
+
+                    <div
+                      class="activity-heatmap__weeks"
+                      :style="{ gridTemplateColumns: `repeat(${heatmapWeeks.length}, var(--heatmap-cell-size))` }"
+                    >
+                      <div
+                        v-for="(week, weekIndex) in heatmapWeeks"
+                        :key="`week-${weekIndex}`"
+                        class="activity-heatmap__week"
+                      >
+                        <div
+                          v-for="(day, dayIndex) in week"
+                          :key="day ? day.date : `empty-${weekIndex}-${dayIndex}`"
+                          class="activity-heatmap__cell"
+                          :class="day ? getHeatmapCellClass(day) : 'activity-heatmap__cell--empty'"
+                          :title="day ? getHeatmapCellTitle(day) : ''"
+                        ></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="activity-heatmap__legend">
+                  <span class="activity-heatmap__legend-text">Меньше</span>
+                  <div class="activity-heatmap__legend-scale">
+                    <span class="activity-heatmap__cell activity-heatmap__cell--level-0"></span>
+                    <span class="activity-heatmap__cell activity-heatmap__cell--level-1"></span>
+                    <span class="activity-heatmap__cell activity-heatmap__cell--level-2"></span>
+                    <span class="activity-heatmap__cell activity-heatmap__cell--level-3"></span>
+                    <span class="activity-heatmap__cell activity-heatmap__cell--level-4"></span>
+                  </div>
+                  <span class="activity-heatmap__legend-text">Больше</span>
+                </div>
+              </div>
+
+              <div v-else class="submissions-section__empty">
+                Пока нет активности
+              </div>
+            </section>
+
             <section class="profile__submissions submissions-section">
               <div class="submissions-section__header">
                 <h3 class="submissions-section__title">Последние посылки</h3>
@@ -192,9 +282,153 @@ export default {
 
     isAuthenticated() {
       return this.userStore?.isAuthenticated || false
+    },
+
+    activityHeatmap() {
+      return this.profile?.activity_heatmap || null
+    },
+
+    heatmapDays() {
+      const days = this.activityHeatmap?.days
+      return Array.isArray(days) ? days : []
+    },
+
+    heatmapWeeks() {
+      if (!this.heatmapDays.length) {
+        return []
+      }
+
+      const firstDate = this.parseIsoDate(this.heatmapDays[0].date)
+      const leadingPadding = this.getWeekdayIndex(firstDate)
+      const paddedDays = [
+        ...Array.from({ length: leadingPadding }, () => null),
+        ...this.heatmapDays
+      ]
+      const trailingPadding = (7 - (paddedDays.length % 7)) % 7
+      paddedDays.push(...Array.from({ length: trailingPadding }, () => null))
+
+      const weeks = []
+      for (let i = 0; i < paddedDays.length; i += 7) {
+        weeks.push(paddedDays.slice(i, i + 7))
+      }
+      return weeks
+    },
+
+    heatmapMonthMarkers() {
+      const markers = []
+      let previousMonth = null
+
+      this.heatmapWeeks.forEach((week, index) => {
+        const firstVisibleDay = week.find(day => !!day)
+        if (!firstVisibleDay) {
+          return
+        }
+
+        const date = this.parseIsoDate(firstVisibleDay.date)
+        if (isNaN(date.getTime())) {
+          return
+        }
+
+        const month = date.getMonth()
+        if (month !== previousMonth) {
+          markers.push({
+            index,
+            label: this.formatMonthLabel(date)
+          })
+          previousMonth = month
+        }
+      })
+
+      return markers
     }
   },
   methods: {
+    parseIsoDate(value) {
+      if (typeof value !== 'string') {
+        return new Date(NaN)
+      }
+      const [year, month, day] = value.split('-').map(Number)
+      return new Date(year, month - 1, day)
+    },
+
+    getWeekdayIndex(date) {
+      if (!(date instanceof Date) || isNaN(date.getTime())) {
+        return 0
+      }
+      return (date.getDay() + 6) % 7
+    },
+
+    formatMonthLabel(date) {
+      return date.toLocaleDateString('ru-RU', { month: 'short' }).replace('.', '')
+    },
+
+    formatHeatmapDate(dateString) {
+      const date = this.parseIsoDate(dateString)
+      if (isNaN(date.getTime())) {
+        return dateString
+      }
+      return date.toLocaleDateString('ru-RU', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric'
+      })
+    },
+
+    getSubmissionsWord(count) {
+      const value = Math.abs(Number(count) || 0)
+      const lastTwo = value % 100
+      const last = value % 10
+
+      if (lastTwo >= 11 && lastTwo <= 14) {
+        return 'посылок'
+      }
+      if (last === 1) {
+        return 'посылка'
+      }
+      if (last >= 2 && last <= 4) {
+        return 'посылки'
+      }
+      return 'посылок'
+    },
+
+    getDaysWord(count) {
+      const value = Math.abs(Number(count) || 0)
+      const lastTwo = value % 100
+      const last = value % 10
+
+      if (lastTwo >= 11 && lastTwo <= 14) {
+        return 'дней'
+      }
+      if (last === 1) {
+        return 'день'
+      }
+      if (last >= 2 && last <= 4) {
+        return 'дня'
+      }
+      return 'дней'
+    },
+
+    getHeatmapCellLevel(day) {
+      const rawLevel = Number(day?.level)
+      if (!Number.isFinite(rawLevel)) {
+        return 0
+      }
+      return Math.min(4, Math.max(0, Math.round(rawLevel)))
+    },
+
+    getHeatmapCellClass(day) {
+      return `activity-heatmap__cell--level-${this.getHeatmapCellLevel(day)}`
+    },
+
+    getHeatmapCellTitle(day) {
+      if (!day) {
+        return ''
+      }
+
+      const count = Number(day.count) || 0
+      return `${this.formatHeatmapDate(day.date)}: ${count} ${this.getSubmissionsWord(count)}`
+    },
+
     formatDate(dateString) {
       if (!dateString) return '-'
       try {
@@ -541,6 +775,175 @@ export default {
   font-weight: 500;
 }
 
+.activity-section {
+  padding: 32px 40px;
+  background: var(--color-bg-card);
+  border-radius: 20px;
+  border: 1px solid var(--color-border-light);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+}
+
+.activity-section__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 16px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.activity-section__title {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 500;
+  color: var(--color-title-text);
+}
+
+.activity-section__stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.activity-stat {
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: linear-gradient(140deg, #f5f7ff, #f9f7ff);
+  border: 1px solid var(--color-border-light);
+}
+
+.activity-stat__value {
+  margin: 0;
+  font-size: 24px;
+  line-height: 1.1;
+  font-weight: 700;
+  color: var(--color-primary);
+}
+
+.activity-stat__label {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.activity-heatmap {
+  --heatmap-cell-size: 14px;
+  --heatmap-cell-gap: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.activity-heatmap__scroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 4px;
+}
+
+.activity-heatmap__months {
+  display: grid;
+  column-gap: var(--heatmap-cell-gap);
+  margin-left: 34px;
+  margin-bottom: 8px;
+  min-width: max-content;
+}
+
+.activity-heatmap__month {
+  font-size: 12px;
+  line-height: 1;
+  color: var(--color-text-muted);
+  text-transform: capitalize;
+  white-space: nowrap;
+}
+
+.activity-heatmap__content {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  min-width: max-content;
+}
+
+.activity-heatmap__weekdays {
+  width: 26px;
+  display: grid;
+  grid-template-rows: repeat(7, var(--heatmap-cell-size));
+  row-gap: var(--heatmap-cell-gap);
+}
+
+.activity-heatmap__weekdays span {
+  height: var(--heatmap-cell-size);
+  font-size: 11px;
+  line-height: var(--heatmap-cell-size);
+  color: var(--color-text-muted);
+}
+
+.activity-heatmap__weeks {
+  display: grid;
+  column-gap: var(--heatmap-cell-gap);
+}
+
+.activity-heatmap__week {
+  display: grid;
+  grid-template-rows: repeat(7, var(--heatmap-cell-size));
+  row-gap: var(--heatmap-cell-gap);
+}
+
+.activity-heatmap__cell {
+  display: block;
+  width: var(--heatmap-cell-size);
+  height: var(--heatmap-cell-size);
+  border-radius: 4px;
+  transition: transform 0.15s ease, filter 0.15s ease;
+}
+
+.activity-heatmap__cell:not(.activity-heatmap__cell--empty):hover {
+  transform: scale(1.12);
+  filter: brightness(0.92);
+}
+
+.activity-heatmap__cell--empty {
+  background: transparent;
+  pointer-events: none;
+}
+
+.activity-heatmap__cell--level-0 {
+  background: #edf1fb;
+}
+
+.activity-heatmap__cell--level-1 {
+  background: #d8e1f7;
+}
+
+.activity-heatmap__cell--level-2 {
+  background: #b4c5ee;
+}
+
+.activity-heatmap__cell--level-3 {
+  background: #778fdc;
+}
+
+.activity-heatmap__cell--level-4 {
+  background: #27346a;
+}
+
+.activity-heatmap__legend {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.activity-heatmap__legend-text {
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.activity-heatmap__legend-scale {
+  display: flex;
+  gap: 4px;
+}
+
 .submissions-section {
   padding: 32px 40px;
   background: var(--color-bg-card);
@@ -663,5 +1066,42 @@ export default {
 
 .status--pending {
   color: #d97706;
+}
+
+@media (max-width: 960px) {
+  .profile__header,
+  .user-card,
+  .activity-section,
+  .submissions-section {
+    padding: 24px 20px;
+  }
+
+  .user-card {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 20px;
+  }
+
+  .activity-section__stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .profile__title {
+    font-size: 36px;
+  }
+
+  .activity-section__stats {
+    grid-template-columns: 1fr;
+  }
+
+  .submissions-section__content {
+    overflow-x: auto;
+  }
+
+  .submissions-list {
+    min-width: 680px;
+  }
 }
 </style>

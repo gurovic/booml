@@ -225,7 +225,8 @@ class ProfileDetailSerializerTests(TestCase):
         data = serializer.data
 
         expected_fields = {'user', 'username', 'email', 'first_name', 'last_name',
-                           'full_name', 'role', 'avatar', 'avatar_url', 'recent_submissions'}
+                           'full_name', 'role', 'avatar', 'avatar_url',
+                           'recent_submissions', 'activity_heatmap'}
         self.assertEqual(set(data.keys()), expected_fields)
 
     def test_recent_submissions_field(self):
@@ -344,6 +345,59 @@ class ProfileDetailSerializerTests(TestCase):
         recent = serializer.data['recent_submissions']
 
         self.assertEqual(recent, [])
+
+    def test_activity_heatmap_field_shape(self):
+        """Тест структуры поля activity_heatmap"""
+        serializer = ProfileDetailSerializer(
+            instance=self.profile,
+            context={'request': self.request}
+        )
+        heatmap = serializer.data['activity_heatmap']
+
+        expected_keys = {
+            'start_date', 'end_date', 'total_submissions', 'active_days',
+            'max_count', 'current_streak', 'best_streak', 'days'
+        }
+        self.assertEqual(set(heatmap.keys()), expected_keys)
+        self.assertEqual(len(heatmap['days']), 365)
+
+        first_day = heatmap['days'][0]
+        self.assertIn('date', first_day)
+        self.assertIn('count', first_day)
+        self.assertIn('level', first_day)
+
+    def test_activity_heatmap_aggregates_daily_counts(self):
+        """Тест корректной агрегации активности по дням"""
+        from datetime import datetime, time, timedelta
+        from django.utils import timezone
+
+        submissions = list(Submission.objects.filter(user=self.user).order_by('id'))
+        tz = timezone.get_current_timezone()
+        today = timezone.localdate()
+
+        offsets = [0, 0, 1, 3, 3]
+        for submission, days_ago in zip(submissions, offsets):
+            target_day = today - timedelta(days=days_ago)
+            submission.submitted_at = timezone.make_aware(
+                datetime.combine(target_day, time(hour=12)),
+                timezone=tz,
+            )
+            submission.save(update_fields=['submitted_at'])
+
+        serializer = ProfileDetailSerializer(
+            instance=self.profile,
+            context={'request': self.request}
+        )
+        heatmap = serializer.data['activity_heatmap']
+        count_by_date = {item['date']: item['count'] for item in heatmap['days']}
+
+        self.assertEqual(heatmap['total_submissions'], 5)
+        self.assertEqual(heatmap['active_days'], 3)
+        self.assertEqual(heatmap['max_count'], 2)
+
+        self.assertEqual(count_by_date[(today - timedelta(days=0)).isoformat()], 2)
+        self.assertEqual(count_by_date[(today - timedelta(days=1)).isoformat()], 1)
+        self.assertEqual(count_by_date[(today - timedelta(days=3)).isoformat()], 2)
 
     def test_get_full_name_inheritance(self):
         """Тест наследования метода get_full_name"""

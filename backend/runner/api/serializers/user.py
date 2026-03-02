@@ -1,5 +1,10 @@
-from rest_framework import serializers
+from datetime import timedelta
+
 from django.contrib.auth import get_user_model
+from django.db.models import Count
+from django.db.models.functions import TruncDate
+from django.utils import timezone
+from rest_framework import serializers
 
 from ...models.profile import Profile
 from .submissions import SubmissionReadSerializer
@@ -65,11 +70,15 @@ class ProfileDetailSerializer(serializers.ModelSerializer):
     role = serializers.SerializerMethodField()
     avatar_url = serializers.SerializerMethodField()
     recent_submissions = serializers.SerializerMethodField()
+    activity_heatmap = serializers.SerializerMethodField()
+
+    ACTIVITY_HEATMAP_DAYS = 365
 
     class Meta:
         model = Profile
         fields = ('user', 'username', 'email', 'first_name', 'last_name',
-                  'full_name', 'role', 'avatar', 'avatar_url', 'recent_submissions')
+                  'full_name', 'role', 'avatar', 'avatar_url',
+                  'recent_submissions', 'activity_heatmap')
 
     def get_full_name(self, obj):
         return f"{obj.user.last_name} {obj.user.first_name}".strip() or obj.user.username
@@ -87,3 +96,86 @@ class ProfileDetailSerializer(serializers.ModelSerializer):
     def get_recent_submissions(self, obj):
         submissions = obj.user.submissions.all().order_by('-submitted_at')[:4]
         return SubmissionReadSerializer(submissions, many=True, context=self.context).data
+
+    def _resolve_activity_level(self, count, max_count):
+        if count <= 0:
+            return 0
+        if max_count <= 1:
+            return 4
+
+        ratio = count / max_count
+        if ratio >= 0.75:
+            return 4
+        if ratio >= 0.5:
+            return 3
+        if ratio >= 0.25:
+            return 2
+        return 1
+
+    def _calculate_streaks(self, days):
+        best_streak = 0
+        rolling_streak = 0
+
+        for day in days:
+            if day['count'] > 0:
+                rolling_streak += 1
+                best_streak = max(best_streak, rolling_streak)
+            else:
+                rolling_streak = 0
+
+        current_streak = 0
+        for day in reversed(days):
+            if day['count'] > 0:
+                current_streak += 1
+            else:
+                break
+
+        return current_streak, best_streak
+
+    def get_activity_heatmap(self, obj):
+        end_date = timezone.localdate()
+        start_date = end_date - timedelta(days=self.ACTIVITY_HEATMAP_DAYS - 1)
+
+        submissions_by_day = (
+            obj.user.submissions
+            .filter(submitted_at__date__gte=start_date, submitted_at__date__lte=end_date)
+            .annotate(day=TruncDate('submitted_at'))
+            .values('day')
+            .annotate(count=Count('id'))
+            .order_by('day')
+        )
+        counts_by_day = {item['day']: int(item['count']) for item in submissions_by_day}
+
+        days = []
+        total_submissions = 0
+        active_days = 0
+        max_count = 0
+
+        current_date = start_date
+        while current_date <= end_date:
+            count = counts_by_day.get(current_date, 0)
+            total_submissions += count
+            if count > 0:
+                active_days += 1
+                max_count = max(max_count, count)
+            days.append({
+                'date': current_date.isoformat(),
+                'count': count,
+            })
+            current_date += timedelta(days=1)
+
+        for day in days:
+            day['level'] = self._resolve_activity_level(day['count'], max_count)
+
+        current_streak, best_streak = self._calculate_streaks(days)
+
+        return {
+            'start_date': start_date.isoformat(),
+            'end_date': end_date.isoformat(),
+            'total_submissions': total_submissions,
+            'active_days': active_days,
+            'max_count': max_count,
+            'current_streak': current_streak,
+            'best_streak': best_streak,
+            'days': days,
+        }
