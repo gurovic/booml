@@ -1239,11 +1239,11 @@ const saveNotebookTitle = async () => {
   if (!hasValidId.value || settingsBusy.value) return
   const title = (notebookTitleDraft.value || '').trim()
   if (!title) {
-    settingsError.value = '???????? ???????? ?? ????? ???? ??????.'
+    settingsError.value = 'Название блокнота не может быть пустым.'
     return
   }
   if (title.length > 200) {
-    settingsError.value = '???????????? ????? ????????: 200 ????????.'
+    settingsError.value = 'Максимальная длина названия: 200 символов.'
     return
   }
 
@@ -1256,7 +1256,7 @@ const saveNotebookTitle = async () => {
     }
     closeSettingsMenu()
   } catch (error) {
-    settingsError.value = error?.message || '?? ??????? ????????? ????????.'
+    settingsError.value = error?.message || 'Не удалось сохранить название.'
   } finally {
     settingsBusy.value = false
   }
@@ -1277,7 +1277,7 @@ const removeNotebookFromSettings = async () => {
     const fallbackTarget = linkedProblemId.value ? `/problem/${linkedProblemId.value}` : '/'
     await router.push(fallbackTarget)
   } catch (error) {
-    settingsError.value = error?.message || '?? ??????? ??????? ???????.'
+    settingsError.value = error?.message || 'Не удалось удалить блокнот.'
   } finally {
     settingsBusy.value = false
   }
