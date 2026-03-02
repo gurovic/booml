@@ -13,6 +13,26 @@ from ..models.problem_data import ProblemData
 from ..services.metrics import get_available_metrics
 
 
+def _get_owned_problem(problem_id, user):
+    """Return (problem, error_response).
+
+    On success: returns (problem_instance, None).
+    On failure: returns (None, 403_Response).
+
+    Grants access when the problem's author is the requesting user, when the
+    author field is NULL (legacy problems created before ownership tracking),
+    or when the user is staff/superuser.
+    """
+    problem = get_object_or_404(Problem, pk=problem_id)
+    if (
+        problem.author is not None
+        and problem.author != user
+        and not (user.is_staff or user.is_superuser)
+    ):
+        return None, Response({'error': 'Доступ запрещён'}, status=status.HTTP_403_FORBIDDEN)
+    return problem, None
+
+
 @api_view(['GET'])
 def polygon_problems_api(request):
     """
@@ -129,7 +149,9 @@ def get_polygon_problem_api(request, problem_id):
     if not request.user.is_authenticated:
         return Response({'error': 'Authentication required'}, status=status.HTTP_401_UNAUTHORIZED)
     
-    problem = get_object_or_404(Problem, pk=problem_id, author=request.user)
+    problem, err = _get_owned_problem(problem_id, request.user)
+    if err:
+        return err
     descriptor = ProblemDescriptor.objects.filter(problem=problem).first()
     problem_data = ProblemData.objects.filter(problem=problem).first()
     
@@ -193,7 +215,9 @@ def update_polygon_problem_api(request, problem_id):
     if not request.user.is_authenticated:
         return Response({'error': 'Authentication required'}, status=status.HTTP_401_UNAUTHORIZED)
     
-    problem = get_object_or_404(Problem, pk=problem_id, author=request.user)
+    problem, err = _get_owned_problem(problem_id, request.user)
+    if err:
+        return err
     
     errors = {}
     
@@ -310,7 +334,9 @@ def upload_polygon_problem_file_api(request, problem_id):
     if not request.user.is_authenticated:
         return Response({'error': 'Authentication required'}, status=status.HTTP_401_UNAUTHORIZED)
     
-    problem = get_object_or_404(Problem, pk=problem_id, author=request.user)
+    problem, err = _get_owned_problem(problem_id, request.user)
+    if err:
+        return err
     
     ALLOWED_EXTENSIONS = {
         'train_file': ('.csv', '.zip', '.rar'),
@@ -372,7 +398,9 @@ def publish_polygon_problem_api(request, problem_id):
     if not request.user.is_authenticated:
         return Response({'error': 'Authentication required'}, status=status.HTTP_401_UNAUTHORIZED)
     
-    problem = get_object_or_404(Problem, pk=problem_id, author=request.user)
+    problem, err = _get_owned_problem(problem_id, request.user)
+    if err:
+        return err
     
     if problem.is_published:
         return Response({'message': 'Задача уже опубликована'}, status=status.HTTP_200_OK)
