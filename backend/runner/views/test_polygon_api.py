@@ -196,7 +196,34 @@ class GetPolygonProblemApiTests(TestCase):
         """Test that user cannot get another user's problem"""
         self.client.login(username="other", password="pass")
         resp = self.client.get(self.url)
-        self.assertEqual(resp.status_code, 404)
+        self.assertEqual(resp.status_code, 403)
+
+    def test_get_null_author_problem_allowed(self):
+        """Test that any authenticated user can access a legacy problem with no author"""
+        legacy = Problem.objects.create(
+            title="Legacy Problem",
+            author=None,
+            rating=1000,
+            is_published=True,
+        )
+        self.client.login(username="other", password="pass")
+        resp = self.client.get(f"/backend/polygon/problems/{legacy.id}")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertEqual(data['id'], legacy.id)
+
+    def test_get_null_author_problem_allowed_for_owner(self):
+        """Test that the problem owner can still access their own problem"""
+        self.client.login(username="owner", password="pass")
+        resp = self.client.get(self.url)
+        self.assertEqual(resp.status_code, 200)
+
+    def test_get_problem_allowed_for_staff(self):
+        """Test that staff can access any problem regardless of author"""
+        staff = User.objects.create_user(username="staff", password="pass", is_staff=True)
+        self.client.login(username="staff", password="pass")
+        resp = self.client.get(self.url)
+        self.assertEqual(resp.status_code, 200)
 
 
 class UpdatePolygonProblemApiTests(TestCase):
