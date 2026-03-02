@@ -1662,6 +1662,8 @@ onBeforeUnmount(() => {
   font-family: var(--font-title);
   font-size: 48px;
   color: var(--color-title-text);
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .notebook-state {
