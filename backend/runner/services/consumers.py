@@ -1,6 +1,26 @@
 from __future__ import annotations
 
+import logging
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
+
+logger = logging.getLogger(__name__)
+
+
+def _parse_id(value):
+    """Parse an ID from various input types (int, str, etc.)."""
+    if isinstance(value, int):
+        return value
+
+    if isinstance(value, str):
+        trimmed = value.strip()
+        if trimmed.lstrip("-").isdigit():
+            return int(trimmed)
+
+    text_value = str(value).strip()
+    if text_value.lstrip("-").isdigit():
+        return int(text_value)
+
+    return None
 
 
 class SubmissionMetricConsumer(AsyncJsonWebsocketConsumer):
@@ -20,7 +40,7 @@ class SubmissionMetricConsumer(AsyncJsonWebsocketConsumer):
             await self.close(code=4404)
             return
 
-        parsed_submission_id = self._parse_submission_id(raw_submission_id)
+        parsed_submission_id = _parse_id(raw_submission_id)
         if parsed_submission_id is None:
             await self.close(code=4400)
             return
@@ -49,18 +69,58 @@ class SubmissionMetricConsumer(AsyncJsonWebsocketConsumer):
             }
         )
 
-    @staticmethod
-    def _parse_submission_id(value):
-        if isinstance(value, int):
-            return value
 
-        if isinstance(value, str):
-            trimmed = value.strip()
-            if trimmed.lstrip("-").isdigit():
-                return int(trimmed)
+class ProblemSubmissionsConsumer(AsyncJsonWebsocketConsumer):
+    """Streams submission status updates for all submissions of a problem to connected clients."""
 
-        text_value = str(value).strip()
-        if text_value.lstrip("-").isdigit():
-            return int(text_value)
+    group_name: str
+    problem_id: int
 
-        return None
+    async def connect(self) -> None:  # pragma: no cover - exercised via async tests
+        raw_problem_id = (
+            self.scope.get("url_route", {})
+            .get("kwargs", {})
+            .get("problem_id")
+        )
+
+        if raw_problem_id is None:
+            logger.warning("ProblemSubmissionsConsumer: No problem_id in URL")
+            await self.close(code=4404)
+            return
+
+        parsed_problem_id = _parse_id(raw_problem_id)
+        if parsed_problem_id is None:
+            logger.warning(f"ProblemSubmissionsConsumer: Invalid problem_id: {raw_problem_id}")
+            await self.close(code=4400)
+            return
+
+        self.problem_id = parsed_problem_id
+
+        if self.channel_layer is None:
+            logger.error("ProblemSubmissionsConsumer: Channel layer is None")
+            await self.close(code=4500)
+            return
+
+        self.group_name = f"problem_submissions_{self.problem_id}"
+        await self.channel_layer.group_add(self.group_name, self.channel_name)
+        logger.info(f"ProblemSubmissionsConsumer: Client connected to {self.group_name}")
+        await self.accept()
+
+    async def disconnect(self, close_code: int) -> None:  # pragma: no cover - tested indirectly
+        if self.channel_layer is None or not hasattr(self, "group_name"):
+            return
+        logger.info(f"ProblemSubmissionsConsumer: Client disconnected from {self.group_name}")
+        await self.channel_layer.group_discard(self.group_name, self.channel_name)
+
+    async def submission_update(self, event):
+        """Handle submission status update events."""
+        logger.info(f"ProblemSubmissionsConsumer: Received submission_update: {event}")
+        await self.send_json(
+            {
+                "type": "submission_update",
+                "submission_id": event.get("submission_id"),
+                "status": event.get("status"),
+                "metrics": event.get("metrics"),
+            }
+        )
+        logger.info(f"ProblemSubmissionsConsumer: Sent update to client for submission {event.get('submission_id')}")

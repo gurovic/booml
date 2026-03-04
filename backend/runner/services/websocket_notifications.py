@@ -37,4 +37,35 @@ def broadcast_metric_update(submission_id: Optional[int], metric_name: str, metr
     )
 
 
-__all__ = ["broadcast_metric_update"]
+def broadcast_submission_update(problem_id: Optional[int], submission_id: int, status: str, metrics: Optional[dict] = None) -> None:
+    """Send a submission status update to every websocket subscribed to the problem's submission list."""
+    if not problem_id:
+        logger.warning(f"Skip websocket broadcast: problem id is missing (submission_id={submission_id})")
+        return
+
+    channel_layer = get_channel_layer()
+    if channel_layer is None:
+        logger.warning(f"Skip websocket broadcast: channel layer is not configured (submission_id={submission_id}, problem_id={problem_id})")
+        return
+
+    group_name = f"problem_submissions_{problem_id}"
+    payload = {
+        "type": "submission.update",
+        "submission_id": submission_id,
+        "status": status,
+        "metrics": metrics,
+    }
+
+    logger.info(f"Broadcasting submission update: submission_id={submission_id}, problem_id={problem_id}, status={status}, group={group_name}")
+    
+    try:
+        async_to_sync(channel_layer.group_send)(
+            group_name,
+            payload,
+        )
+        logger.info(f"Successfully broadcasted submission update to {group_name}")
+    except Exception as e:
+        logger.error(f"Failed to broadcast submission update: {e}", exc_info=True)
+
+
+__all__ = ["broadcast_metric_update", "broadcast_submission_update"]
