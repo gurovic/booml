@@ -1,14 +1,14 @@
 const mockContests = {
   111: [
-    { id: 1001, title: "Базовый контест по линейной регрессии", problems_count: 5 },
-    { id: 1002, title: "Градиентный спуск на практике", problems_count: 4 },
+    { id: 1001, title: "Базовый контест по линейной регрессии", problems_count: 5, allow_notifications: true, allow_student_questions: true },
+    { id: 1002, title: "Градиентный спуск на практике", problems_count: 4, allow_notifications: true, allow_student_questions: true },
   ],
   121: [
-    { id: 1003, title: "Метрики классификации", problems_count: 6 },
-    { id: 1004, title: "Оптимизация гиперпараметров", problems_count: 5 },
+    { id: 1003, title: "Метрики классификации", problems_count: 6, allow_notifications: true, allow_student_questions: true },
+    { id: 1004, title: "Оптимизация гиперпараметров", problems_count: 5, allow_notifications: true, allow_student_questions: true },
   ],
   21: [
-    { id: 1005, title: "Основы статистики", problems_count: 5 },
+    { id: 1005, title: "Основы статистики", problems_count: 5, allow_notifications: true, allow_student_questions: true },
   ],
 }
 
@@ -133,6 +133,42 @@ const mockContestSubmissions = {
   ],
 }
 
+const mockContestParticipants = {
+  1001: [
+    { id: 201, username: 'student_alpha' },
+    { id: 202, username: 'student_beta' },
+    { id: 203, username: 'student_gamma' },
+  ],
+}
+
+const mockContestNotifications = {
+  1001: [
+    {
+      id: 9001,
+      kind: 'announcement',
+      audience: 'all_participants',
+      audience_label: 'Всем участникам',
+      text: 'Добро пожаловать в контест! Удачи всем.',
+      created_at: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+      author: { id: 1, username: 'teacher' },
+      parent_id: null,
+      parent_author_id: null,
+      is_read: false,
+      recipient_count: 3,
+      recipient_ids: [201, 202, 203],
+      recipient_usernames: ['student_alpha', 'student_beta', 'student_gamma'],
+      answer_count: 0,
+    },
+  ],
+}
+
+let mockNotificationSeq = 10000
+
+const nextNotificationId = () => {
+  mockNotificationSeq += 1
+  return mockNotificationSeq
+}
+
 const STATUS_OPTIONS = [
   { value: 'pending', label: '⏳ В очереди' },
   { value: 'running', label: '🏃 Выполняется' },
@@ -157,12 +193,36 @@ export function getContestsByCourse(courseId) {
   return Promise.resolve(mockContests[key] ?? [])
 }
 
+const findMockContestById = (contestId) => {
+  const numericId = Number(contestId)
+  return Object.values(mockContests).flat().find(item => Number(item.id) === numericId) || null
+}
+
+const isNotificationsEnabled = (contestId) => {
+  const contest = findMockContestById(contestId)
+  if (!contest) return true
+  return contest.allow_notifications !== false
+}
+
+const isStudentQuestionsEnabled = (contestId) => {
+  const contest = findMockContestById(contestId)
+  if (!contest) return true
+  return contest.allow_notifications !== false && contest.allow_student_questions !== false
+}
+
 export function getContest(contestId) {
   const numericId = Number(contestId)
-  const found = Object.values(mockContests).flat().find(item => item.id === numericId)
+  const found = findMockContestById(numericId)
   if (!found) return Promise.resolve(null)
   const problems = Array.isArray(found.problems) ? found.problems : buildProblems(found)
-  return Promise.resolve({ ...found, problems, can_manage: true, can_edit: true })
+  return Promise.resolve({
+    ...found,
+    allow_notifications: found.allow_notifications !== false,
+    allow_student_questions: found.allow_student_questions !== false,
+    problems,
+    can_manage: true,
+    can_edit: true,
+  })
 }
 
 export function getContestLeaderboard(contestId) {
@@ -188,6 +248,11 @@ export async function createContest(courseId, contestData) {
     start_time: contestData.start_time || null,
     end_time: contestData.end_time || null,
     allow_upsolving: !!contestData.allow_upsolving,
+    allow_notifications: contestData.allow_notifications !== false,
+    allow_student_questions:
+      contestData.allow_notifications === false
+        ? false
+        : contestData.allow_student_questions !== false,
     time_state: contestData.has_time_limit ? 'not_started' : 'always_open',
     is_published: contestData.is_published || false,
     is_rated: contestData.is_rated || false,
@@ -385,6 +450,18 @@ export async function updateContest(contestId, contestData) {
     next.start_time = contestData.start_time || null
     next.end_time = contestData.end_time || null
     next.allow_upsolving = !!contestData.allow_upsolving
+    if (Object.prototype.hasOwnProperty.call(contestData, 'allow_notifications')) {
+      next.allow_notifications = contestData.allow_notifications !== false
+      if (!next.allow_notifications) {
+        next.allow_student_questions = false
+      }
+    }
+    if (Object.prototype.hasOwnProperty.call(contestData, 'allow_student_questions')) {
+      next.allow_student_questions =
+        next.allow_notifications === false
+          ? false
+          : contestData.allow_student_questions !== false
+    }
     next.can_edit = true
     updated = next
     list[idx] = next
@@ -396,4 +473,182 @@ export async function updateContest(contestId, contestData) {
   }
 
   return Promise.resolve(updated)
+}
+
+export async function updateContestQuestionSettings(contestId, payload = {}) {
+  const contest = findMockContestById(contestId)
+  if (!contest) {
+    return Promise.reject(new Error('Contest not found'))
+  }
+  if (Object.prototype.hasOwnProperty.call(payload, 'allow_notifications')) {
+    contest.allow_notifications = payload.allow_notifications !== false
+  }
+  if (contest.allow_notifications === false) {
+    contest.allow_student_questions = false
+  } else if (Object.prototype.hasOwnProperty.call(payload, 'allow_student_questions')) {
+    contest.allow_student_questions = payload.allow_student_questions !== false
+  }
+  return Promise.resolve({
+    id: Number(contest.id),
+    allow_notifications: contest.allow_notifications !== false,
+    allow_student_questions:
+      contest.allow_notifications !== false && contest.allow_student_questions !== false,
+  })
+}
+
+export async function getContestNotifications(contestId) {
+  const numericId = Number(contestId)
+  const notificationsEnabled = isNotificationsEnabled(numericId)
+  if (!notificationsEnabled) {
+    return Promise.resolve({
+      items: [],
+      unread_count: 0,
+      participants: [],
+      can_manage: true,
+      notifications_enabled: false,
+      questions_enabled: false,
+    })
+  }
+  const items = Array.isArray(mockContestNotifications[numericId])
+    ? [...mockContestNotifications[numericId]]
+    : []
+  const questionsEnabled = isStudentQuestionsEnabled(numericId)
+  const filteredItems = questionsEnabled
+    ? items
+    : items.filter(item => item.kind === 'announcement')
+  filteredItems.sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
+  const unread_count = filteredItems.filter(item => item.is_read === false).length
+  const participants = mockContestParticipants[numericId] || []
+  return Promise.resolve({
+    items: filteredItems,
+    unread_count,
+    participants,
+    can_manage: true,
+    notifications_enabled: notificationsEnabled,
+    questions_enabled: questionsEnabled,
+  })
+}
+
+export async function sendContestNotification(contestId, payload = {}) {
+  const numericId = Number(contestId)
+  if (!isNotificationsEnabled(numericId)) {
+    return Promise.reject(new Error('Contest notifications are disabled'))
+  }
+  if (!mockContestNotifications[numericId]) {
+    mockContestNotifications[numericId] = []
+  }
+  const participants = mockContestParticipants[numericId] || []
+  const audience = payload.audience === 'selected' ? 'selected_participants' : 'all_participants'
+  const recipient_ids = Array.isArray(payload.recipient_ids) && payload.recipient_ids.length
+    ? payload.recipient_ids.map(Number).filter(Number.isFinite)
+    : participants.map(row => row.id)
+
+  const notification = {
+    id: nextNotificationId(),
+    kind: 'announcement',
+    audience,
+    audience_label: audience === 'selected_participants' ? 'Выбранным участникам' : 'Всем участникам',
+    text: String(payload.text || '').trim(),
+    created_at: new Date().toISOString(),
+    author: { id: 1, username: 'teacher' },
+    parent_id: null,
+    parent_author_id: null,
+    is_read: true,
+    recipient_count: recipient_ids.length,
+    recipient_ids,
+    recipient_usernames: participants
+      .filter(row => recipient_ids.includes(row.id))
+      .map(row => row.username),
+    answer_count: 0,
+  }
+  mockContestNotifications[numericId].unshift(notification)
+  return Promise.resolve({ notification })
+}
+
+export async function askContestQuestion(contestId, payload = {}) {
+  const numericId = Number(contestId)
+  if (!isNotificationsEnabled(numericId)) {
+    return Promise.reject(new Error('Contest notifications are disabled'))
+  }
+  if (!isStudentQuestionsEnabled(numericId)) {
+    return Promise.reject(new Error('Student questions are disabled for this contest'))
+  }
+  if (!mockContestNotifications[numericId]) {
+    mockContestNotifications[numericId] = []
+  }
+  const notification = {
+    id: nextNotificationId(),
+    kind: 'question',
+    audience: 'teachers',
+    audience_label: 'Преподавателям',
+    text: String(payload.text || '').trim(),
+    created_at: new Date().toISOString(),
+    author: { id: 201, username: 'student_alpha' },
+    parent_id: null,
+    parent_author_id: null,
+    is_read: true,
+    recipient_count: 1,
+    recipient_ids: [1],
+    recipient_usernames: ['teacher'],
+    answer_count: 0,
+  }
+  mockContestNotifications[numericId].unshift(notification)
+  return Promise.resolve({ notification })
+}
+
+export async function answerContestQuestion(contestId, questionId, payload = {}) {
+  const numericId = Number(contestId)
+  if (!isNotificationsEnabled(numericId)) {
+    return Promise.reject(new Error('Contest notifications are disabled'))
+  }
+  if (!isStudentQuestionsEnabled(numericId)) {
+    return Promise.reject(new Error('Student questions are disabled for this contest'))
+  }
+  if (!mockContestNotifications[numericId]) {
+    mockContestNotifications[numericId] = []
+  }
+  const question = (mockContestNotifications[numericId] || []).find(
+    row => Number(row.id) === Number(questionId) && row.kind === 'question'
+  )
+  if (!question) {
+    return Promise.reject(new Error('Question not found'))
+  }
+
+  const notification = {
+    id: nextNotificationId(),
+    kind: 'answer',
+    audience: 'question_author',
+    audience_label: 'Автору вопроса',
+    text: String(payload.text || '').trim(),
+    created_at: new Date().toISOString(),
+    author: { id: 1, username: 'teacher' },
+    parent_id: question.id,
+    parent_author_id: question.author?.id ?? null,
+    is_read: false,
+    recipient_count: question.author?.id ? 1 : 0,
+    recipient_ids: question.author?.id ? [question.author.id] : [],
+    recipient_usernames: question.author?.username ? [question.author.username] : [],
+    answer_count: 0,
+  }
+  question.answer_count = Number(question.answer_count || 0) + 1
+  mockContestNotifications[numericId].unshift(notification)
+  return Promise.resolve({ notification })
+}
+
+export async function markContestNotificationsRead(contestId, notificationIds = null) {
+  const numericId = Number(contestId)
+  const all = mockContestNotifications[numericId] || []
+  const idSet = Array.isArray(notificationIds)
+    ? new Set(notificationIds.map(Number).filter(Number.isFinite))
+    : null
+
+  let marked = 0
+  for (const item of all) {
+    if (item.is_read) continue
+    if (idSet && !idSet.has(Number(item.id))) continue
+    item.is_read = true
+    marked += 1
+  }
+  const unread_count = all.filter(item => item.is_read === false).length
+  return Promise.resolve({ marked, unread_count })
 }

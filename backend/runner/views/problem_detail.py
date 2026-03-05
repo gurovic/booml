@@ -231,6 +231,7 @@ def _build_contest_context(contest: Contest, user):
     end_time = contest.get_end_time()
     can_submit, submit_block_reason = contest.is_submission_allowed(user)
     can_manage = contest.is_user_manager(user)
+    notifications_enabled = bool(contest.allow_notifications)
     return {
         "id": contest.id,
         "title": contest.title,
@@ -239,6 +240,8 @@ def _build_contest_context(contest: Contest, user):
         "duration_minutes": contest.duration_minutes,
         "has_time_limit": bool(contest.start_time and contest.duration_minutes),
         "allow_upsolving": bool(contest.allow_upsolving),
+        "allow_notifications": notifications_enabled,
+        "allow_student_questions": bool(notifications_enabled and contest.allow_student_questions),
         "time_state": contest.time_state(),
         "can_submit": bool(can_submit),
         "submit_block_reason": submit_block_reason or None,

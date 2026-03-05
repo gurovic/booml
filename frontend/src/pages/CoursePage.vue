@@ -232,6 +232,12 @@
               <span>Разрешить дорешку после дедлайна</span>
             </label>
           </div>
+          <div class="form-group">
+            <label class="form-checkbox">
+              <input type="checkbox" v-model="newContest.allow_student_questions" />
+              <span>Разрешить ученикам задавать вопросы в уведомлениях</span>
+            </label>
+          </div>
           <div class="form-row">
             <div class="form-group">
               <label class="form-checkbox">
@@ -306,6 +312,8 @@ const newContest = ref({
   start_time: '',
   end_time: '',
   allow_upsolving: false,
+  allow_notifications: true,
+  allow_student_questions: true,
   is_published: false,
   is_rated: false,
 })
@@ -437,6 +445,8 @@ const closeCreateDialog = () => {
     start_time: '',
     end_time: '',
     allow_upsolving: false,
+    allow_notifications: true,
+    allow_student_questions: true,
     is_published: false,
     is_rated: false,
   }
@@ -484,6 +494,8 @@ const createContest = async () => {
       start_time: startIso,
       end_time: endIso,
       allow_upsolving: hasTimeLimit ? !!newContest.value.allow_upsolving : false,
+      allow_notifications: newContest.value.allow_notifications !== false,
+      allow_student_questions: newContest.value.allow_student_questions !== false,
       is_published: newContest.value.is_published,
       is_rated: newContest.value.is_rated,
     }
