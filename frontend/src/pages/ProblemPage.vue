@@ -563,6 +563,14 @@ const formatSubmissionDateTime = (dateTimeString) => {
   }
 }
 
+const getSubmissionStatusLabel = (submission) => {
+  const base = getStatusLabel(submission?.status)
+  if (submission?.is_after_deadline) {
+    return `${base} (дорешка)`
+  }
+  return base
+}
+
 const handleFileChange = (event) => {
   const file = event.target.files[0]
   if (file) {
