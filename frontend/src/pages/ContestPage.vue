@@ -409,7 +409,7 @@ import UiLinkList from '@/components/ui/UiLinkList.vue'
 import UiIdPill from '@/components/ui/UiIdPill.vue'
 import ContestNotificationsWidget from '@/components/contest/ContestNotificationsWidget.vue'
 import { arrayMove } from '@/utils/arrayMove'
-import { normalizeContestProblemLabel, toContestProblemLabel } from '@/utils/contestProblemLabel'
+import { toContestProblemLabel } from '@/utils/contestProblemLabel'
 import { formatCountdown, formatDateTimeMsk, toTimestamp } from '@/utils/datetime'
 
 const route = useRoute()
@@ -536,8 +536,7 @@ const problemItems = computed(() => {
   return problems
     .filter(problem => problem?.id != null)
     .map((problem, index) => {
-      const ordinal = Number.isInteger(problem?.index) && problem.index >= 0 ? problem.index : index
-      const label = normalizeContestProblemLabel(problem?.label) || toContestProblemLabel(ordinal)
+      const label = toContestProblemLabel(index)
       return {
         id: problem.id,
         idPill: label,
