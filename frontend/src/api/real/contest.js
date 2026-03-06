@@ -134,3 +134,73 @@ export async function updateContest(contestId, contestData) {
     throw err
   }
 }
+
+export async function updateContestQuestionSettings(contestId, payload = {}) {
+  try {
+    return await apiPost(`backend/contest/${contestId}/questions/`, payload)
+  } catch (err) {
+    console.error('Failed to update contest question settings.', err)
+    throw err
+  }
+}
+
+export async function getContestNotifications(contestId, options = {}) {
+  if (contestId == null || contestId === '') {
+    return {
+      items: [],
+      unread_count: 0,
+      participants: [],
+      can_manage: false,
+      notifications_enabled: true,
+      questions_enabled: true,
+    }
+  }
+  const params = {}
+  if (options.limit != null) params.limit = options.limit
+  try {
+    return await apiGet(`backend/contest/${contestId}/notifications/`, params)
+  } catch (err) {
+    console.error('Failed to load contest notifications.', err)
+    throw err
+  }
+}
+
+export async function sendContestNotification(contestId, payload = {}) {
+  try {
+    return await apiPost(`backend/contest/${contestId}/notifications/send/`, payload)
+  } catch (err) {
+    console.error('Failed to send contest notification.', err)
+    throw err
+  }
+}
+
+export async function askContestQuestion(contestId, payload = {}) {
+  try {
+    return await apiPost(`backend/contest/${contestId}/notifications/ask/`, payload)
+  } catch (err) {
+    console.error('Failed to ask contest question.', err)
+    throw err
+  }
+}
+
+export async function answerContestQuestion(contestId, questionId, payload = {}) {
+  try {
+    return await apiPost(`backend/contest/${contestId}/notifications/${questionId}/answer/`, payload)
+  } catch (err) {
+    console.error('Failed to answer contest question.', err)
+    throw err
+  }
+}
+
+export async function markContestNotificationsRead(contestId, notificationIds = null) {
+  const payload = {}
+  if (Array.isArray(notificationIds)) {
+    payload.notification_ids = notificationIds
+  }
+  try {
+    return await apiPost(`backend/contest/${contestId}/notifications/read/`, payload)
+  } catch (err) {
+    console.error('Failed to mark contest notifications as read.', err)
+    throw err
+  }
+}

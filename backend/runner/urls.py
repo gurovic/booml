@@ -38,7 +38,15 @@ from .views.contest_draft import (
     reorder_contest_problems,
     remove_problem_from_contest,
     set_contest_access,
+    set_contest_questions,
     update_contest,
+)
+from .views.contest_notifications import (
+    answer_contest_question,
+    ask_contest_question,
+    contest_notifications,
+    mark_contest_notifications_read,
+    send_contest_notification,
 )
 from .views.contest_leaderboard import contest_problem_leaderboard, course_leaderboard
 from .views.course import course_contests, course_detail
@@ -104,12 +112,26 @@ urlpatterns = [
     path('contest/<int:course_id>/new/', create_contest, name='create_contest'),
     path('contest/<int:contest_id>/delete/', delete_contest, name='delete_contest'),
     path('contest/<int:contest_id>/update/', update_contest, name='contest_update'),
+    path('contest/<int:contest_id>/questions/', set_contest_questions, name='contest_set_questions'),
     path('contest/<int:contest_id>/access/', set_contest_access, name='contest_set_access'),
     path('contest/<int:contest_id>/participants/', manage_contest_participants, name='contest_manage_participants'),
     path('contest/<int:contest_id>/problems/add/', add_problem_to_contest, name='contest_add_problem'),
     path('contest/<int:contest_id>/problems/bulk_add/', bulk_add_problems_to_contest, name='contest_bulk_add_problems'),
     path('contest/<int:contest_id>/problems/reorder/', reorder_contest_problems, name='contest_reorder_problems'),
     path('contest/<int:contest_id>/problems/remove/', remove_problem_from_contest, name='contest_remove_problem'),
+    path('contest/<int:contest_id>/notifications/', contest_notifications, name='contest_notifications'),
+    path('contest/<int:contest_id>/notifications/send/', send_contest_notification, name='contest_notifications_send'),
+    path('contest/<int:contest_id>/notifications/ask/', ask_contest_question, name='contest_notifications_ask'),
+    path(
+        'contest/<int:contest_id>/notifications/<int:notification_id>/answer/',
+        answer_contest_question,
+        name='contest_notifications_answer',
+    ),
+    path(
+        'contest/<int:contest_id>/notifications/read/',
+        mark_contest_notifications_read,
+        name='contest_notifications_mark_read',
+    ),
     path('contest/<int:contest_id>/moderate/', moderate_contest, name='contest_moderate'),
     path('contests/pending/', list_pending_contests, name='contest_list_pending'),
     path('contest/success/', contest_success, name='contest_success'),
@@ -164,6 +186,7 @@ urlpatterns = [
     path('backend/contest/<int:course_id>/new/', create_contest, name='backend_create_contest'),
     path('backend/contest/<int:contest_id>/delete/', delete_contest, name='backend_delete_contest'),
     path('backend/contest/<int:contest_id>/update/', update_contest, name='backend_contest_update'),
+    path('backend/contest/<int:contest_id>/questions/', set_contest_questions, name='backend_contest_set_questions'),
     path(
         'backend/contest/<int:contest_id>/leaderboard/',
         contest_problem_leaderboard,
@@ -188,6 +211,31 @@ urlpatterns = [
         'backend/contest/<int:contest_id>/problems/remove/',
         remove_problem_from_contest,
         name='backend_contest_remove_problem',
+    ),
+    path(
+        'backend/contest/<int:contest_id>/notifications/',
+        contest_notifications,
+        name='backend_contest_notifications',
+    ),
+    path(
+        'backend/contest/<int:contest_id>/notifications/send/',
+        send_contest_notification,
+        name='backend_contest_notifications_send',
+    ),
+    path(
+        'backend/contest/<int:contest_id>/notifications/ask/',
+        ask_contest_question,
+        name='backend_contest_notifications_ask',
+    ),
+    path(
+        'backend/contest/<int:contest_id>/notifications/<int:notification_id>/answer/',
+        answer_contest_question,
+        name='backend_contest_notifications_answer',
+    ),
+    path(
+        'backend/contest/<int:contest_id>/notifications/read/',
+        mark_contest_notifications_read,
+        name='backend_contest_notifications_mark_read',
     ),
     path('backend/register/', backend_register, name='backend_register'),
     path('backend/login/', backend_login, name='backend_login'),

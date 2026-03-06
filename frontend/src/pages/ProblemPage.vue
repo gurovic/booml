@@ -31,6 +31,14 @@
               </p>
             </div>
           </li>
+          <li v-if="contestContext && contestNotificationsEnabled" class="problem__menu-item problem__notifications">
+            <ContestNotificationsWidget
+              :contest-id="contestContext.id"
+              :can-manage="contestCanManage"
+              :contest-title="contestContext.title"
+              :questions-enabled="contestQuestionsEnabled"
+            />
+          </li>
           <li class="problem__files problem__menu-item" v-if="availableFiles.length > 0">
             <h2 class="problem__files-title problem__item-title">Файлы</h2>
             <ul class="problem__files-list">
@@ -166,6 +174,7 @@ import { renderProblemStatement } from '@/utils/problemMarkdown'
 import UiHeader from '@/components/ui/UiHeader.vue'
 import UiBreadcrumbs from '@/components/ui/UiBreadcrumbs.vue'
 import UiIdPill from '@/components/ui/UiIdPill.vue'
+import ContestNotificationsWidget from '@/components/contest/ContestNotificationsWidget.vue'
 import { normalizeContestProblemLabel, toContestProblemLabel } from '@/utils/contestProblemLabel'
 import { formatCountdown, formatDateTimeMsk, toTimestamp } from '@/utils/datetime'
 
@@ -247,6 +256,8 @@ const applyContestContextFromDetail = (contestData) => {
     duration_minutes: contestData.duration_minutes,
     has_time_limit: contestData.has_time_limit,
     allow_upsolving: contestData.allow_upsolving,
+    allow_notifications: contestData.allow_notifications !== false,
+    allow_student_questions: contestData.allow_student_questions !== false,
     time_state: contestData.time_state,
     can_submit: contestData.can_submit,
     submit_block_reason: contestData.submit_block_reason,
@@ -317,6 +328,10 @@ const availableFiles = computed(() => {
 })
 
 const contestContext = computed(() => problem.value?.contest || null)
+const contestNotificationsEnabled = computed(() => contestContext.value?.allow_notifications !== false)
+const contestQuestionsEnabled = computed(
+  () => contestNotificationsEnabled.value && contestContext.value?.allow_student_questions !== false
+)
 const contestHasTimeLimit = computed(() => !!contestContext.value?.has_time_limit)
 const contestCanManage = computed(() => !!contestContext.value?.can_manage)
 const contestStartTs = computed(() => toTimestamp(contestContext.value?.start_time))
@@ -460,12 +475,6 @@ const formatSubmissionDateTime = (dateTimeString) => {
     console.error('Error formatting date:', error)
     return { date: '-', time: '-' }
   }
-const getSubmissionStatusLabel = (submission) => {
-  const base = getStatusLabel(submission?.status)
-  if (submission?.is_after_deadline) {
-    return `${base} (дорешка)`
-  }
-  return base
 }
 
 const handleFileChange = (event) => {
@@ -826,6 +835,16 @@ const handleCreateNotebook = async () => {
 
 .problem__contest-time {
   gap: 10px;
+}
+
+.problem__notifications {
+  padding: 16px;
+  background: var(--color-bg-card);
+}
+
+.problem__notifications :deep(.contest-notify__trigger) {
+  width: 100%;
+  justify-content: flex-start;
 }
 
 .problem__contest-state {

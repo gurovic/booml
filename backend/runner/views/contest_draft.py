@@ -73,6 +73,10 @@ def _contest_timing_payload(contest: Contest, *, user=None, include_submit=False
     return payload
 
 
+def _contest_questions_enabled(contest: Contest) -> bool:
+    return bool(contest.allow_notifications and contest.allow_student_questions)
+
+
 def _normalize_timing_fields(data):
     has_time_limit_raw = data.pop("has_time_limit", None)
     end_time_raw = data.pop("end_time", None)
@@ -292,6 +296,10 @@ def create_contest(request, course_id):
     data.setdefault("status", Contest.Status.GOING)
     data.setdefault("scoring", Contest.Scoring.IOI)
     data.setdefault("registration_type", Contest.Registration.OPEN)
+    data.setdefault("allow_notifications", True)
+    data.setdefault("allow_student_questions", True)
+    if _parse_bool(data.get("allow_notifications"), default=None) is False:
+        data["allow_student_questions"] = False
 
     form = ContestForm(data, course=course)
     if form.is_valid():
@@ -306,6 +314,8 @@ def create_contest(request, course_id):
                 "is_rated": contest.is_rated,
                 "scoring": contest.scoring,
                 "registration_type": contest.registration_type,
+                "allow_notifications": bool(contest.allow_notifications),
+                "allow_student_questions": _contest_questions_enabled(contest),
                 "created_by_id": contest.created_by_id,
                 **_contest_timing_payload(contest, user=request.user, include_submit=True),
             },
@@ -369,6 +379,8 @@ def list_contests(request):
                 "is_rated": contest.is_rated,
                 "scoring": contest.scoring,
                 "registration_type": contest.registration_type,
+                "allow_notifications": bool(contest.allow_notifications),
+                "allow_student_questions": _contest_questions_enabled(contest),
                 "problems_count": contest.problems_count,
                 "access_token": contest.access_token
                 if contest.access_type == Contest.AccessType.LINK and (is_teacher or is_admin)
@@ -432,7 +444,83 @@ def update_contest(request, contest_id):
         {
             "id": contest.id,
             "title": contest.title,
+            "allow_notifications": bool(contest.allow_notifications),
+            "allow_student_questions": _contest_questions_enabled(contest),
             **_contest_timing_payload(contest, user=request.user, include_submit=True),
+        },
+        status=200,
+    )
+
+
+@login_required
+def set_contest_questions(request, contest_id):
+    if request.method != "POST":
+        return JsonResponse({"detail": "Method not allowed"}, status=405)
+
+    contest = get_object_or_404(
+        Contest.objects.select_related("course__section", "course__owner"),
+        pk=contest_id,
+    )
+    if not contest.is_user_manager(request.user):
+        return JsonResponse({"detail": "Only contest teachers can change contest notification settings"}, status=403)
+
+    try:
+        payload = json.loads(request.body or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"detail": "Invalid JSON payload"}, status=400)
+    if not isinstance(payload, dict):
+        return JsonResponse({"detail": "JSON payload must be an object"}, status=400)
+
+    has_allow_notifications = "allow_notifications" in payload
+    has_allow_student_questions = "allow_student_questions" in payload
+    if not has_allow_notifications and not has_allow_student_questions:
+        return JsonResponse(
+            {"detail": "At least one of allow_notifications or allow_student_questions must be provided"},
+            status=400,
+        )
+
+    allow_notifications = None
+    if has_allow_notifications:
+        allow_notifications = _parse_bool(payload.get("allow_notifications"), default=None)
+        if allow_notifications is None:
+            return JsonResponse({"detail": "allow_notifications must be a boolean"}, status=400)
+
+    allow_student_questions = None
+    if has_allow_student_questions:
+        allow_student_questions = _parse_bool(payload.get("allow_student_questions"), default=None)
+        if allow_student_questions is None:
+            return JsonResponse({"detail": "allow_student_questions must be a boolean"}, status=400)
+
+    next_allow_notifications = (
+        bool(allow_notifications)
+        if allow_notifications is not None
+        else bool(contest.allow_notifications)
+    )
+    if not next_allow_notifications:
+        next_allow_student_questions = False
+    else:
+        next_allow_student_questions = (
+            bool(allow_student_questions)
+            if allow_student_questions is not None
+            else bool(contest.allow_student_questions)
+        )
+
+    changed_fields = []
+    if bool(contest.allow_notifications) != next_allow_notifications:
+        contest.allow_notifications = next_allow_notifications
+        changed_fields.append("allow_notifications")
+    if bool(contest.allow_student_questions) != next_allow_student_questions:
+        contest.allow_student_questions = next_allow_student_questions
+        changed_fields.append("allow_student_questions")
+
+    if changed_fields:
+        contest.save(update_fields=[*changed_fields, "updated_at"])
+
+    return JsonResponse(
+        {
+            "id": contest.id,
+            "allow_notifications": bool(contest.allow_notifications),
+            "allow_student_questions": _contest_questions_enabled(contest),
         },
         status=200,
     )
@@ -504,6 +592,8 @@ def contest_detail(request, contest_id):
             "is_rated": contest.is_rated,
             "scoring": contest.scoring,
             "registration_type": contest.registration_type,
+            "allow_notifications": bool(contest.allow_notifications),
+            "allow_student_questions": _contest_questions_enabled(contest),
             "problems_count": len(problems),
             "allowed_participants": allowed_participants,
             "problems": problems,

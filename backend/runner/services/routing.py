@@ -9,4 +9,8 @@ websocket_urlpatterns = [
         r"^ws/submissions/(?P<submission_id>\d+)/$",
         consumers.SubmissionMetricConsumer.as_asgi(),
     ),
+    re_path(
+        r"^ws/contests/(?P<contest_id>\d+)/notifications/$",
+        consumers.ContestNotificationConsumer.as_asgi(),
+    ),
 ]
