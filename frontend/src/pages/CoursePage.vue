@@ -56,7 +56,9 @@
               </button>
             </div>
           </div>
-          
+
+          <div v-if="renderedCourseDescription" class="course-description" v-html="renderedCourseDescription"></div>
+
           <UiLinkList
             class="course-contests-list"
             title="Контесты"
@@ -280,6 +282,7 @@ import UiHeader from '@/components/ui/UiHeader.vue'
 import UiBreadcrumbs from '@/components/ui/UiBreadcrumbs.vue'
 import UiLinkList from '@/components/ui/UiLinkList.vue'
 import { arrayMove } from '@/utils/arrayMove'
+import { renderProblemStatement } from '@/utils/problemMarkdown'
 
 const route = useRoute()
 const router = useRouter()
@@ -319,6 +322,11 @@ const newContest = ref({
 })
 
 const courseTitle = computed(() => course.value?.title || queryTitle.value || '...')
+const renderedCourseDescription = computed(() => {
+  const desc = course.value?.description
+  if (typeof desc !== 'string' || !desc.trim()) return ''
+  return renderProblemStatement(desc)
+})
 const isAuthorized = computed(() => !!userStore.currentUser)
 
 const isFavoriteCourse = computed(() => {
@@ -718,6 +726,111 @@ watch(
   gap: 10px;
   align-items: center;
   flex-wrap: wrap;
+}
+
+.course-description {
+  margin-top: 20px;
+  padding: 16px 0;
+  color: var(--color-text-primary);
+  line-height: 1.6;
+}
+
+.course-description :deep(p) {
+  margin: 0 0 12px;
+}
+
+.course-description :deep(p:last-child) {
+  margin-bottom: 0;
+}
+
+.course-description :deep(ul),
+.course-description :deep(ol) {
+  margin: 12px 0;
+  padding-left: 1.5em;
+}
+
+.course-description :deep(li) {
+  margin: 4px 0;
+}
+
+.course-description :deep(a) {
+  color: var(--color-primary);
+  text-decoration: none;
+}
+
+.course-description :deep(a:hover) {
+  text-decoration: underline;
+}
+
+.course-description :deep(pre) {
+  margin: 16px 0 20px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1px solid var(--color-border-default);
+  background: #0f172a;
+  color: #e2e8f0;
+  overflow-x: auto;
+}
+
+.course-description :deep(code) {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+.course-description :deep(p code),
+.course-description :deep(li code),
+.course-description :deep(td code) {
+  padding: 0.1em 0.35em;
+  border-radius: 6px;
+  background: rgba(15, 23, 42, 0.08);
+}
+
+.course-description :deep(blockquote) {
+  margin: 16px 0;
+  padding: 10px 14px;
+  border-left: 4px solid var(--color-primary);
+  background: var(--color-bg-muted);
+  border-radius: 0 10px 10px 0;
+}
+
+.course-description :deep(.statement-color) {
+  font-weight: 700;
+}
+
+.course-description :deep(.math-block) {
+  margin: 16px 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.course-description :deep(.math-block .katex-display) {
+  margin: 0;
+  text-align: center;
+}
+
+.course-description :deep(.math-block .katex-display > .katex) {
+  white-space: nowrap;
+}
+
+.course-description :deep(h1) {
+  font-size: 22px;
+  font-weight: 600;
+  margin: 24px 0 12px;
+}
+
+.course-description :deep(h1:first-child) {
+  margin-top: 0;
+}
+
+.course-description :deep(h2) {
+  font-size: 20px;
+  font-weight: 500;
+  margin: 20px 0 10px;
+}
+
+.course-description :deep(h3) {
+  font-size: 18px;
+  font-weight: 500;
+  margin: 16px 0 8px;
 }
 
 .course-settings {
