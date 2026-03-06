@@ -164,9 +164,9 @@ id,pred
                   </div>
                   <p
                     class="problem__submission-col problem__submission-col--status"
-                    :title="getStatusLabel(submission.status)"
+                    :title="getSubmissionStatusLabel(submission)"
                   >
-                    {{ getStatusLabel(submission.status) }}
+                    {{ getSubmissionStatusLabel(submission) }}
                   </p>
                   <p class="problem__submission-col problem__submission-col--score">
                     {{ formatSubmissionMetric(submission) }}
