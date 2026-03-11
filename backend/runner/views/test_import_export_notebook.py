@@ -1,13 +1,14 @@
 import json
 import base64
 import email.header
+import zipfile
 from io import BytesIO
 
 from django.contrib.auth import get_user_model
 from django.test import Client, TestCase
 from django.urls import reverse
 
-from ..models import Notebook, Cell
+from ..models import Notebook, Cell, NotebookFolder
 
 
 class ImportExportNotebookTests(TestCase):
@@ -263,3 +264,62 @@ class ImportExportNotebookTests(TestCase):
         self.assertNotIn('Test/Notebook', content_disposition)
         self.assertNotIn(':', content_disposition.split('filename')[1] if 'filename' in content_disposition else '')
 
+    def test_backend_export_archive_requires_auth(self):
+        export_url = reverse("runner:backend_export_notebooks_archive")
+        response = self.client.post(
+            export_url,
+            data=json.dumps({
+                "notebook_ids": [self.notebook.id],
+                "folder_ids": [],
+            }),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 401)
+
+    def test_backend_export_archive_returns_zip_for_selected_entries(self):
+        self.client.login(username="user", password="pass")
+        root_notebook = Notebook.objects.create(owner=self.user, title="Root")
+        folder = NotebookFolder.objects.create(
+            owner=self.user,
+            title="Pack",
+            kind=NotebookFolder.Kind.CUSTOM,
+        )
+        folder_notebook = Notebook.objects.create(
+            owner=self.user,
+            folder=folder,
+            title="Inside",
+        )
+        Cell.objects.create(
+            notebook=root_notebook,
+            cell_type=Cell.CODE,
+            content="print('root')",
+            execution_order=0,
+        )
+        Cell.objects.create(
+            notebook=folder_notebook,
+            cell_type=Cell.TEXT,
+            content="inside",
+            execution_order=0,
+        )
+
+        export_url = reverse("runner:backend_export_notebooks_archive")
+        response = self.client.post(
+            export_url,
+            data=json.dumps({
+                "notebook_ids": [root_notebook.id],
+                "folder_ids": [folder.id],
+            }),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("application/zip", response.get("Content-Type", "").lower())
+        self.assertIn(".zip", response.get("Content-Disposition", ""))
+
+        with zipfile.ZipFile(BytesIO(response.content), mode="r") as archive:
+            names = archive.namelist()
+            self.assertIn("Root.ipynb", names)
+            self.assertIn("Pack/Inside.ipynb", names)
+
+            inside_payload = json.loads(archive.read("Pack/Inside.ipynb").decode("utf-8"))
+            self.assertIn("cells", inside_payload)
+            self.assertEqual(len(inside_payload["cells"]), 1)

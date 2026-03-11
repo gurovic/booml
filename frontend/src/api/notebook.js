@@ -1,7 +1,127 @@
-import { apiDelete, apiGet, apiPatch, apiPost } from './http'
+import { toApiError } from './error'
+import { apiDelete, apiGet, apiPatch, apiPost, ensureCsrfToken } from './http'
 
-export function createNotebook(problemId) {
-    return apiPost('/api/notebooks/', { problem_id: problemId })
+export function createNotebook(problemIdOrOptions = null) {
+    const payload = {}
+
+    if (typeof problemIdOrOptions === 'number') {
+        payload.problem_id = problemIdOrOptions
+    } else if (problemIdOrOptions && typeof problemIdOrOptions === 'object') {
+        if (problemIdOrOptions.problemId != null) {
+            payload.problem_id = problemIdOrOptions.problemId
+        }
+        if (problemIdOrOptions.title != null) {
+            payload.title = problemIdOrOptions.title
+        }
+        if (problemIdOrOptions.folderId != null) {
+            payload.folder_id = problemIdOrOptions.folderId
+        }
+    }
+
+    return apiPost('/api/notebooks/', payload)
+}
+
+export function getNotebookTree() {
+    return apiGet('/api/notebook-tree/')
+}
+
+export function createNotebookFolder(title, parentId = null) {
+    const payload = { title }
+    if (parentId != null) {
+        payload.parent_id = parentId
+    }
+    return apiPost('/api/notebook-folders/', payload)
+}
+
+export function renameNotebookFolder(folderId, title) {
+    return apiPatch(`/api/notebook-folders/${folderId}/`, { title })
+}
+
+export function deleteNotebookFolder(folderId) {
+    return apiDelete(`/api/notebook-folders/${folderId}/`)
+}
+
+export function moveNotebookFolder(folderId, parentId = null) {
+    const payload = { parent_id: parentId }
+    return apiPatch(`/api/notebook-folders/${folderId}/move/`, payload)
+}
+
+export function moveNotebookToFolder(notebookId, folderId = null) {
+    const payload = { folder_id: folderId }
+    return apiPatch(`/api/notebooks/${notebookId}/move/`, payload)
+}
+
+export function importNotebookFile(file) {
+    const formData = new FormData()
+    formData.append('file', file)
+    return apiPost('/backend/notebook/import/', formData)
+}
+
+export function getNotebookExportUrl(notebookId) {
+    return `/backend/notebook/${notebookId}/export/`
+}
+
+function parseFilenameFromDisposition(disposition, fallback = 'notebooks_export.zip') {
+    if (!disposition) return fallback
+
+    const utf8Match = disposition.match(/filename\*=UTF-8''([^;]+)/i)
+    if (utf8Match && utf8Match[1]) {
+        try {
+            return decodeURIComponent(utf8Match[1].replace(/["']/g, '').trim())
+        } catch (_) {
+            // fall through
+        }
+    }
+
+    const simpleMatch = disposition.match(/filename="?([^";]+)"?/i)
+    if (simpleMatch && simpleMatch[1]) {
+        return simpleMatch[1].trim()
+    }
+    return fallback
+}
+
+export async function exportNotebooksArchive({ notebookIds = [], folderIds = [] } = {}) {
+    const csrftoken = await ensureCsrfToken()
+    const res = await fetch('/backend/notebooks/export/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            ...(csrftoken ? { 'X-CSRFToken': csrftoken } : {}),
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+            notebook_ids: Array.isArray(notebookIds) ? notebookIds : [],
+            folder_ids: Array.isArray(folderIds) ? folderIds : [],
+        }),
+    })
+
+    if (!res.ok) {
+        const errorText = await res.text()
+        throw toApiError(res.status, errorText)
+    }
+
+    const blob = await res.blob()
+    const filename = parseFilenameFromDisposition(res.headers.get('Content-Disposition'))
+    return { blob, filename }
+}
+
+export async function exportNotebookFile(notebookId) {
+    const res = await fetch(`/backend/notebook/${notebookId}/export/`, {
+        method: 'GET',
+        credentials: 'include',
+    })
+
+    if (!res.ok) {
+        const errorText = await res.text()
+        throw toApiError(res.status, errorText)
+    }
+
+    const blob = await res.blob()
+    const filename = parseFilenameFromDisposition(
+        res.headers.get('Content-Disposition'),
+        `notebook_${notebookId}.ipynb`,
+    )
+    return { blob, filename }
 }
 
 export function getNotebook(notebookId) {

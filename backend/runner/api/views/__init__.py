@@ -31,3 +31,10 @@ from .home import (
 )
 from .run_cell import RunCellView, RunCellInputView
 from .run_cell_stream import RunCellStreamStartView, RunCellStreamStatusView
+from .notebook_tree import (
+    NotebookTreeView,
+    NotebookFolderCreateView,
+    NotebookFolderDetailView,
+    NotebookFolderMoveView,
+    NotebookMoveView,
+)
