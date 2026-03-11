@@ -19,7 +19,7 @@ from .views.save_cell_output import save_cell_output
 from .views.save_text_cell import save_text_cell
 from .views.create_text_cell import create_text_cell
 from .views.import_notebook import import_notebook
-from .views.export_notebook import export_notebook
+from .views.export_notebook import export_notebook, export_notebooks_archive
 from .views.reorder_cells import copy_cell, move_cell
 from .views.get_reports_list import get_reports_list
 from .views.receive_test_result import receive_test_result
@@ -159,6 +159,9 @@ urlpatterns = [
     path('notebook/<int:notebook_id>/create_text_cell/', create_text_cell, name='create_text_cell'),
     path('notebook/import/', import_notebook, name='import_notebook'),
     path('notebook/<int:notebook_id>/export/', export_notebook, name='export_notebook'),
+    path('backend/notebook/import/', import_notebook, name='backend_import_notebook'),
+    path('backend/notebook/<int:notebook_id>/export/', export_notebook, name='backend_export_notebook'),
+    path('backend/notebooks/export/', export_notebooks_archive, name='backend_export_notebooks_archive'),
     path('run_code/', run_code, name='run_code'),
     path('polygon/', problem_list_polygon, name='polygon'),
     path('polygon/new/', create_problem_polygon, name='polygon_create_problem'),
