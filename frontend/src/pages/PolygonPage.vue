@@ -429,11 +429,6 @@ onMounted(loadProblems)
   white-space: nowrap;
 }
 
-.pager__btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
 .pager__info {
   color: rgba(22, 33, 89, 0.75);
   font-weight: 700;
