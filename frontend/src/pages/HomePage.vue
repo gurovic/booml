@@ -247,21 +247,32 @@ const hasChildren = item => Array.isArray(item?.children) && item.children.lengt
 const sections = computed(() => courses.value.filter(item => item?.type === 'section'))
 const standalone = computed(() => courses.value.filter(item => item?.type !== 'section'))
 
-const countCourses = (node) => {
-  if (!node) return 0
-  if (node.type === 'course') return 1
+const hasCoursesInNode = (node) => {
+  if (!node) return false
+  if (node.type === 'course') return true
   const children = Array.isArray(node.children) ? node.children : []
-  return children.reduce((sum, child) => sum + countCourses(child), 0)
+  return children.some(child => hasCoursesInNode(child))
 }
+
+const sectionHasCourses = computed(() => {
+  const result = new Map()
+  for (const section of sections.value) {
+    result.set(section.id, hasCoursesInNode(section))
+  }
+  return result
+})
 
 const visibleSections = computed(() => {
   if (isAuthorized.value) return sections.value
-  return sections.value.filter(section => countCourses(section) > 0)
+  return sections.value.filter(section => sectionHasCourses.value.get(section.id))
 })
 
 const hasAnyCourses = computed(() => {
-  const sectionCourses = visibleSections.value.reduce((sum, section) => sum + countCourses(section), 0)
-  return sectionCourses + standalone.value.length > 0
+  if (standalone.value.length > 0) return true
+  if (isAuthorized.value) {
+    return sections.value.some(section => sectionHasCourses.value.get(section.id))
+  }
+  return visibleSections.value.length > 0
 })
 
 const orderedChildren = section => {

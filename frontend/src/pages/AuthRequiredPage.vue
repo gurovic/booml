@@ -32,14 +32,13 @@
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import UiHeader from '@/components/ui/UiHeader.vue'
+import { resolveRedirectFromQuery } from '@/utils/redirect'
 
 const route = useRoute()
 const router = useRouter()
 
 const redirectPath = computed(() => {
-  const raw = route.query.redirect
-  const value = Array.isArray(raw) ? raw[0] : raw
-  return typeof value === 'string' && value.startsWith('/') ? value : '/'
+  return resolveRedirectFromQuery(route.query)
 })
 
 const goToLogin = () => {

@@ -100,6 +100,7 @@
 import { ref, reactive } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/UserStore'
+import { resolveRedirectFromQuery } from '@/utils/redirect'
 import '@/assets/styles/form.css'
 
 const router = useRouter()
@@ -114,12 +115,7 @@ const formData = reactive({
 const formErrors = reactive({})
 
 const resolveRedirect = () => {
-    const raw = route.query.redirect
-    const value = Array.isArray(raw) ? raw[0] : raw
-    if (typeof value === 'string' && value.startsWith('/')) {
-        return value
-    }
-    return '/'
+    return resolveRedirectFromQuery(route.query)
 }
 
 const clearErrors = () => {

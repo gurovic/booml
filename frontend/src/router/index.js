@@ -20,6 +20,7 @@ import NotebookListPage from '@/pages/NotebookListPage.vue'
 import ProfilePage from '@/pages/ProfilePage.vue'
 import AuthRequiredPage from '@/pages/AuthRequiredPage.vue'
 import { useUserStore } from '@/stores/UserStore'
+import { sanitizeRedirectPath } from '@/utils/redirect'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -143,13 +144,6 @@ const router = createRouter({
   ],
 })
 
-const sanitizeRedirect = (value) => {
-  const raw = Array.isArray(value) ? value[0] : value
-  if (typeof raw !== 'string' || !raw.startsWith('/')) return '/'
-  if (raw.startsWith('/auth-required')) return '/'
-  return raw
-}
-
 router.beforeEach((to) => {
   const userStore = useUserStore()
   const isAuthorized = !!userStore.currentUser
@@ -167,7 +161,7 @@ router.beforeEach((to) => {
   }
 
   if (isAuthorized && to.name === 'auth-required') {
-    return sanitizeRedirect(to.query?.redirect)
+    return sanitizeRedirectPath(to.query?.redirect)
   }
 
   return true
