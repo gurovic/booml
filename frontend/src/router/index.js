@@ -7,6 +7,7 @@ import SectionPage from '@/pages/SectionPage.vue'
 import CoursePage from '@/pages/CoursePage.vue'
 import CourseLeaderboardPage from '@/pages/CourseLeaderboardPage.vue'
 import ContestPage from '@/pages/ContestPage.vue'
+import ContestSubmissionsPage from '@/pages/ContestSubmissionsPage.vue'
 import CoursesPage from '@/pages/CoursesPage.vue'
 import ContestLeaderboardPage from '@/pages/ContestLeaderboardPage.vue'
 import LoginPage from '@/pages/LoginPage.vue'
@@ -15,12 +16,17 @@ import PolygonPage from '@/pages/PolygonPage.vue'
 import PolygonProblemEditPage from '@/pages/PolygonProblemEditPage.vue'
 import SubmissionListPage from '@/pages/SubmissionListPage.vue'
 import NotebookPage from '@/pages/NotebookPage.vue'
+import NotebookListPage from '@/pages/NotebookListPage.vue'
 import ProfilePage from '@/pages/ProfilePage.vue'
 import AuthRequiredPage from '@/pages/AuthRequiredPage.vue'
 import { useUserStore } from '@/stores/UserStore'
 
 const router = createRouter({
   history: createWebHistory(),
+  scrollBehavior(to, from, savedPosition) {
+    if (savedPosition) return savedPosition
+    return { top: 0, left: 0 }
+  },
   routes: [
     {
       path: '/',
@@ -81,6 +87,11 @@ const router = createRouter({
       component: ContestPage,
     },
     {
+      path: '/contest/:id/submissions',
+      name: 'contest-submissions',
+      component: ContestSubmissionsPage,
+    },
+    {
       path: '/contest/:id/leaderboard',
       name: 'contest-leaderboard',
       component: ContestLeaderboardPage,
@@ -103,12 +114,21 @@ const router = createRouter({
       name: 'polygon-problem-edit',
       component: PolygonProblemEditPage,
       meta: { requiresAuth: true },
-    },{
+    },
+    
+    {
       path: '/notebook/:id',
       name: 'notebook',
       component: NotebookPage,
       meta: { requiresAuth: true },
     },
+    {
+      path: '/notebooks',
+      name: 'notebooks',
+      component: NotebookListPage,
+      meta: { requiresAuth: true },
+    },
+
     {
       path: '/profile',
       name: 'profile',

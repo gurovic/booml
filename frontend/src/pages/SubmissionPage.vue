@@ -136,7 +136,10 @@ const error = ref(null)
 
 onMounted(async () => {
   try {
-    submission.value = await getSubmission(route.params.id)
+    const rawContestId = Array.isArray(route.query.contest)
+      ? route.query.contest[0]
+      : route.query.contest
+    submission.value = await getSubmission(route.params.id, { contestId: rawContestId })
   } catch (err) {
     console.error('Failed to load submission:', err)
     error.value = err.message || 'Не удалось загрузить посылку'
@@ -426,5 +429,4 @@ const formatFileSize = (bytes) => {
   color: #dc3545;
 }
 </style>
-
 

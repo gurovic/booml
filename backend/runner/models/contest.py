@@ -44,6 +44,14 @@ class Contest(models.Model):
         default=False,
         help_text="Allow submissions after contest deadline",
     )
+    allow_notifications = models.BooleanField(
+        default=True,
+        help_text="Enable announcements and question/answer notifications for the contest",
+    )
+    allow_student_questions = models.BooleanField(
+        default=True,
+        help_text="Allow students to ask questions in contest notifications",
+    )
     class Scoring(models.TextChoices):
         ICPC = "icpc", "ICPC (penalty by time)"
         IOI = "ioi", "IOI (sum of scores)"
@@ -137,6 +145,14 @@ class Contest(models.Model):
 
     def __str__(self):
         return f"{self.title} ({self.course})"
+
+    def save(self, *args, **kwargs):
+        if not self.allow_notifications:
+            self.allow_student_questions = False
+            update_fields = kwargs.get("update_fields")
+            if update_fields is not None and "allow_student_questions" not in update_fields:
+                kwargs["update_fields"] = set(update_fields) | {"allow_student_questions"}
+        super().save(*args, **kwargs)
 
     def is_user_manager(self, user) -> bool:
         if not getattr(user, "is_authenticated", False):

@@ -219,12 +219,24 @@ const refresh = async () => {
 
     // When opened from a contest page we pass ?contest=<id> so we can reconstruct the full path.
     if (contestId) {
-      try {
-        const c = await contestApi.getContest(contestId)
-        fetchedContest.value = c
-        courseId = Number(c?.course || null)
-      } catch (e) {
-        // ignore, show partial crumbs
+      const propContestId = Number(props.contest?.id || null)
+      const propContestCourseId = Number(props.contest?.course || props.contest?.course_id || null)
+      const canUseContestFromProps =
+        propContestId === Number(contestId) &&
+        Number.isFinite(propContestCourseId) &&
+        propContestCourseId > 0
+
+      if (canUseContestFromProps) {
+        fetchedContest.value = props.contest
+        courseId = propContestCourseId
+      } else {
+        try {
+          const c = await contestApi.getContest(contestId)
+          fetchedContest.value = c
+          courseId = Number(c?.course || null)
+        } catch (e) {
+          // ignore, show partial crumbs
+        }
       }
     }
   }

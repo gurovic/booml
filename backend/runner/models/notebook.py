@@ -1,7 +1,11 @@
-from django.db import models
 from django.contrib.auth import get_user_model
+from django.db import models
+
+from .notebook_folder import NotebookFolder
 
 User = get_user_model()
+
+
 class Notebook(models.Model):
     class ComputeDevice(models.TextChoices):
         CPU = "cpu", "CPU"
@@ -10,14 +14,21 @@ class Notebook(models.Model):
     owner = models.ForeignKey(
         User,
         on_delete=models.SET_NULL,
-        related_name='notebooks',
+        related_name="notebooks",
         null=True,
         blank=True,
     )
     problem = models.ForeignKey(
-        'Problem',
+        "Problem",
         on_delete=models.SET_NULL,
-        related_name='notebooks',
+        related_name="notebooks",
+        null=True,
+        blank=True,
+    )
+    folder = models.ForeignKey(
+        NotebookFolder,
+        on_delete=models.SET_NULL,
+        related_name="notebooks",
         null=True,
         blank=True,
     )
@@ -32,13 +43,13 @@ class Notebook(models.Model):
 
     class Meta:
         indexes = [
-            models.Index(fields=['owner', 'problem'], name='notebook_owner_problem_idx'),
+            models.Index(fields=["owner", "problem"], name="notebook_owner_problem_idx"),
         ]
         constraints = [
             models.UniqueConstraint(
-                fields=['owner', 'problem'],
+                fields=["owner", "problem"],
                 condition=models.Q(owner__isnull=False) & models.Q(problem__isnull=False),
-                name='unique_owner_problem_notebook'
+                name="unique_owner_problem_notebook",
             ),
         ]
 

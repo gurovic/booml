@@ -29,12 +29,22 @@ from .views import (
     SessionFilePreviewView,
     SessionFileChartView,
     StopSessionView,
+    NotebookTreeView,
+    NotebookFolderCreateView,
+    NotebookFolderDetailView,
+    NotebookFolderMoveView,
+    NotebookMoveView,
 )
 
 urlpatterns = [
     path("submissions/", SubmissionCreateView.as_view(), name="submission-create"),
     path("submissions/mine/", MySubmissionsListView.as_view(), name="submission-list-mine"),
     path("notebooks/", CreateNotebookView.as_view(), name="notebook-create"),
+    path("notebook-tree/", NotebookTreeView.as_view(), name="notebook-tree"),
+    path("notebook-folders/", NotebookFolderCreateView.as_view(), name="notebook-folder-create"),
+    path("notebook-folders/<int:folder_id>/", NotebookFolderDetailView.as_view(), name="notebook-folder-detail"),
+    path("notebook-folders/<int:folder_id>/move/", NotebookFolderMoveView.as_view(), name="notebook-folder-move"),
+    path("notebooks/<int:notebook_id>/move/", NotebookMoveView.as_view(), name="notebook-move"),
     path("submissions/<int:pk>/", SubmissionDetailView.as_view(), name="submission-detail"),
     path("submissions/problem/<int:problem_id>/", ProblemSubmissionsListView.as_view(), name="submission-list-problem"),
     path("sessions/notebook/", CreateNotebookSessionView.as_view(), name="notebook-session-create"),

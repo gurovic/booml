@@ -91,6 +91,8 @@ class ContestDetailViewTests(TestCase):
         self.assertEqual(payload["course"], self.course.id)
         self.assertEqual(payload["access_type"], "link")
         self.assertEqual(payload["access_token"], "token123")
+        self.assertTrue(payload["allow_notifications"])
+        self.assertTrue(payload["allow_student_questions"])
         self.assertEqual(payload["allowed_participants"], [])
         self.assertTrue(payload["can_edit"])
 

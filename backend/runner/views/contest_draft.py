@@ -1,20 +1,22 @@
 import json
 import uuid
-from datetime import datetime
+from datetime import datetime, time
+from pathlib import Path
 
 from django.contrib.auth import get_user_model
 from django.db import transaction
-from django.db.models import Count, Max
+from django.db.models import Count, Max, Q
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.utils import timezone
-from django.utils.dateparse import parse_datetime
+from django.utils.dateparse import parse_date, parse_datetime
 
-from ..models import Contest, Course, Problem, CourseParticipant, ContestProblem
+from ..models import Contest, Course, Problem, CourseParticipant, ContestProblem, Submission
 from ..forms.contest_draft import ContestForm
 from ..services.contest_labels import contest_problem_label
 from .contest_leaderboard import build_contest_leaderboards
+from .submissions import _primary_metric
 
 User = get_user_model()
 
@@ -69,6 +71,10 @@ def _contest_timing_payload(contest: Contest, *, user=None, include_submit=False
         payload["can_submit"] = bool(can_submit)
         payload["submit_block_reason"] = submit_block_reason or None
     return payload
+
+
+def _contest_questions_enabled(contest: Contest) -> bool:
+    return bool(contest.allow_notifications and contest.allow_student_questions)
 
 
 def _normalize_timing_fields(data):
@@ -194,6 +200,62 @@ def _resolve_updated_timing(contest: Contest, payload: dict):
         "allow_upsolving": bool(allow_upsolving),
     }, None
 
+
+def _parse_positive_int(value, *, default: int) -> int:
+    if value in (None, ""):
+        return default
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return -1
+    return parsed if parsed > 0 else -1
+
+
+def _contest_student_ids(contest: Contest) -> list[int]:
+    teacher_ids = set(
+        CourseParticipant.objects.filter(
+            course=contest.course,
+            role=CourseParticipant.Role.TEACHER,
+        ).values_list("user_id", flat=True)
+    )
+    if contest.course and contest.course.owner_id:
+        teacher_ids.add(contest.course.owner_id)
+
+    if contest.access_type == Contest.AccessType.PRIVATE:
+        candidate_ids = set(contest.allowed_participants.values_list("id", flat=True))
+    else:
+        candidate_ids = set(
+            CourseParticipant.objects.filter(
+                course=contest.course,
+                role=CourseParticipant.Role.STUDENT,
+            ).values_list("user_id", flat=True)
+        )
+        candidate_ids |= set(contest.allowed_participants.values_list("id", flat=True))
+
+    candidate_ids -= teacher_ids
+    return sorted(uid for uid in candidate_ids if uid is not None)
+
+
+def _parse_filter_datetime(value, *, end_of_day: bool = False):
+    if value in (None, ""):
+        return None, None
+
+    normalized = str(value).strip()
+    if not normalized:
+        return None, None
+
+    parsed = parse_datetime(normalized)
+    if parsed is None:
+        parsed_date = parse_date(normalized)
+        if parsed_date is None:
+            return None, "must be an ISO datetime or date"
+        parsed = datetime.combine(parsed_date, time.max if end_of_day else time.min)
+
+    if timezone.is_naive(parsed):
+        parsed = timezone.make_aware(parsed, timezone.get_current_timezone())
+
+    return parsed, None
+
 @login_required
 def create_contest(request, course_id):
     if request.method != 'POST':
@@ -234,6 +296,10 @@ def create_contest(request, course_id):
     data.setdefault("status", Contest.Status.GOING)
     data.setdefault("scoring", Contest.Scoring.IOI)
     data.setdefault("registration_type", Contest.Registration.OPEN)
+    data.setdefault("allow_notifications", True)
+    data.setdefault("allow_student_questions", True)
+    if _parse_bool(data.get("allow_notifications"), default=None) is False:
+        data["allow_student_questions"] = False
 
     form = ContestForm(data, course=course)
     if form.is_valid():
@@ -248,6 +314,8 @@ def create_contest(request, course_id):
                 "is_rated": contest.is_rated,
                 "scoring": contest.scoring,
                 "registration_type": contest.registration_type,
+                "allow_notifications": bool(contest.allow_notifications),
+                "allow_student_questions": _contest_questions_enabled(contest),
                 "created_by_id": contest.created_by_id,
                 **_contest_timing_payload(contest, user=request.user, include_submit=True),
             },
@@ -310,6 +378,8 @@ def list_contests(request):
                 "is_rated": contest.is_rated,
                 "scoring": contest.scoring,
                 "registration_type": contest.registration_type,
+                "allow_notifications": bool(contest.allow_notifications),
+                "allow_student_questions": _contest_questions_enabled(contest),
                 "problems_count": contest.problems_count,
                 "access_token": contest.access_token
                 if contest.access_type == Contest.AccessType.LINK and (is_teacher or is_admin)
@@ -373,7 +443,83 @@ def update_contest(request, contest_id):
         {
             "id": contest.id,
             "title": contest.title,
+            "allow_notifications": bool(contest.allow_notifications),
+            "allow_student_questions": _contest_questions_enabled(contest),
             **_contest_timing_payload(contest, user=request.user, include_submit=True),
+        },
+        status=200,
+    )
+
+
+@login_required
+def set_contest_questions(request, contest_id):
+    if request.method != "POST":
+        return JsonResponse({"detail": "Method not allowed"}, status=405)
+
+    contest = get_object_or_404(
+        Contest.objects.select_related("course__section", "course__owner"),
+        pk=contest_id,
+    )
+    if not contest.is_user_manager(request.user):
+        return JsonResponse({"detail": "Only contest teachers can change contest notification settings"}, status=403)
+
+    try:
+        payload = json.loads(request.body or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"detail": "Invalid JSON payload"}, status=400)
+    if not isinstance(payload, dict):
+        return JsonResponse({"detail": "JSON payload must be an object"}, status=400)
+
+    has_allow_notifications = "allow_notifications" in payload
+    has_allow_student_questions = "allow_student_questions" in payload
+    if not has_allow_notifications and not has_allow_student_questions:
+        return JsonResponse(
+            {"detail": "At least one of allow_notifications or allow_student_questions must be provided"},
+            status=400,
+        )
+
+    allow_notifications = None
+    if has_allow_notifications:
+        allow_notifications = _parse_bool(payload.get("allow_notifications"), default=None)
+        if allow_notifications is None:
+            return JsonResponse({"detail": "allow_notifications must be a boolean"}, status=400)
+
+    allow_student_questions = None
+    if has_allow_student_questions:
+        allow_student_questions = _parse_bool(payload.get("allow_student_questions"), default=None)
+        if allow_student_questions is None:
+            return JsonResponse({"detail": "allow_student_questions must be a boolean"}, status=400)
+
+    next_allow_notifications = (
+        bool(allow_notifications)
+        if allow_notifications is not None
+        else bool(contest.allow_notifications)
+    )
+    if not next_allow_notifications:
+        next_allow_student_questions = False
+    else:
+        next_allow_student_questions = (
+            bool(allow_student_questions)
+            if allow_student_questions is not None
+            else bool(contest.allow_student_questions)
+        )
+
+    changed_fields = []
+    if bool(contest.allow_notifications) != next_allow_notifications:
+        contest.allow_notifications = next_allow_notifications
+        changed_fields.append("allow_notifications")
+    if bool(contest.allow_student_questions) != next_allow_student_questions:
+        contest.allow_student_questions = next_allow_student_questions
+        changed_fields.append("allow_student_questions")
+
+    if changed_fields:
+        contest.save(update_fields=[*changed_fields, "updated_at"])
+
+    return JsonResponse(
+        {
+            "id": contest.id,
+            "allow_notifications": bool(contest.allow_notifications),
+            "allow_student_questions": _contest_questions_enabled(contest),
         },
         status=200,
     )
@@ -443,6 +589,8 @@ def contest_detail(request, contest_id):
             "is_rated": contest.is_rated,
             "scoring": contest.scoring,
             "registration_type": contest.registration_type,
+            "allow_notifications": bool(contest.allow_notifications),
+            "allow_student_questions": _contest_questions_enabled(contest),
             "problems_count": len(problems),
             "allowed_participants": allowed_participants,
             "problems": problems,
@@ -456,6 +604,209 @@ def contest_detail(request, contest_id):
             ),
             "course_owner_id": contest.course.owner_id,
             **_contest_timing_payload(contest, user=request.user, include_submit=True),
+        },
+        status=200,
+    )
+
+
+@login_required
+def contest_submissions(request, contest_id):
+    if request.method != "GET":
+        return JsonResponse({"detail": "Method not allowed"}, status=405)
+
+    contest = get_object_or_404(
+        Contest.objects.select_related("course__section", "course__owner").prefetch_related(
+            "allowed_participants"
+        ),
+        pk=contest_id,
+    )
+    if not contest.is_user_manager(request.user):
+        return JsonResponse({"detail": "Only contest teachers can view all submissions"}, status=403)
+
+    page = _parse_positive_int(request.GET.get("page"), default=1)
+    if page <= 0:
+        return JsonResponse({"detail": "page must be a positive integer"}, status=400)
+
+    page_size = _parse_positive_int(request.GET.get("page_size"), default=20)
+    if page_size <= 0:
+        return JsonResponse({"detail": "page_size must be a positive integer"}, status=400)
+    page_size = min(page_size, 100)
+
+    problem_links = list(
+        ContestProblem.objects.filter(contest_id=contest.id, problem__is_published=True)
+        .select_related("problem")
+        .order_by("position", "id")
+    )
+    problem_id_set = {link.problem_id for link in problem_links}
+    student_ids = _contest_student_ids(contest)
+
+    problem_options = [
+        {
+            "id": link.problem_id,
+            "title": link.problem.title,
+            "label": contest_problem_label(index),
+        }
+        for index, link in enumerate(problem_links)
+    ]
+    student_options = list(
+        User.objects.filter(id__in=student_ids)
+        .values("id", "username")
+        .order_by("username", "id")
+    )
+    status_options = [
+        {
+            "value": value,
+            "label": label,
+        }
+        for value, label in Submission.STATUS_CHOICES
+    ]
+    filters_payload = {
+        "problems": problem_options,
+        "students": student_options,
+        "statuses": status_options,
+    }
+
+    if not problem_id_set or not student_ids:
+        return JsonResponse(
+            {
+                "count": 0,
+                "page": page,
+                "page_size": page_size,
+                "total_pages": 1,
+                "next": None,
+                "previous": page - 1 if page > 1 else None,
+                "results": [],
+                "filters": filters_payload,
+            },
+            status=200,
+        )
+
+    problem_meta = {
+        link.problem_id: {
+            "title": link.problem.title,
+            "label": contest_problem_label(index),
+        }
+        for index, link in enumerate(problem_links)
+    }
+
+    requested_problem_id = _parse_positive_int(request.GET.get("problem_id"), default=0)
+    if requested_problem_id < 0:
+        return JsonResponse({"detail": "problem_id must be a positive integer"}, status=400)
+    if requested_problem_id and requested_problem_id not in problem_id_set:
+        return JsonResponse({"detail": "problem_id is not part of this contest"}, status=400)
+
+    requested_user_id = _parse_positive_int(request.GET.get("user_id"), default=0)
+    if requested_user_id < 0:
+        return JsonResponse({"detail": "user_id must be a positive integer"}, status=400)
+    if requested_user_id and requested_user_id not in student_ids:
+        return JsonResponse({"detail": "user_id is not a contest student"}, status=400)
+
+    raw_statuses = request.GET.getlist("status")
+    status_filters = []
+    for raw in raw_statuses:
+        parts = [part.strip() for part in str(raw).split(",")]
+        status_filters.extend([part for part in parts if part])
+
+    valid_statuses = {value for value, _ in Submission.STATUS_CHOICES}
+    invalid_statuses = sorted({status for status in status_filters if status not in valid_statuses})
+    if invalid_statuses:
+        return JsonResponse(
+            {"detail": "status contains invalid values", "invalid": invalid_statuses},
+            status=400,
+        )
+
+    search_query = (request.GET.get("q") or "").strip()
+
+    has_file_raw = request.GET.get("has_file")
+    has_file_filter = _parse_bool(has_file_raw, default=None)
+    if has_file_raw not in (None, "") and has_file_filter is None:
+        return JsonResponse({"detail": "has_file must be a boolean"}, status=400)
+
+    submitted_from, submitted_from_error = _parse_filter_datetime(
+        request.GET.get("submitted_from"),
+        end_of_day=False,
+    )
+    if submitted_from_error:
+        return JsonResponse({"detail": "submitted_from must be a valid ISO datetime/date"}, status=400)
+
+    submitted_to, submitted_to_error = _parse_filter_datetime(
+        request.GET.get("submitted_to"),
+        end_of_day=True,
+    )
+    if submitted_to_error:
+        return JsonResponse({"detail": "submitted_to must be a valid ISO datetime/date"}, status=400)
+    if submitted_from and submitted_to and submitted_to < submitted_from:
+        return JsonResponse({"detail": "submitted_to must be greater than or equal to submitted_from"}, status=400)
+
+    submissions_qs = (
+        Submission.objects.filter(
+            problem_id__in=problem_id_set,
+            user_id__in=student_ids,
+        )
+        .select_related("problem", "user")
+        .order_by("-submitted_at", "-id")
+    )
+    if requested_problem_id:
+        submissions_qs = submissions_qs.filter(problem_id=requested_problem_id)
+    if requested_user_id:
+        submissions_qs = submissions_qs.filter(user_id=requested_user_id)
+    if status_filters:
+        submissions_qs = submissions_qs.filter(status__in=status_filters)
+    if submitted_from is not None:
+        submissions_qs = submissions_qs.filter(submitted_at__gte=submitted_from)
+    if submitted_to is not None:
+        submissions_qs = submissions_qs.filter(submitted_at__lte=submitted_to)
+    if has_file_filter is True:
+        submissions_qs = submissions_qs.filter(file__isnull=False).exclude(file="")
+    elif has_file_filter is False:
+        submissions_qs = submissions_qs.filter(Q(file__isnull=True) | Q(file=""))
+    if search_query:
+        search_q = Q(user__username__icontains=search_query) | Q(problem__title__icontains=search_query)
+        if search_query.isdigit():
+            search_q |= Q(id=int(search_query))
+        submissions_qs = submissions_qs.filter(search_q)
+
+    total = submissions_qs.count()
+    total_pages = max(1, (total + page_size - 1) // page_size)
+    offset = (page - 1) * page_size
+    page_rows = list(submissions_qs[offset : offset + page_size])
+
+    results = []
+    for submission in page_rows:
+        problem_info = problem_meta.get(submission.problem_id, {})
+        file_url = submission.file.url if submission.file else None
+        file_name = Path(submission.file.name).name if submission.file else None
+        is_csv_file = bool(file_name and file_name.lower().endswith(".csv"))
+        results.append(
+            {
+                "id": submission.id,
+                "user_id": submission.user_id,
+                "username": submission.user.username if submission.user_id else "",
+                "problem_id": submission.problem_id,
+                "problem_title": problem_info.get("title") or submission.problem.title,
+                "problem_label": problem_info.get("label"),
+                "submitted_at": submission.submitted_at.isoformat() if submission.submitted_at else None,
+                "status": submission.status,
+                "metrics": submission.metrics,
+                "score": _primary_metric(submission.metrics),
+                "file_url": file_url,
+                "file_name": file_name,
+                "is_csv_file": is_csv_file,
+            }
+        )
+
+    has_next = page < total_pages
+    has_previous = page > 1
+    return JsonResponse(
+        {
+            "count": total,
+            "page": page,
+            "page_size": page_size,
+            "total_pages": total_pages,
+            "next": page + 1 if has_next else None,
+            "previous": page - 1 if has_previous else None,
+            "results": results,
+            "filters": filters_payload,
         },
         status=200,
     )

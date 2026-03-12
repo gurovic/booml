@@ -7,7 +7,7 @@ from django.utils import timezone
 
 from runner.models import Contest, Course, CourseParticipant, Section
 from runner.services.section_service import SectionCreateInput, create_section
-from runner.views.contest_draft import create_contest, delete_contest, update_contest
+from runner.views.contest_draft import create_contest, delete_contest, set_contest_questions, update_contest
 
 User = get_user_model()
 
@@ -67,6 +67,8 @@ class CreateContestViewTests(TestCase):
         self.assertEqual(payload["duration_minutes"], 120)
         self.assertTrue(payload["has_time_limit"])
         self.assertTrue(payload["allow_upsolving"])
+        self.assertTrue(payload["allow_notifications"])
+        self.assertTrue(payload["allow_student_questions"])
         self.assertIsNotNone(payload["start_time"])
         self.assertIsNotNone(payload["end_time"])
         self.assertEqual(payload["status"], 0)
@@ -80,6 +82,8 @@ class CreateContestViewTests(TestCase):
         self.assertEqual(contest.registration_type, "approval")
         self.assertEqual(contest.duration_minutes, 120)
         self.assertTrue(contest.allow_upsolving)
+        self.assertTrue(contest.allow_notifications)
+        self.assertTrue(contest.allow_student_questions)
 
     def test_non_owner_gets_forbidden(self):
         student = User.objects.create_user(username="student", password="pass")
@@ -296,3 +300,108 @@ class UpdateContestViewTests(TestCase):
         self.assertEqual(response.status_code, 400)
         self.contest.refresh_from_db()
         self.assertEqual(self.contest.duration_minutes, 120)
+
+
+class SetContestQuestionsViewTests(TestCase):
+    def setUp(self):
+        self.factory = RequestFactory()
+        self.owner = User.objects.create_user(username="owner_questions", password="pass")
+        self.teacher = User.objects.create_user(username="teacher_questions", password="pass")
+        self.student = User.objects.create_user(username="student_questions", password="pass")
+        self.root_section = Section.objects.get(title="Авторские", parent__isnull=True)
+        self.section = create_section(
+            SectionCreateInput(
+                title="Questions Section",
+                owner=self.owner,
+                parent=self.root_section,
+            )
+        )
+        self.course = Course.objects.create(
+            title="Questions Course",
+            owner=self.owner,
+            section=self.section,
+        )
+        CourseParticipant.objects.create(
+            course=self.course,
+            user=self.owner,
+            role=CourseParticipant.Role.TEACHER,
+            is_owner=True,
+        )
+        CourseParticipant.objects.create(
+            course=self.course,
+            user=self.teacher,
+            role=CourseParticipant.Role.TEACHER,
+            is_owner=False,
+        )
+        CourseParticipant.objects.create(
+            course=self.course,
+            user=self.student,
+            role=CourseParticipant.Role.STUDENT,
+            is_owner=False,
+        )
+        self.contest = Contest.objects.create(
+            title="Questions switch",
+            course=self.course,
+            created_by=self.owner,
+            is_published=True,
+            approval_status=Contest.ApprovalStatus.APPROVED,
+            allow_student_questions=True,
+        )
+
+    def _post_json(self, user, payload):
+        request = self.factory.post(
+            "/",
+            data=json.dumps(payload),
+            content_type="application/json",
+        )
+        request.user = user
+        return set_contest_questions.__wrapped__(request, contest_id=self.contest.id)
+
+    def test_teacher_can_disable_questions(self):
+        response = self._post_json(self.teacher, {"allow_student_questions": False})
+
+        self.assertEqual(response.status_code, 200)
+        payload = json.loads(response.content.decode())
+        self.assertTrue(payload["allow_notifications"])
+        self.assertFalse(payload["allow_student_questions"])
+        self.contest.refresh_from_db()
+        self.assertTrue(self.contest.allow_notifications)
+        self.assertFalse(self.contest.allow_student_questions)
+
+    def test_student_cannot_change_questions_setting(self):
+        response = self._post_json(self.student, {"allow_student_questions": False})
+
+        self.assertEqual(response.status_code, 403)
+        self.contest.refresh_from_db()
+        self.assertTrue(self.contest.allow_student_questions)
+
+    def test_teacher_can_disable_notifications_and_questions_are_forced_off(self):
+        response = self._post_json(
+            self.teacher,
+            {
+                "allow_notifications": False,
+                "allow_student_questions": True,
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = json.loads(response.content.decode())
+        self.assertFalse(payload["allow_notifications"])
+        self.assertFalse(payload["allow_student_questions"])
+        self.contest.refresh_from_db()
+        self.assertFalse(self.contest.allow_notifications)
+        self.assertFalse(self.contest.allow_student_questions)
+
+    def test_questions_cannot_be_enabled_while_notifications_disabled(self):
+        self.contest.allow_notifications = False
+        self.contest.allow_student_questions = False
+        self.contest.save(update_fields=["allow_notifications", "allow_student_questions"])
+
+        response = self._post_json(self.teacher, {"allow_student_questions": True})
+
+        self.assertEqual(response.status_code, 200)
+        payload = json.loads(response.content.decode())
+        self.assertFalse(payload["allow_notifications"])
+        self.assertFalse(payload["allow_student_questions"])
+        self.contest.refresh_from_db()
+        self.assertFalse(self.contest.allow_student_questions)

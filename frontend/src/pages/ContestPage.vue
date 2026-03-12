@@ -8,15 +8,29 @@
         <div v-if="isLoading" class="state">Загрузка...</div>
         <div v-else-if="error" class="state state--error">{{ error }}</div>
         <template v-else-if="contest">
-          <div class="contest-header">
+          <div
+            class="contest-header"
+            :class="{ 'contest-header--teacher': canManageContest }"
+          >
             <h1 class="contest-title">{{ contestTitle }}</h1>
-            <div class="contest-actions">
+            <div
+              class="contest-actions"
+              :class="{ 'contest-actions--teacher': canManageContest }"
+            >
               <button
                 v-if="canManageContest"
                 class="button button--primary"
                 @click="showAddProblemDialog = true"
               >
                 Добавить задачу
+              </button>
+              <button
+                v-if="canManageContest"
+                class="button button--secondary"
+                type="button"
+                @click="openContestSettingsDialog"
+              >
+                Настройки контеста
               </button>
               <button
                 v-if="canEditContest && contestHasTimeLimit"
@@ -33,6 +47,20 @@
               >
                 Результаты
               </router-link>
+              <router-link
+                v-if="canManageContest"
+                :to="contestSubmissionsRoute"
+                class="button button--secondary contest-link"
+              >
+                Все посылки
+              </router-link>
+              <ContestNotificationsWidget
+                v-if="contest?.id && contestAllowsNotifications"
+                :contest-id="contest.id"
+                :can-manage="canManageContest"
+                :contest-title="contestTitle"
+                :questions-enabled="contestAllowsStudentQuestions"
+              />
             </div>
           </div>
           <div v-if="contest.description" class="contest-description">
@@ -252,6 +280,120 @@
         </div>
       </div>
     </div>
+
+    <div
+      v-if="canManageContest && showContestSettingsDialog"
+      class="dialog-overlay dialog-overlay--settings"
+      @click="closeContestSettingsDialog"
+    >
+      <div class="dialog dialog--settings" @click.stop>
+        <div class="dialog__header">
+          <h2 class="dialog__title">Настройки контеста</h2>
+          <button class="dialog__close" @click="closeContestSettingsDialog">×</button>
+        </div>
+        <div class="dialog__body">
+          <div class="settings-modal">
+            <section class="settings-card">
+              <div class="settings-section__head">
+                <h3 class="settings-section__title">Шаг 1. Уведомления в контесте</h3>
+                <span
+                  class="settings-state"
+                  :class="contestSettings.allow_notifications ? 'settings-state--on' : 'settings-state--off'"
+                >
+                  {{ contestSettings.allow_notifications ? 'Включено' : 'Выключено' }}
+                </span>
+              </div>
+              <label class="settings-option">
+                <input
+                  v-model="contestSettings.allow_notifications"
+                  type="checkbox"
+                  class="settings-option__checkbox"
+                />
+                <span class="settings-option__content">
+                  <span class="settings-option__title">Показывать объявления и вопросы в контесте</span>
+                  <span class="settings-option__hint">
+                    Если выключено, виджет уведомлений полностью скрывается у учителя и учеников.
+                  </span>
+                </span>
+              </label>
+            </section>
+            <div
+              class="settings-dependency"
+              :class="contestSettings.allow_notifications ? 'settings-dependency--ok' : 'settings-dependency--blocked'"
+            >
+              <span class="settings-dependency__icon" aria-hidden="true">→</span>
+              <span v-if="contestSettings.allow_notifications">
+                Уведомления включены. Теперь можно настраивать вопросы учеников.
+              </span>
+              <span v-else>
+                Чтобы разрешить вопросы, сначала включите уведомления в шаге 1.
+              </span>
+            </div>
+            <section
+              class="settings-card"
+              :class="{ 'settings-card--blocked': !contestSettings.allow_notifications }"
+            >
+              <div class="settings-section__head">
+                <h3 class="settings-section__title">Шаг 2. Вопросы учеников</h3>
+                <span
+                  class="settings-state"
+                  :class="
+                    !contestSettings.allow_notifications
+                      ? 'settings-state--blocked'
+                      : (contestSettings.allow_student_questions ? 'settings-state--on' : 'settings-state--off')
+                  "
+                >
+                  {{
+                    !contestSettings.allow_notifications
+                      ? 'Недоступно'
+                      : (contestSettings.allow_student_questions ? 'Включено' : 'Выключено')
+                  }}
+                </span>
+              </div>
+              <p v-if="!contestSettings.allow_notifications" class="settings-lock-note">
+                Вопросы недоступны, пока уведомления выключены.
+              </p>
+              <label
+                class="settings-option"
+                :class="{ 'settings-option--disabled': !contestSettings.allow_notifications }"
+              >
+                <input
+                  v-model="contestSettings.allow_student_questions"
+                  type="checkbox"
+                  class="settings-option__checkbox"
+                  :disabled="!contestSettings.allow_notifications"
+                />
+                <span class="settings-option__content">
+                  <span class="settings-option__title">Разрешить ученикам задавать вопросы</span>
+                  <span class="settings-option__hint">
+                    Доступно только когда уведомления включены. При отключении уведомлений вопросы выключаются автоматически.
+                  </span>
+                </span>
+              </label>
+            </section>
+            <div v-if="contestSettingsError" class="form-error">{{ contestSettingsError }}</div>
+          </div>
+        </div>
+        <div class="dialog__footer">
+          <button
+            class="button button--secondary"
+            type="button"
+            :disabled="isUpdatingQuestionSettings"
+            @click="closeContestSettingsDialog"
+          >
+            Отмена
+          </button>
+          <button
+            class="button button--primary"
+            type="button"
+            :disabled="isUpdatingQuestionSettings"
+            @click="saveContestSettings"
+          >
+            {{ isUpdatingQuestionSettings ? 'Сохранение...' : 'Сохранить' }}
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -265,8 +407,9 @@ import UiHeader from '@/components/ui/UiHeader.vue'
 import UiBreadcrumbs from '@/components/ui/UiBreadcrumbs.vue'
 import UiLinkList from '@/components/ui/UiLinkList.vue'
 import UiIdPill from '@/components/ui/UiIdPill.vue'
+import ContestNotificationsWidget from '@/components/contest/ContestNotificationsWidget.vue'
 import { arrayMove } from '@/utils/arrayMove'
-import { normalizeContestProblemLabel, toContestProblemLabel } from '@/utils/contestProblemLabel'
+import { toContestProblemLabel } from '@/utils/contestProblemLabel'
 import { formatCountdown, formatDateTimeMsk, toTimestamp } from '@/utils/datetime'
 
 const route = useRoute()
@@ -280,13 +423,16 @@ const isLoading = ref(false)
 const error = ref('')
 const showAddProblemDialog = ref(false)
 const showTimingDialog = ref(false)
+const showContestSettingsDialog = ref(false)
 const loadingProblems = ref(false)
 const availableProblems = ref([])
 const selectedProblemIds = ref([])
 const isAddingProblem = ref(false)
 const isUpdatingTiming = ref(false)
+const isUpdatingQuestionSettings = ref(false)
 const addProblemError = ref('')
 const timingError = ref('')
+const contestSettingsError = ref('')
 const problemSearch = ref('')
 const page = ref(1)
 const totalPages = ref(1)
@@ -301,6 +447,10 @@ const editTiming = ref({
   start_time: '',
   end_time: '',
   allow_upsolving: false,
+})
+const contestSettings = ref({
+  allow_notifications: true,
+  allow_student_questions: true,
 })
 
 const contestTitle = computed(() => {
@@ -363,6 +513,10 @@ const canManageContest = computed(() => {
   if (!userStore.currentUser || !contest.value) return false
   return !!contest.value.can_manage
 })
+const contestAllowsNotifications = computed(() => contest.value?.allow_notifications !== false)
+const contestAllowsStudentQuestions = computed(
+  () => contestAllowsNotifications.value && contest.value?.allow_student_questions !== false
+)
 const canEditContest = computed(() => {
   if (!userStore.currentUser || !contest.value) return false
   return !!contest.value.can_edit
@@ -389,8 +543,7 @@ const problemItems = computed(() => {
   return problems
     .filter(problem => problem?.id != null)
     .map((problem, index) => {
-      const ordinal = Number.isInteger(problem?.index) && problem.index >= 0 ? problem.index : index
-      const label = normalizeContestProblemLabel(problem?.label) || toContestProblemLabel(ordinal)
+      const label = toContestProblemLabel(index)
       return {
         id: problem.id,
         idPill: label,
@@ -410,6 +563,12 @@ const leaderboardRoute = computed(() => {
   const title = contest.value?.title
   const query = title ? { title } : {}
   return { name: 'contest-leaderboard', params: { id: contestId.value }, query }
+})
+
+const contestSubmissionsRoute = computed(() => {
+  const title = contest.value?.title
+  const query = title ? { title } : {}
+  return { name: 'contest-submissions', params: { id: contestId.value }, query }
 })
 
 const loadContest = async ({ silent = false } = {}) => {
@@ -535,6 +694,62 @@ const saveTimingChanges = async () => {
     isUpdatingTiming.value = false
   }
 }
+
+const openContestSettingsDialog = () => {
+  if (!contest.value || !canManageContest.value) return
+  contestSettings.value = {
+    allow_notifications: contestAllowsNotifications.value,
+    allow_student_questions: contestAllowsStudentQuestions.value,
+  }
+  contestSettingsError.value = ''
+  showContestSettingsDialog.value = true
+}
+
+const closeContestSettingsDialog = (force = false) => {
+  if (!force && isUpdatingQuestionSettings.value) return
+  showContestSettingsDialog.value = false
+  contestSettingsError.value = ''
+}
+
+const saveContestSettings = async () => {
+  if (!contest.value || !canManageContest.value || isUpdatingQuestionSettings.value) return
+  isUpdatingQuestionSettings.value = true
+  contestSettingsError.value = ''
+  const allowNotifications = contestSettings.value.allow_notifications !== false
+  const desiredAllowStudentQuestions =
+    allowNotifications && contestSettings.value.allow_student_questions !== false
+  try {
+    const response = await contestApi.updateContestQuestionSettings(contest.value.id, {
+      allow_notifications: allowNotifications,
+      allow_student_questions: desiredAllowStudentQuestions,
+    })
+    const notificationsEnabled = response?.allow_notifications !== false
+    const persistedAllowStudentQuestions = response?.allow_student_questions !== false
+    contest.value = {
+      ...contest.value,
+      allow_notifications: notificationsEnabled,
+      allow_student_questions: persistedAllowStudentQuestions,
+    }
+    contestSettings.value = {
+      allow_notifications: notificationsEnabled,
+      allow_student_questions: persistedAllowStudentQuestions,
+    }
+    closeContestSettingsDialog(true)
+  } catch (err) {
+    console.error('Failed to update contest question settings:', err)
+    contestSettingsError.value = err?.message || 'Не удалось обновить настройки контеста.'
+  } finally {
+    isUpdatingQuestionSettings.value = false
+  }
+}
+
+watch(
+  () => contestSettings.value.allow_notifications,
+  (enabled) => {
+    if (enabled !== false) return
+    contestSettings.value.allow_student_questions = false
+  }
+)
 
 const isProblemInContest = (problemId) => {
   const set = new Set((contest.value?.problems || []).map(p => p.id))
@@ -757,11 +972,17 @@ watch(showAddProblemDialog, (newValue) => {
 
 .contest-header {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
   flex-wrap: wrap;
   padding: 16px 4px 0;
+}
+
+.contest-header--teacher {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 14px;
 }
 
 .contest-title {
@@ -774,6 +995,46 @@ watch(showAddProblemDialog, (newValue) => {
   display: flex;
   gap: 8px;
   align-items: center;
+  flex-wrap: wrap;
+}
+
+.contest-actions--teacher {
+  width: 100%;
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 10px;
+  align-items: stretch;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.contest-actions--teacher > .button,
+.contest-actions--teacher > .contest-link {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  padding: 10px 16px;
+}
+
+.contest-actions--teacher :deep(.contest-notify) {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.contest-actions--teacher :deep(.contest-notify__trigger) {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+  padding: 10px 16px;
 }
 
 .contest-link {
@@ -952,6 +1213,173 @@ watch(showAddProblemDialog, (newValue) => {
 
 .dialog--timing {
   max-width: 640px;
+}
+
+.dialog-overlay--settings {
+  background: radial-gradient(1000px 600px at 50% 0%, rgba(15, 23, 42, 0.45), rgba(0, 0, 0, 0.56));
+  backdrop-filter: blur(4px);
+}
+
+.dialog--settings {
+  max-width: 660px;
+  border: 1px solid rgba(15, 23, 42, 0.14);
+  border-radius: 18px;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.28);
+}
+
+.dialog--settings .dialog__header {
+  background: rgba(255, 255, 255, 0.92);
+  border-bottom-color: rgba(15, 23, 42, 0.08);
+}
+
+.dialog--settings .dialog__footer {
+  background: rgba(255, 255, 255, 0.92);
+  border-top-color: rgba(15, 23, 42, 0.08);
+}
+
+.settings-modal {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.settings-card {
+  border: 1px solid rgba(37, 99, 235, 0.16);
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(59, 130, 246, 0.08), rgba(59, 130, 246, 0.03));
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.settings-card--blocked {
+  border-color: rgba(120, 53, 15, 0.22);
+  background: linear-gradient(180deg, rgba(245, 158, 11, 0.1), rgba(245, 158, 11, 0.04));
+}
+
+.settings-section__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.settings-section__title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: rgba(15, 23, 42, 0.92);
+}
+
+.settings-state {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 24px;
+  border-radius: 999px;
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 700;
+  border: 1px solid transparent;
+}
+
+.settings-state--on {
+  background: rgba(16, 185, 129, 0.14);
+  border-color: rgba(16, 185, 129, 0.35);
+  color: #047857;
+}
+
+.settings-state--off {
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.3);
+  color: #b91c1c;
+}
+
+.settings-state--blocked {
+  background: rgba(245, 158, 11, 0.16);
+  border-color: rgba(245, 158, 11, 0.34);
+  color: #92400e;
+}
+
+.settings-dependency {
+  border-radius: 12px;
+  border: 1px solid transparent;
+  padding: 10px 12px;
+  font-size: 13px;
+  line-height: 1.4;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.settings-dependency__icon {
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.2;
+  flex: 0 0 auto;
+}
+
+.settings-dependency--ok {
+  background: rgba(16, 185, 129, 0.09);
+  border-color: rgba(16, 185, 129, 0.22);
+  color: #047857;
+}
+
+.settings-dependency--blocked {
+  background: rgba(245, 158, 11, 0.12);
+  border-color: rgba(245, 158, 11, 0.3);
+  color: #92400e;
+}
+
+.settings-lock-note {
+  margin: -2px 0 0;
+  font-size: 13px;
+  line-height: 1.4;
+  color: #92400e;
+  font-weight: 600;
+}
+
+.settings-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.9);
+  padding: 12px;
+  cursor: pointer;
+}
+
+.settings-option--disabled {
+  opacity: 0.72;
+  cursor: not-allowed;
+}
+
+.settings-option__checkbox {
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+  flex: 0 0 auto;
+}
+
+.settings-option__content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.settings-option__title {
+  font-size: 14px;
+  font-weight: 700;
+  color: rgba(15, 23, 42, 0.92);
+}
+
+.settings-option__hint {
+  font-size: 13px;
+  line-height: 1.45;
+  color: rgba(15, 23, 42, 0.68);
 }
 
 .timing-form {

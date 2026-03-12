@@ -42,8 +42,17 @@ export async function submitSolution(problemId, payload = {}) {
   })
 }
 
-export async function getSubmission(submissionId) {
-  return await fetchJsonWithFriendlyErrors(`/api/submissions/${submissionId}/`, {
+export async function getSubmission(submissionId, { contestId = null } = {}) {
+  const params = new URLSearchParams()
+  if (contestId != null && contestId !== '') {
+    params.set('contest_id', String(contestId))
+  }
+  const query = params.toString()
+  const url = query
+    ? `/api/submissions/${submissionId}/?${query}`
+    : `/api/submissions/${submissionId}/`
+
+  return await fetchJsonWithFriendlyErrors(url, {
     method: 'GET',
     credentials: 'include'
   })
