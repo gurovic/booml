@@ -168,6 +168,8 @@ class Contest(models.Model):
         return "always_open"
 
     def is_submission_allowed(self, user, at=None):
+        if not getattr(user, "is_authenticated", False):
+            return False, "Авторизуйтесь, чтобы отправлять решения."
         if self.is_user_manager(user):
             return True, ""
         if not self.is_visible_to(user):
@@ -190,8 +192,12 @@ class Contest(models.Model):
         Drafts are visible only to course teachers (including course owner).
         Published contests follow access_type and course membership.
         """
-        if not user.is_authenticated:
-            return False
+        if not getattr(user, "is_authenticated", False):
+            return bool(
+                self.is_published
+                and self.access_type == self.AccessType.PUBLIC
+                and self.course.is_open
+            )
 
         if self.is_user_manager(user):
             return True

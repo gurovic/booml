@@ -153,7 +153,7 @@ id,pred
 
 <script setup>
 import { ref, onBeforeUnmount, onMounted, computed, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { contestApi } from '@/api'
 import { getProblem } from '@/api/problem'
 import { submitSolution } from '@/api/submission'
@@ -174,6 +174,7 @@ const md = new MarkdownIt({
 }).use(markdownKatex, { throwOnError: false })
 
 const route = useRoute()
+const router = useRouter()
 const userStore = useUserStore()
 
 let problem = ref(null)
@@ -219,6 +220,11 @@ const contestIdFromQuery = computed(() => {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : null
 })
 const queryProblemLabel = computed(() => normalizeContestProblemLabel(queryValue(route.query.problem_label)))
+const isAuthorized = computed(() => !!userStore.currentUser)
+const isAuthRequiredError = (err) => {
+  const status = Number(err?.status)
+  return status === 401 || status === 403
+}
 
 const resolveContestProblemLabel = async () => {
   contestProblemLabel.value = queryProblemLabel.value
@@ -243,6 +249,10 @@ const loadProblem = async () => {
     const res = await getProblem(route.params.id, { contestId: contestIdFromQuery.value })
     problem.value = res
   } catch (err) {
+    if (!isAuthorized.value && isAuthRequiredError(err)) {
+      await router.replace({ name: 'auth-required', query: { redirect: route.fullPath } })
+      return
+    }
     console.log(err)
   } finally {
     if (problem.value != null) {

@@ -4,6 +4,23 @@
     <div class="home__content">
       <div class="home__layout">
         <div class="home__main">
+          <div v-if="!isAuthorized" class="section-card guest-welcome">
+            <h1 class="guest-welcome__title">Добро пожаловать в BOOML</h1>
+            <p class="guest-welcome__text">
+              <span v-if="hasAnyCourses">
+                Платформа для соревнований и обучения ML: смотрите открытые курсы и задачи. Чтобы отправлять решения и
+                сохранять прогресс, войдите или зарегистрируйтесь.
+              </span>
+              <span v-else>
+                Открытых курсов сейчас нет. Войдите или зарегистрируйтесь, чтобы получить доступ к учебному разделу.
+              </span>
+            </p>
+            <div class="guest-welcome__actions">
+              <button class="button button--primary" @click="router.push('/login')">Войти</button>
+              <button class="button button--secondary" @click="router.push('/register')">Регистрация</button>
+            </div>
+          </div>
+
           <div v-for="section in visibleSections" :key="section.id" class="section-card">
             <div class="section-header-row">
               <button
@@ -512,6 +529,31 @@ onMounted(loadSidebar)
   padding: 10px;
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
   border: 1px solid #e5e9f1;
+}
+
+.guest-welcome {
+  padding: 20px;
+}
+
+.guest-welcome__title {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--color-text-title);
+}
+
+.guest-welcome__text {
+  margin: 10px 0 0;
+  color: var(--color-text-primary);
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.guest-welcome__actions {
+  margin-top: 14px;
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 /* legacy class, kept for other inline sections if any */

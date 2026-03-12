@@ -52,8 +52,6 @@ def _course_is_member(course: Course, user) -> bool:
 def course_detail(request, course_id):
     if request.method != "GET":
         return JsonResponse({"detail": "Method not allowed"}, status=405)
-    if not request.user.is_authenticated:
-        return JsonResponse({"detail": "Authentication required"}, status=401)
 
     course = get_object_or_404(
         Course.objects.select_related("section", "owner").prefetch_related("participants__user"),
@@ -100,8 +98,6 @@ def course_detail(request, course_id):
 def course_contests(request, course_id):
     if request.method != "GET":
         return JsonResponse({"detail": "Method not allowed"}, status=405)
-    if not request.user.is_authenticated:
-        return JsonResponse({"detail": "Authentication required"}, status=401)
 
     course = get_object_or_404(
         Course.objects.select_related("section", "owner").prefetch_related("participants__user"),

@@ -179,7 +179,7 @@ const load = async () => {
   error.value = ''
   try {
     const res = await courseApi.browseCourses({
-      tab: activeTab.value,
+      tab: isAuthorized.value ? activeTab.value : 'all',
       q: search.value,
       page: page.value,
       page_size: pageSize,

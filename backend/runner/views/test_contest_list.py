@@ -119,13 +119,40 @@ class ContestListViewTests(TestCase):
         payload = json.loads(response.content.decode())
         self.assertEqual(payload["items"], [])
 
-    def test_requires_authentication(self):
+    def test_guest_sees_no_contests_for_closed_course(self):
         request = self.factory.get("/")
         request.user = AnonymousUser()
 
         response = list_contests(request)
 
-        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.status_code, 200)
+        payload = json.loads(response.content.decode())
+        self.assertEqual(payload["items"], [])
+
+    def test_guest_sees_only_public_published_contests_for_open_course(self):
+        self.course.is_open = True
+        self.course.save(update_fields=["is_open"])
+
+        Contest.objects.create(
+            title="Private For Guest",
+            course=self.course,
+            created_by=self.teacher,
+            is_published=True,
+            access_type=Contest.AccessType.PRIVATE,
+            approval_status=Contest.ApprovalStatus.APPROVED,
+        )
+
+        request = self.factory.get("/")
+        request.user = AnonymousUser()
+
+        response = list_contests(request)
+
+        self.assertEqual(response.status_code, 200)
+        payload = json.loads(response.content.decode())
+        titles = {item["title"] for item in payload["items"]}
+        self.assertIn("Published", titles)
+        self.assertNotIn("Draft", titles)
+        self.assertNotIn("Private For Guest", titles)
 
     def test_private_contest_visible_only_to_allowed(self):
         private_contest = Contest.objects.create(

@@ -58,13 +58,11 @@ const router = createRouter({
       path: '/section/:id',
       name: 'section',
       component: SectionPage,
-      meta: { requiresAuth: true },
     },
     {
       path: '/course/:id',
       name: 'course',
       component: CoursePage,
-      meta: { requiresAuth: true },
     },
     {
       path: '/course/:id/leaderboard/',
@@ -81,7 +79,6 @@ const router = createRouter({
       path: '/contest/:id',
       name: 'contest',
       component: ContestPage,
-      meta: { requiresAuth: true },
     },
     {
       path: '/contest/:id/leaderboard',
@@ -126,14 +123,33 @@ const router = createRouter({
   ],
 })
 
+const sanitizeRedirect = (value) => {
+  const raw = Array.isArray(value) ? value[0] : value
+  if (typeof raw !== 'string' || !raw.startsWith('/')) return '/'
+  if (raw.startsWith('/auth-required')) return '/'
+  return raw
+}
+
 router.beforeEach((to) => {
   const userStore = useUserStore()
-  if (to.meta?.requiresAuth && !userStore.isAuthenticated) {
+  const isAuthorized = !!userStore.currentUser
+  const requiresAuth = to.matched.some(record => record.meta?.requiresAuth)
+
+  if (!isAuthorized && requiresAuth) {
     return {
       name: 'auth-required',
       query: { redirect: to.fullPath },
     }
   }
+
+  if (isAuthorized && (to.name === 'login' || to.name === 'register')) {
+    return { name: 'home' }
+  }
+
+  if (isAuthorized && to.name === 'auth-required') {
+    return sanitizeRedirect(to.query?.redirect)
+  }
+
   return true
 })
 

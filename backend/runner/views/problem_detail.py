@@ -349,8 +349,6 @@ def problem_detail_api(request):
         return JsonResponse({"detail": "contest_id must be a positive integer"}, status=400)
 
     if parsed_contest_id is not None:
-        if not request.user.is_authenticated:
-            return JsonResponse({"detail": "Authentication required"}, status=401)
         contest = get_object_or_404(
             Contest.objects.select_related("course__section")
             .prefetch_related("allowed_participants"),

@@ -259,8 +259,6 @@ def create_contest(request, course_id):
 def list_contests(request):
     if request.method != "GET":
         return JsonResponse({"detail": "Method not allowed"}, status=405)
-    if not request.user.is_authenticated:
-        return JsonResponse({"detail": "Authentication required"}, status=401)
 
     course_id = request.GET.get("course_id")
     try:
@@ -277,9 +275,10 @@ def list_contests(request):
     if course_filter is not None:
         contests = contests.filter(course_id=course_filter)
 
-    is_admin = request.user.is_staff or request.user.is_superuser
+    is_admin = bool(request.user.is_staff or request.user.is_superuser)
+    is_authenticated = bool(getattr(request.user, "is_authenticated", False))
     teacher_course_ids: set[int] = set()
-    if not is_admin:
+    if is_authenticated and not is_admin:
         teacher_course_ids |= set(
             Course.objects.filter(owner=request.user).values_list("id", flat=True)
         )
@@ -382,8 +381,6 @@ def update_contest(request, contest_id):
 def contest_detail(request, contest_id):
     if request.method != "GET":
         return JsonResponse({"detail": "Method not allowed"}, status=405)
-    if not request.user.is_authenticated:
-        return JsonResponse({"detail": "Authentication required"}, status=401)
 
     contest = get_object_or_404(
         Contest.objects.select_related("course__section", "course__owner")
