@@ -110,7 +110,7 @@ id,pred
               </div>
             </div>
           </li>
-          <li class="problem__submissions problem__menu-item">
+          <li class="problem__submissions problem__menu-item" v-if="userStore.isAuthenticated">
             <h2 class="problem__submissions-title problem__item-title">Последние посылки</h2>
             <ul class="problem__submissions-list">
               <li class="problem__submission-head">

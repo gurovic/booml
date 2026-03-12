@@ -7,7 +7,7 @@
 
       <section class="courses-panel">
         <div class="courses-head">
-          <h1 class="courses-title">Мои курсы</h1>
+          <h1 class="courses-title">{{ pageTitle }}</h1>
 
           <div v-if="isTeacher" class="tabs" role="tablist" aria-label="Фильтр курсов">
             <button
@@ -69,7 +69,7 @@
             <div class="empty__title">Ничего не найдено</div>
             <div class="empty__hint">
               <span v-if="search.trim()">Попробуйте изменить запрос.</span>
-              <span v-else>Пока нет доступных курсов по этому фильтру.</span>
+              <span v-else>{{ isAuthorized ? 'Пока нет доступных курсов по этому фильтру.' : 'Открытые курсы пока не опубликованы.' }}</span>
             </div>
           </div>
 
@@ -151,6 +151,7 @@ const userStore = useUserStore()
 
 const isAuthorized = computed(() => !!userStore.currentUser)
 const isTeacher = computed(() => String(userStore.currentUser?.role || '') === 'teacher')
+const pageTitle = computed(() => (isAuthorized.value ? 'Мои курсы' : 'Каталог курсов'))
 
 const activeTab = ref('mine') // mine | admin
 const search = ref('')
@@ -243,10 +244,6 @@ const toggleFavorite = async (course) => {
 }
 
 onMounted(() => {
-  if (!isAuthorized.value) {
-    router.push({ name: 'login' })
-    return
-  }
   if (!isTeacher.value && activeTab.value === 'admin') activeTab.value = 'mine'
   load()
 })

@@ -4,7 +4,7 @@
     <div class="home__content">
       <div class="home__layout">
         <div class="home__main">
-          <div v-for="section in sections" :key="section.id" class="section-card">
+          <div v-for="section in visibleSections" :key="section.id" class="section-card">
             <div class="section-header-row">
               <button
                 type="button"
@@ -46,7 +46,7 @@
             </ul>
           </div>
 
-          <div v-if="standalone.length && isAuthorized" class="section-card">
+          <div v-if="standalone.length" class="section-card">
             <div class="section-header-row">
               <button
                 type="button"
@@ -77,18 +77,26 @@
             </ul>
           </div>
 
-          <div v-if="(!sections.length && !standalone.length) || (!isAuthorized)" class="section-card empty-state">
+          <div v-if="!hasAnyCourses" class="section-card empty-state">
             <div class="empty-state__content">
               <h2 class="empty-state__title">Нет доступных курсов</h2>
               <p class="empty-state__text">
-                Войдите в систему, чтобы увидеть доступные курсы
+                {{ isAuthorized ? 'Пока у вас нет доступных курсов.' : 'Открытых курсов пока нет. Войдите, чтобы получить доступ к учебному разделу.' }}
               </p>
-              <button
-                class="button button--primary empty-state__button"
-                @click="router.push('/login')"
-              >
-                Войти
-              </button>
+              <div class="empty-state__actions" v-if="!isAuthorized">
+                <button
+                  class="button button--primary empty-state__button"
+                  @click="router.push('/login')"
+                >
+                  Войти
+                </button>
+                <button
+                  class="button button--secondary empty-state__button"
+                  @click="router.push('/register')"
+                >
+                  Регистрация
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -221,6 +229,23 @@ const hasChildren = item => Array.isArray(item?.children) && item.children.lengt
 // Root nodes from the API are sections; render them even if empty so teachers can add content.
 const sections = computed(() => courses.value.filter(item => item?.type === 'section'))
 const standalone = computed(() => courses.value.filter(item => item?.type !== 'section'))
+
+const countCourses = (node) => {
+  if (!node) return 0
+  if (node.type === 'course') return 1
+  const children = Array.isArray(node.children) ? node.children : []
+  return children.reduce((sum, child) => sum + countCourses(child), 0)
+}
+
+const visibleSections = computed(() => {
+  if (isAuthorized.value) return sections.value
+  return sections.value.filter(section => countCourses(section) > 0)
+})
+
+const hasAnyCourses = computed(() => {
+  const sectionCourses = visibleSections.value.reduce((sum, section) => sum + countCourses(section), 0)
+  return sectionCourses + standalone.value.length > 0
+})
 
 const orderedChildren = section => {
   const list = section.children || []
@@ -1003,6 +1028,14 @@ onMounted(loadSidebar)
 .empty-state__button {
   margin-top: 8px;
   padding: 10px 24px;
+}
+
+.empty-state__actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 @media (min-width: 900px) {
