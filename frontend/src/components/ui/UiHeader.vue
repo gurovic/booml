@@ -38,12 +38,28 @@
           </button>
         </nav>
 
-        <button
-          class="button button--secondary header__button"
-          @click="handleButton"
-        >
-          {{ isAuthorized ? 'Выйти' : 'Войти' }}
-        </button>
+        <div v-if="isAuthorized" class="header__actions">
+          <button
+            class="button button--secondary header__button"
+            @click="handleButton"
+          >
+            Выйти
+          </button>
+        </div>
+        <div v-else class="header__actions">
+          <button
+            class="button button--secondary header__button"
+            @click="handleLoginClick"
+          >
+            Войти
+          </button>
+          <button
+            class="button button--primary header__button"
+            @click="handleRegisterClick"
+          >
+            Регистрация
+          </button>
+        </div>
       </div>
     </div>
   </header>
@@ -62,13 +78,21 @@ let user = userStore.getCurrentUser()
 let isAuthorized = computed(() => user.value != null)
 
 const handleButton = async () => {
-  if (isAuthorized.value) {
-    await userStore.logoutUser()
-    if (router.currentRoute.value.path !== '/') {
-      router.push('/')
-    }
-  } else {
+  await userStore.logoutUser()
+  if (router.currentRoute.value.path !== '/') {
+    router.push('/')
+  }
+}
+
+const handleLoginClick = () => {
+  if (router.currentRoute.value.path !== '/login') {
     router.push('/login')
+  }
+}
+
+const handleRegisterClick = () => {
+  if (router.currentRoute.value.path !== '/register') {
+    router.push('/register')
   }
 }
 
@@ -174,5 +198,11 @@ const handleNotebooksClick = () => {
   height: 40px;
   display: flex;
   align-items: center;
+}
+
+.header__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 </style>

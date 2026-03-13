@@ -334,6 +334,11 @@ const isFavoriteCourse = computed(() => {
   return favorites.value.some(x => Number(x.course_id) === cid)
 })
 
+const isAuthRequiredError = (err) => {
+  const status = Number(err?.status)
+  return status === 401 || status === 403
+}
+
 const loadFavorites = async () => {
   if (!isAuthorized.value) {
     favorites.value = []
@@ -428,6 +433,10 @@ const loadContests = async () => {
     await loadFavorites()
   } catch (err) {
     console.error('Failed to load contests.', err)
+    if (!isAuthorized.value && isAuthRequiredError(err)) {
+      await router.replace({ name: 'auth-required', query: { redirect: route.fullPath } })
+      return
+    }
     error.value = err?.message || 'Не удалось загрузить контесты.'
   } finally {
     isLoading.value = false

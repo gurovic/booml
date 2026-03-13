@@ -52,11 +52,9 @@ def _course_is_member(course: Course, user) -> bool:
 def course_detail(request, course_id):
     if request.method != "GET":
         return JsonResponse({"detail": "Method not allowed"}, status=405)
-    if not request.user.is_authenticated:
-        return JsonResponse({"detail": "Authentication required"}, status=401)
 
     course = get_object_or_404(
-        Course.objects.select_related("section", "owner").prefetch_related("participants__user"),
+        Course.objects.select_related("section", "owner"),
         pk=course_id,
     )
     is_admin = bool(is_platform_admin(request.user) or request.user.is_staff or request.user.is_superuser)
@@ -68,6 +66,7 @@ def course_detail(request, course_id):
 
     participants = []
     if is_admin or is_member:
+        participant_rows = CourseParticipant.objects.select_related("user").filter(course=course)
         participants = [
             {
                 "id": participant.user_id,
@@ -75,7 +74,7 @@ def course_detail(request, course_id):
                 "role": participant.role,
                 "is_owner": participant.is_owner,
             }
-            for participant in course.participants.all()
+            for participant in participant_rows
             if not is_platform_admin(participant.user)
         ]
 
@@ -100,11 +99,9 @@ def course_detail(request, course_id):
 def course_contests(request, course_id):
     if request.method != "GET":
         return JsonResponse({"detail": "Method not allowed"}, status=405)
-    if not request.user.is_authenticated:
-        return JsonResponse({"detail": "Authentication required"}, status=401)
 
     course = get_object_or_404(
-        Course.objects.select_related("section", "owner").prefetch_related("participants__user"),
+        Course.objects.select_related("section", "owner"),
         pk=course_id,
     )
     is_admin = bool(is_platform_admin(request.user) or request.user.is_staff or request.user.is_superuser)

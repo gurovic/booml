@@ -98,11 +98,13 @@
 
 <script setup>
 import { ref, reactive } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/UserStore'
+import { resolveRedirectFromQuery } from '@/utils/redirect'
 import '@/assets/styles/form.css'
 
 const router = useRouter()
+const route = useRoute()
 const userStore = useUserStore()
 
 const loading = ref(false)
@@ -111,6 +113,10 @@ const formData = reactive({
     password: ''
 })
 const formErrors = reactive({})
+
+const resolveRedirect = () => {
+    return resolveRedirectFromQuery(route.query)
+}
 
 const clearErrors = () => {
     Object.keys(formErrors).forEach(key => {
@@ -126,7 +132,7 @@ const handleSubmit = async () => {
         const result = await userStore.loginUser(formData.username, formData.password)
 
         if (result.success) {
-            await router.push('/')
+            await router.push(resolveRedirect())
         } else {
             handleErrors(result.error)
         }

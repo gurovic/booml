@@ -162,16 +162,12 @@ class CourseParticipantsUpdateView(generics.GenericAPIView):
 class CourseTreeView(APIView):
     """
     Return a tree representation of sections and their courses.
-    Unauthenticated users receive an empty tree.
+    Unauthenticated users receive a public tree with open courses only.
     Authenticated users see courses they have access to.
     """
     permission_classes = [permissions.AllowAny]
 
     def get(self, request):
-        # Return empty tree for unauthenticated users
-        if not request.user.is_authenticated:
-            return Response([])
-
         sections = list(Section.objects.select_related("parent", "owner").all())
         courses_qs = Course.objects.select_related("section", "owner").all()
         is_admin = bool(
@@ -186,13 +182,16 @@ class CourseTreeView(APIView):
             )
 
         if not is_admin:
-            courses_qs = courses_qs.filter(
-                Q(is_open=True)
-                | Q(owner=request.user)
-                | Q(section__owner=request.user)
-                | Q(section__section_teachers__user=request.user)
-                | Q(participants__user=request.user)
-            ).distinct()
+            if request.user.is_authenticated:
+                courses_qs = courses_qs.filter(
+                    Q(is_open=True)
+                    | Q(owner=request.user)
+                    | Q(section__owner=request.user)
+                    | Q(section__section_teachers__user=request.user)
+                    | Q(participants__user=request.user)
+                ).distinct()
+            else:
+                courses_qs = courses_qs.filter(is_open=True)
         courses = list(courses_qs)
 
         favorite_positions = {}
@@ -206,15 +205,16 @@ class CourseTreeView(APIView):
         if not is_admin:
             section_parent = {section.id: section.parent_id for section in sections}
             allowed_section_ids = {section.id for section in sections if section.parent_id is None}
-            for section in sections:
-                if section.owner_id != request.user.id and section.id not in section_teacher_ids:
-                    continue
-                current_id = section.id
-                while current_id:
-                    if current_id in allowed_section_ids:
-                        break
-                    allowed_section_ids.add(current_id)
-                    current_id = section_parent.get(current_id)
+            if request.user.is_authenticated:
+                for section in sections:
+                    if section.owner_id != request.user.id and section.id not in section_teacher_ids:
+                        continue
+                    current_id = section.id
+                    while current_id:
+                        if current_id in allowed_section_ids:
+                            break
+                        allowed_section_ids.add(current_id)
+                        current_id = section_parent.get(current_id)
             for course in courses:
                 current_id = course.section_id
                 while current_id:
@@ -244,7 +244,7 @@ class CourseBrowseView(APIView):
     - tab=admin: for teachers: courses where the user is owner or a teacher participant.
     """
 
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.AllowAny]
 
     def get(self, request):
         tab = str(request.query_params.get("tab") or "mine").strip().lower()
@@ -263,21 +263,21 @@ class CourseBrowseView(APIView):
         page_size = min(max(page_size, 1), 50)
 
         user = request.user
+        is_authenticated = bool(getattr(user, "is_authenticated", False))
         is_admin = bool(is_platform_admin(user) or user.is_staff or user.is_superuser)
 
-        # Favorite flag for star UI.
-        fav_exists = Exists(
-            FavoriteCourse.objects.filter(user=user, course_id=OuterRef("pk"))
-        )
+        qs = Course.objects.select_related("section", "owner")
+        if is_authenticated:
+            # Favorite flag for star UI.
+            fav_exists = Exists(
+                FavoriteCourse.objects.filter(user=user, course_id=OuterRef("pk"))
+            )
+            qs = qs.annotate(is_favorite=fav_exists)
 
-        qs = Course.objects.select_related("section", "owner").annotate(
-            is_favorite=fav_exists
-        )
-
-        if tab == "admin":
-            if is_admin:
-                pass
-            else:
+        if not is_authenticated:
+            qs = qs.filter(is_open=True)
+        elif tab == "admin":
+            if not is_admin:
                 qs = qs.filter(
                     Q(owner=user)
                     | Q(
@@ -308,7 +308,7 @@ class CourseBrowseView(APIView):
         page_courses = list(page_obj.object_list)
         course_ids = [c.id for c in page_courses]
         participant_role_by_course_id = {}
-        if course_ids:
+        if is_authenticated and course_ids:
             participant_role_by_course_id = {
                 int(cid): role
                 for cid, role in CourseParticipant.objects.filter(
@@ -317,7 +317,7 @@ class CourseBrowseView(APIView):
             }
 
         items = []
-        if tab == "admin":
+        if is_authenticated and tab == "admin":
             teacher_ids = set()
             if not is_admin:
                 teacher_ids = {
@@ -364,7 +364,9 @@ class CourseBrowseView(APIView):
     ) -> dict:
         # Find current user's role if they are a participant (optional, for UI).
         # Role is pre-fetched per page to avoid N+1 queries.
-        role = "owner" if course.owner_id == user.id else participant_role
+        user_id = getattr(user, "id", None)
+        is_authenticated = bool(getattr(user, "is_authenticated", False))
+        role = "owner" if is_authenticated and course.owner_id == user_id else participant_role
 
         return {
             "id": course.id,

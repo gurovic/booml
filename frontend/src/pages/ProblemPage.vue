@@ -139,7 +139,7 @@ id,pred
               </div>
             </div>
           </li>
-          <li class="problem__submissions problem__menu-item">
+          <li class="problem__submissions problem__menu-item" v-if="userStore.isAuthenticated">
             <h2 class="problem__submissions-title problem__item-title">Последние посылки</h2>
             <ul class="problem__submissions-list">
               <li class="problem__submission-head">
@@ -195,7 +195,7 @@ id,pred
 
 <script setup>
 import { ref, onBeforeUnmount, onMounted, computed, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { contestApi } from '@/api'
 import { getProblem } from '@/api/problem'
 import { submitSolution } from '@/api/submission'
@@ -210,6 +210,7 @@ import { normalizeContestProblemLabel, toContestProblemLabel } from '@/utils/con
 import { formatCountdown, formatDateTimeMsk, toTimestamp } from '@/utils/datetime'
 
 const route = useRoute()
+const router = useRouter()
 const userStore = useUserStore()
 
 let problem = ref(null)
@@ -239,6 +240,11 @@ const contestIdFromQuery = computed(() => {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : null
 })
 const queryProblemLabel = computed(() => normalizeContestProblemLabel(queryValue(route.query.problem_label)))
+const isAuthorized = computed(() => !!userStore.currentUser)
+const isAuthRequiredError = (err) => {
+  const status = Number(err?.status)
+  return status === 401 || status === 403
+}
 const currentProblemId = computed(() => Number(route.params.id))
 const breadcrumbsContest = computed(() => contestDetails.value)
 
@@ -313,6 +319,10 @@ const loadProblem = async () => {
     }
     resolveContestProblemLabelFromLoadedProblems()
   } catch (err) {
+    if (!isAuthorized.value && isAuthRequiredError(err)) {
+      await router.replace({ name: 'auth-required', query: { redirect: route.fullPath } })
+      return
+    }
     if (requestId !== problemLoadRequestId) return
     console.log(err)
     problem.value = null

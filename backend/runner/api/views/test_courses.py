@@ -324,12 +324,24 @@ class CourseTreeTests(TestCase):
         )
         self.tree_url = reverse("course-tree")
 
-    def test_unauthenticated_user_gets_empty_tree(self):
-        """Unauthenticated users should get empty array, not 403"""
+    def test_unauthenticated_user_sees_public_open_courses(self):
+        """Unauthenticated users should see only open courses in public tree."""
         self.client.logout()
         resp = self.client.get(self.tree_url)
         self.assertEqual(resp.status_code, 200)
-        self.assertEqual(resp.json(), [])
+        tree = resp.json()
+
+        course_titles = []
+        for section in tree:
+            for child in section.get("children", []):
+                if child.get("type") == "course":
+                    course_titles.append(child.get("title"))
+                for grandchild in child.get("children", []):
+                    if grandchild.get("type") == "course":
+                        course_titles.append(grandchild.get("title"))
+
+        self.assertIn("Open Course", course_titles)
+        self.assertNotIn("Closed Course", course_titles)
 
     def test_authenticated_user_sees_open_courses(self):
         """Authenticated users should see open courses but not closed ones"""
@@ -421,6 +433,16 @@ class CourseBrowseTests(TestCase):
         )
 
         self.url = reverse("course-browse")
+
+    def test_guest_sees_only_open_courses(self):
+        self.client.logout()
+        resp = self.client.get(self.url, {"tab": "mine"})
+        self.assertEqual(resp.status_code, 200)
+        items = resp.json().get("items") or []
+        titles = {x["title"] for x in items}
+        self.assertIn(self.open_course.title, titles)
+        self.assertIn(self.open_course_no_activity.title, titles)
+        self.assertNotIn(self.private_course_invited.title, titles)
 
     def test_student_mine_includes_open_with_submissions_and_private_invites(self):
         self.client.login(username="student_browse", password="pass")

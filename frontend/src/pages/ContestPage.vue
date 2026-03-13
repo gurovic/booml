@@ -399,7 +399,7 @@
 
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { contestApi } from '@/api'
 import { getPolygonProblems } from '@/api/polygon'
 import { useUserStore } from '@/stores/UserStore'
@@ -413,6 +413,7 @@ import { toContestProblemLabel } from '@/utils/contestProblemLabel'
 import { formatCountdown, formatDateTimeMsk, toTimestamp } from '@/utils/datetime'
 
 const route = useRoute()
+const router = useRouter()
 const userStore = useUserStore()
 const contestId = computed(() => Number(route.params.id))
 const hasValidId = computed(() => Number.isInteger(contestId.value) && contestId.value > 0)
@@ -456,6 +457,7 @@ const contestTitle = computed(() => {
   if (contest.value?.title) return contest.value.title
   return hasValidId.value ? `Контест ${contestId.value}` : 'Контест'
 })
+const isAuthorized = computed(() => !!userStore.currentUser)
 
 const problemsTitle = computed(() => (contest.value ? 'Задачи' : contestTitle.value))
 
@@ -531,6 +533,11 @@ const contestProblemsLockedReason = computed(
   () => contest.value?.problems_locked_reason || 'Задачи откроются после начала контеста.'
 )
 
+const isAuthRequiredError = (err) => {
+  const status = Number(err?.status)
+  return status === 401 || status === 403
+}
+
 const problemItems = computed(() => {
   const problems = Array.isArray(contest.value?.problems) ? contest.value.problems : []
   return problems
@@ -579,6 +586,10 @@ const loadContest = async ({ silent = false } = {}) => {
     contest.value = await contestApi.getContest(contestId.value)
   } catch (err) {
     console.error('Failed to load contest.', err)
+    if (!isAuthorized.value && isAuthRequiredError(err)) {
+      await router.replace({ name: 'auth-required', query: { redirect: route.fullPath } })
+      return
+    }
     if (!silent) {
       error.value = err?.message || 'Не удалось загрузить контест.'
     }

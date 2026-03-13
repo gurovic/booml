@@ -2,6 +2,7 @@ import json
 from datetime import timedelta
 
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import AnonymousUser
 from django.test import RequestFactory, TestCase
 from django.utils import timezone
 
@@ -125,6 +126,30 @@ class ContestDetailViewTests(TestCase):
         payload = json.loads(response.content.decode())
         self.assertEqual(payload["title"], "Private")
         self.assertEqual(payload["allowed_participants"], [])
+
+    def test_guest_can_view_public_contest_for_open_course(self):
+        self.course.is_open = True
+        self.course.save(update_fields=["is_open"])
+        request = self.factory.get("/")
+        request.user = AnonymousUser()
+
+        response = contest_detail(request, contest_id=self.contest.id)
+
+        self.assertEqual(response.status_code, 200)
+        payload = json.loads(response.content.decode())
+        self.assertEqual(payload["title"], "Contest 1")
+        self.assertFalse(payload["can_manage"])
+        self.assertFalse(payload["can_edit"])
+
+    def test_guest_cannot_view_private_contest(self):
+        self.course.is_open = True
+        self.course.save(update_fields=["is_open"])
+        request = self.factory.get("/")
+        request.user = AnonymousUser()
+
+        response = contest_detail(request, contest_id=self.private_contest.id)
+
+        self.assertEqual(response.status_code, 403)
 
     def test_scheduled_contest_hides_problems_for_student_before_start(self):
         self.contest.start_time = timezone.now() + timedelta(hours=1)
@@ -258,3 +283,15 @@ class CourseDetailViewTests(TestCase):
         response = course_detail(request, course_id=self.course.id)
 
         self.assertEqual(response.status_code, 200)
+
+    def test_guest_can_view_open_course_without_participants(self):
+        self.course.is_open = True
+        self.course.save(update_fields=["is_open"])
+        request = self.factory.get("/")
+        request.user = AnonymousUser()
+
+        response = course_detail(request, course_id=self.course.id)
+
+        self.assertEqual(response.status_code, 200)
+        payload = json.loads(response.content.decode())
+        self.assertEqual(payload["participants"], [])

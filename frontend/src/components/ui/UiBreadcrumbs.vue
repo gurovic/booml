@@ -27,6 +27,7 @@ import { useRoute } from 'vue-router'
 import { contestApi } from '@/api'
 import { ensureCourseTreeLoaded, getCourseById, getSectionById, getSectionChain } from '@/utils/courseTreeCache'
 import { normalizeContestProblemLabel } from '@/utils/contestProblemLabel'
+import { useUserStore } from '@/stores/UserStore'
 
 const props = defineProps({
   section: { type: Object, default: null },
@@ -37,6 +38,7 @@ const props = defineProps({
 })
 
 const route = useRoute()
+const userStore = useUserStore()
 const items = ref([])
 const fetchedContest = ref(null)
 
@@ -159,10 +161,12 @@ const refresh = async () => {
   }
 
   if (name === 'courses') {
+    const isAuthorized = !!userStore.currentUser
+    const label = isAuthorized ? 'Мои курсы' : 'Каталог курсов'
     list.push({
       key: 'courses',
-      label: 'Мои курсы',
-      title: 'Мои курсы',
+      label,
+      title: label,
       to: null,
     })
     items.value = list
