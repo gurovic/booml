@@ -265,24 +265,52 @@
                     </button>
 
                     <div class="cell-content">
-                    <div v-if="cell.cell_type === 'code'" class="code-block">
-                      <NotebookCodeEditor
-                        v-model="cell.content"
-                        @update:modelValue="() => scheduleSave(cell)"
-                        @blur="() => flushSave(cell)"
-                      />
-                    </div>
-
-                      <div v-else class="text-block">
-                        <textarea
+                      <div v-if="cell.cell_type === 'code'" class="code-block">
+                        <NotebookCodeEditor
                           v-model="cell.content"
-                          class="text-editor"
-                          placeholder="Введите заметку"
-                          :aria-label="`Текст ячейки ${cell.id}`"
-                          @focus="selectCell(cell.id)"
-                          @input="() => scheduleSave(cell)"
+                          @update:modelValue="() => scheduleSave(cell)"
                           @blur="() => flushSave(cell)"
-                        ></textarea>
+                        />
+                      </div>
+
+                      <div
+                        v-else
+                        class="text-block"
+                        :class="{ 'text-block--editing': isEditingTextCell(cell.id) }"
+                      >
+                        <div
+                          v-if="isEditingTextCell(cell.id)"
+                          class="text-editor-shell"
+                          @click.stop
+                        >
+                          <textarea
+                            :ref="(element) => setTextEditorRef(cell.id, element)"
+                            v-model="cell.content"
+                            class="text-editor"
+                            placeholder="Введите заметку"
+                            :aria-label="`Текст ячейки ${cell.id}`"
+                            @focus="selectCell(cell.id)"
+                            @input="handleTextCellInput(cell)"
+                            @blur="handleTextCellBlur(cell)"
+                            @keydown.esc.stop.prevent="exitTextEditMode(cell)"
+                          ></textarea>
+                        </div>
+                        <div
+                          v-if="hasTextCellContent(cell)"
+                          class="text-rendered"
+                          :class="{ 'text-rendered--editing': isEditingTextCell(cell.id) }"
+                          @click.stop="selectCell(cell.id)"
+                          @dblclick.stop="enterTextEditMode(cell)"
+                          v-html="renderTextCellMarkdown(cell.content)"
+                        ></div>
+                        <div
+                          v-else-if="!isEditingTextCell(cell.id)"
+                          class="text-rendered text-rendered--empty"
+                          @click.stop="selectCell(cell.id)"
+                          @dblclick.stop="enterTextEditMode(cell)"
+                        >
+                          Двойной клик, чтобы добавить текст
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -492,7 +520,7 @@
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import MarkdownIt from 'markdown-it'
 import UiHeader from '@/components/ui/UiHeader.vue'
@@ -543,8 +571,10 @@ const outputMenuCellId = ref(null)
 const settingsBusy = ref(false)
 const settingsError = ref('')
 const notebookTitleDraft = ref('')
+const editingTextCellId = ref(null)
 const saveTimers = new Map()
 const lastSavedContent = new Map()
+const textEditorRefs = new Map()
 
 const OUTPUT_STORAGE_PREFIX = '__booml_output_v2__:'
 const markdownRenderer = new MarkdownIt({
@@ -936,6 +966,72 @@ const renderMarkdownOutput = (value) => {
   const source = String(value || '')
   if (!source) return ''
   return markdownRenderer.render(source)
+}
+
+const renderTextCellMarkdown = (value) => {
+  return renderMarkdownOutput(value)
+}
+
+const hasTextCellContent = (cell) => {
+  return Boolean(String(cell?.content || '').trim())
+}
+
+const isEditingTextCell = (cellId) => {
+  return editingTextCellId.value === cellId
+}
+
+const resizeTextEditor = (element) => {
+  if (!element) return
+  element.style.height = 'auto'
+  element.style.height = `${Math.max(element.scrollHeight, 44)}px`
+}
+
+const setTextEditorRef = (cellId, element) => {
+  if (!cellId) return
+  if (element) {
+    textEditorRefs.set(cellId, element)
+    resizeTextEditor(element)
+    return
+  }
+  textEditorRefs.delete(cellId)
+}
+
+const focusTextEditor = (cellId) => {
+  nextTick(() => {
+    const editor = textEditorRefs.get(cellId)
+    if (!editor) return
+    resizeTextEditor(editor)
+    editor.focus()
+    const end = editor.value.length
+    editor.setSelectionRange(end, end)
+  })
+}
+
+const enterTextEditMode = (cell) => {
+  if (!cell?.id || cell.cell_type !== 'text') return
+  selectedCellId.value = cell.id
+  editingTextCellId.value = cell.id
+  focusTextEditor(cell.id)
+}
+
+const exitTextEditMode = (cell) => {
+  if (!cell?.id || editingTextCellId.value !== cell.id) return
+  flushSave(cell)
+  editingTextCellId.value = null
+}
+
+const handleTextCellInput = (cell) => {
+  scheduleSave(cell)
+  nextTick(() => {
+    resizeTextEditor(textEditorRefs.get(cell?.id))
+  })
+}
+
+const handleTextCellBlur = (cell) => {
+  flushSave(cell)
+  if (editingTextCellId.value === cell?.id) {
+    editingTextCellId.value = null
+  }
 }
 
 const isHtmlOutput = (item) => {
@@ -1505,6 +1601,9 @@ const createNotebookCell = async (type) => {
     notebook.value.cells.push(created)
     lastSavedContent.set(created.id, typeof created.content === 'string' ? created.content : '')
     selectedCellId.value = created.id
+    if (created.cell_type === 'text') {
+      enterTextEditMode(created)
+    }
   } catch (error) {
     console.warn('Failed to create cell', error)
   }
@@ -1563,6 +1662,9 @@ const removeCell = async (cell) => {
     if (selectedCellId.value === cell.id) {
       selectedCellId.value = null
     }
+    if (editingTextCellId.value === cell.id) {
+      editingTextCellId.value = null
+    }
   } catch (error) {
     console.warn('Failed to delete cell', cell.id, error)
   }
@@ -1592,6 +1694,7 @@ const loadNotebook = async () => {
   state.value = 'loading'
   stateMessage.value = ''
   selectedCellId.value = null
+  editingTextCellId.value = null
   closeOutputMenu()
   try {
     notebook.value = await getNotebook(notebookId.value)
@@ -2174,6 +2277,16 @@ onBeforeUnmount(() => {
 }
 
 .text-block {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.text-block--editing {
+  gap: 8px;
+}
+
+.text-editor-shell {
   background: var(--color-bg-primary);
   border-radius: 10px;
   padding: 0;
@@ -2181,13 +2294,13 @@ onBeforeUnmount(() => {
 
 .text-editor {
   width: 100%;
-  height: 40px;
-  min-height: 40px;
+  min-height: 44px;
   border: none;
   border-radius: 10px;
   background: transparent;
   padding: 10px;
-  resize: vertical;
+  resize: none;
+  overflow: hidden;
   font: inherit;
   font-size: 14px;
   color: var(--color-text-primary);
@@ -2195,7 +2308,85 @@ onBeforeUnmount(() => {
 }
 
 .text-editor:focus {
-  outline: 1px solid var(--color-border-primary, #6b8df7);
+  outline: none;
+}
+
+.text-rendered {
+  min-height: 24px;
+  padding: 2px 10px 0;
+  color: var(--color-text-primary);
+  cursor: text;
+}
+
+.text-rendered--editing {
+  padding-top: 0;
+}
+
+.text-rendered--empty {
+  color: var(--color-text-muted);
+}
+
+.text-rendered :deep(*:first-child) {
+  margin-top: 0;
+}
+
+.text-rendered :deep(*:last-child) {
+  margin-bottom: 0;
+}
+
+.text-rendered :deep(p) {
+  margin: 0 0 10px;
+  line-height: 1.5;
+}
+
+.text-rendered :deep(h1),
+.text-rendered :deep(h2),
+.text-rendered :deep(h3),
+.text-rendered :deep(h4),
+.text-rendered :deep(h5),
+.text-rendered :deep(h6) {
+  margin: 0 0 10px;
+  line-height: 1.25;
+}
+
+.text-rendered :deep(ul),
+.text-rendered :deep(ol),
+.text-rendered :deep(blockquote),
+.text-rendered :deep(pre) {
+  margin: 0 0 10px;
+}
+
+.text-rendered :deep(ul),
+.text-rendered :deep(ol) {
+  padding-left: 22px;
+}
+
+.text-rendered :deep(code) {
+  font-family: var(--font-code, monospace);
+}
+
+.text-rendered :deep(pre) {
+  padding: 10px;
+  border-radius: 10px;
+  background: var(--color-bg-primary);
+  overflow-x: auto;
+}
+
+.text-rendered :deep(blockquote) {
+  padding-left: 12px;
+  border-left: 3px solid var(--color-border-light);
+  color: var(--color-text-muted);
+}
+
+.text-rendered :deep(table) {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.text-rendered :deep(th),
+.text-rendered :deep(td) {
+  border: 1px solid var(--color-border-light);
+  padding: 6px 8px;
 }
 
 .cell-actions {
