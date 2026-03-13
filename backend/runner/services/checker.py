@@ -2,6 +2,7 @@
 import logging
 import os
 import zipfile
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Dict, Optional
 
@@ -62,6 +63,10 @@ class SubmissionChecker:
 
         ground_truth_file = self._select_ground_truth_file(problem_data)
         ground_truth_df = self._load_ground_truth(ground_truth_file)
+        if ground_truth_df is None:
+            fallback_path = self._fallback_ground_truth_path(problem)
+            if fallback_path:
+                ground_truth_df = self._load_ground_truth(fallback_path)
         if ground_truth_df is None:
             return CheckResult(False, errors="Failed to load ground truth from problem data")
 
@@ -251,11 +256,31 @@ class SubmissionChecker:
 
     def _select_ground_truth_file(self, problem_data):
         """Return best available file with expected targets."""
+        first_candidate = None
         for attr in ("answer_file", "test_file", "train_file", "sample_submission_file"):
             file_field = getattr(problem_data, attr, None)
-            file_name = getattr(file_field, "name", "")
-            if file_field and file_name:
+            if not file_field:
+                continue
+
+            path = self._resolve_file_path(file_field)
+            if path and os.path.exists(path):
                 return file_field
+
+            if first_candidate is None and path:
+                first_candidate = file_field
+
+            logger.warning(
+                "Ground truth candidate '%s' for problem %s is unavailable at %s",
+                attr,
+                getattr(problem_data, "problem_id", "?"),
+                path,
+            )
+        if first_candidate:
+            logger.info(
+                "Using first available ground truth candidate despite missing file on disk for problem %s",
+                getattr(problem_data, "problem_id", "?"),
+            )
+            return first_candidate
         logger.warning("No ground-truth candidate files available for problem %s", getattr(problem_data, "problem_id", "?"))
         return None
 
@@ -276,6 +301,11 @@ class SubmissionChecker:
             return None
 
     def _resolve_file_path(self, file_field) -> Optional[str]:
+        # Accept direct paths in addition to Django FileField-like objects.
+        if isinstance(file_field, (str, os.PathLike)):
+            path = Path(file_field)
+            return str(path) if path.exists() else None
+
         path = getattr(file_field, "path", None)
         if isinstance(path, (str, bytes, os.PathLike)) and os.path.exists(path):
             return path
@@ -292,7 +322,71 @@ class SubmissionChecker:
                 if os.path.exists(candidate):
                     return candidate
 
+            try:
+                data_root = getattr(settings, "PROBLEM_DATA_ROOT", None)
+            except Exception:  # pragma: no cover
+                data_root = None
+            if data_root:
+                candidate = os.path.join(str(data_root), str(name).replace("/", os.sep))
+                if os.path.exists(candidate):
+                    return candidate
+
         return path
+
+    def _fallback_ground_truth_path(self, problem) -> Optional[str]:
+        """
+        Try to locate a ground truth file directly on disk when FileField-based lookup fails.
+        We look inside PROBLEM_DATA_ROOT and MEDIA_ROOT/problem_data, preferring "answer" files,
+        then test/train, then sample_submission.
+        """
+        problem_id = getattr(problem, "id", None) or getattr(problem, "problem_id", None)
+        if not problem_id:
+            return None
+
+        roots: list[Path] = []
+        try:
+            data_root = getattr(settings, "PROBLEM_DATA_ROOT", None)
+            if data_root:
+                roots.append(Path(data_root))
+        except Exception:
+            pass
+
+        try:
+            media_root = getattr(settings, "MEDIA_ROOT", None)
+            if media_root:
+                roots.append(Path(media_root) / "problem_data")
+        except Exception:
+            pass
+
+        seen: set[Path] = set()
+        for root in roots:
+            if not root:
+                continue
+            resolved_root = root.resolve()
+            if resolved_root in seen:
+                continue
+            seen.add(resolved_root)
+
+            for kind in ("answer", "test", "train", "sample_submission"):
+                kind_dir = resolved_root / str(problem_id) / kind
+                if not kind_dir.exists() or not kind_dir.is_dir():
+                    continue
+
+                for file_path in sorted(kind_dir.iterdir(), key=lambda p: p.name.lower()):
+                    if not file_path.is_file():
+                        continue
+                    if file_path.suffix.lower() not in {".csv", ".zip"}:
+                        continue
+                    logger.info(
+                        "Using fallback ground truth file %s (kind=%s) for problem %s",
+                        file_path,
+                        kind,
+                        problem_id,
+                    )
+                    return str(file_path)
+
+        logger.warning("Fallback ground truth search failed for problem %s", problem_id)
+        return None
 
     def _load_ground_truth_from_zip(self, zip_path: str) -> Optional[pd.DataFrame]:
         try:

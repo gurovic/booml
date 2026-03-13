@@ -20,6 +20,16 @@ from ..services.problem_scoring import (
 
 
 _VALID_STATUSES = {Submission.STATUS_ACCEPTED, Submission.STATUS_VALIDATED}
+
+
+def _metric_is_lower_better(metric_name: str) -> bool:
+    if not metric_name:
+        return False
+    metric_lower = metric_name.lower()
+    time_keywords = ["time", "duration", "ms", "seconds", "минуты", "время"]
+    return any(kw in metric_lower for kw in time_keywords)
+
+
 def _coerce_metric(value: Any) -> float | None:
     if value is None:
         return None
@@ -51,6 +61,16 @@ def _extract_score_value(metrics: Any, settings: Dict[str, Any]) -> float | None
         curve_p=curve_p,
     )
     return _coerce_metric(score_100)
+
+
+def _extract_metric_value(metrics: Any, metric_name: str) -> float | None:
+    if metrics is None:
+        return None
+    if isinstance(metrics, dict):
+        value = metrics.get(metric_name) or metrics.get("metric")
+        if value is not None:
+            return _coerce_metric(value)
+    return None
 
 
 def _is_better(
