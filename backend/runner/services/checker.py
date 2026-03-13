@@ -263,6 +263,8 @@ class SubmissionChecker:
                 continue
 
             path = self._resolve_file_path(file_field)
+            if path and not isinstance(path, (str, bytes, os.PathLike)):
+                path = None
             if path and os.path.exists(path):
                 return file_field
 
@@ -307,8 +309,10 @@ class SubmissionChecker:
             return str(path) if path.exists() else None
 
         path = getattr(file_field, "path", None)
-        if isinstance(path, (str, bytes, os.PathLike)) and os.path.exists(path):
-            return path
+        if isinstance(path, (str, bytes, os.PathLike)):
+            return path if os.path.exists(path) else str(path)
+        else:
+            path = None
 
         name = getattr(file_field, "name", None)
         if name:
