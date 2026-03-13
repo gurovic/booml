@@ -18,6 +18,13 @@
               :class="{ 'contest-actions--teacher': canManageContest }"
             >
               <button
+                type="button"
+                class="button button--secondary contest-rules-btn"
+                @click="showRulesModal = true"
+              >
+                Правила
+              </button>
+              <button
                 v-if="canManageContest"
                 class="button button--primary"
                 @click="showAddProblemDialog = true"
@@ -121,6 +128,8 @@
         <div v-else class="state">Контест не найден.</div>
       </section>
     </main>
+
+    <ContestRulesModal v-model="showRulesModal" />
 
     <!-- Add Problem Dialog -->
     <div v-if="showAddProblemDialog" class="dialog-overlay" @click="closeAddProblemDialog">
@@ -408,6 +417,8 @@ import UiBreadcrumbs from '@/components/ui/UiBreadcrumbs.vue'
 import UiLinkList from '@/components/ui/UiLinkList.vue'
 import UiIdPill from '@/components/ui/UiIdPill.vue'
 import ContestNotificationsWidget from '@/components/contest/ContestNotificationsWidget.vue'
+import ContestRulesModal from '@/components/contest/ContestRulesModal.vue'
+import { CONTEST_RULES_DONT_SHOW_KEY } from '@/utils/contestRules'
 import { arrayMove } from '@/utils/arrayMove'
 import { toContestProblemLabel } from '@/utils/contestProblemLabel'
 import { formatCountdown, formatDateTimeMsk, toTimestamp } from '@/utils/datetime'
@@ -421,6 +432,7 @@ const hasValidId = computed(() => Number.isInteger(contestId.value) && contestId
 const contest = ref(null)
 const isLoading = ref(false)
 const error = ref('')
+const showRulesModal = ref(false)
 const showAddProblemDialog = ref(false)
 const showTimingDialog = ref(false)
 const showContestSettingsDialog = ref(false)
@@ -584,6 +596,15 @@ const loadContest = async ({ silent = false } = {}) => {
   }
   try {
     contest.value = await contestApi.getContest(contestId.value)
+    if (!silent && contest.value) {
+      try {
+        if (!localStorage.getItem(CONTEST_RULES_DONT_SHOW_KEY)) {
+          showRulesModal.value = true
+        }
+      } catch {
+        showRulesModal.value = true
+      }
+    }
   } catch (err) {
     console.error('Failed to load contest.', err)
     if (!isAuthorized.value && isAuthRequiredError(err)) {

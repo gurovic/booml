@@ -14,12 +14,21 @@
                 <h2 class="leaderboard-title">{{ contestTitle }}</h2>
                 <p v-if="scoringLabel" class="leaderboard-meta">{{ scoringLabel }}</p>
               </div>
-              <router-link
-                :to="contestRoute"
-                class="button button--secondary leaderboard-link"
-              >
-                Назад
-              </router-link>
+              <div class="leaderboard-head-actions">
+                <button
+                  type="button"
+                  class="button button--secondary"
+                  @click="showRulesModal = true"
+                >
+                  Правила
+                </button>
+                <router-link
+                  :to="contestRoute"
+                  class="button button--secondary leaderboard-link"
+                >
+                  Назад
+                </router-link>
+              </div>
             </div>
 
             <p v-if="!entries.length" class="note">Пока нет участников.</p>
@@ -76,6 +85,8 @@
         </template>
       </section>
     </main>
+
+    <ContestRulesModal v-model="showRulesModal" />
   </div>
 </template>
 
@@ -85,6 +96,8 @@ import { useRoute } from 'vue-router'
 import { contestApi } from '@/api'
 import UiHeader from '@/components/ui/UiHeader.vue'
 import UiBreadcrumbs from '@/components/ui/UiBreadcrumbs.vue'
+import ContestRulesModal from '@/components/contest/ContestRulesModal.vue'
+import { CONTEST_RULES_DONT_SHOW_KEY } from '@/utils/contestRules'
 import { normalizeContestProblemLabel, toContestProblemLabel } from '@/utils/contestProblemLabel'
 
 const route = useRoute()
@@ -96,6 +109,7 @@ const queryTitle = computed(() => {
 })
 
 const contest = ref(null)
+const showRulesModal = ref(false)
 const overallLeaderboard = ref(null)
 const problemLeaderboards = ref([])
 const isLoading = ref(false)
@@ -248,6 +262,13 @@ const loadLeaderboard = async () => {
       contestApi.getContest(contestId.value),
     ])
     contest.value = contestData
+    try {
+      if (!localStorage.getItem(CONTEST_RULES_DONT_SHOW_KEY)) {
+        showRulesModal.value = true
+      }
+    } catch {
+      showRulesModal.value = true
+    }
     overallLeaderboard.value = leaderboardData?.overall_leaderboard ?? null
     problemLeaderboards.value = Array.isArray(leaderboardData?.leaderboards)
       ? leaderboardData.leaderboards
@@ -317,6 +338,12 @@ watch(contestId, () => {
   margin: 0;
   font-size: 14px;
   color: var(--color-text-primary);
+}
+
+.leaderboard-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .leaderboard-link {
