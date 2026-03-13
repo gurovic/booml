@@ -297,6 +297,7 @@
                         </div>
                         <div
                           v-if="hasTextCellContent(cell)"
+                          :ref="(element) => setTextRenderedRef(cell.id, element)"
                           class="text-rendered"
                           :class="{ 'text-rendered--editing': isEditingTextCell(cell.id) }"
                           @click.stop="selectCell(cell.id)"
@@ -575,6 +576,9 @@ const editingTextCellId = ref(null)
 const saveTimers = new Map()
 const lastSavedContent = new Map()
 const textEditorRefs = new Map()
+const textRenderedRefs = new Map()
+let mathTypesetQueued = false
+let mathTypesetChain = Promise.resolve()
 
 const OUTPUT_STORAGE_PREFIX = '__booml_output_v2__:'
 const markdownRenderer = new MarkdownIt({
@@ -584,6 +588,12 @@ const markdownRenderer = new MarkdownIt({
 })
 markdownRenderer.use(markdownKatex, {
   throwOnError: false,
+})
+
+const textCellMarkdownRenderer = new MarkdownIt({
+  html: false,
+  linkify: true,
+  breaks: true,
 })
 
 const notebookId = computed(() => Number(route.params.id))
@@ -969,7 +979,9 @@ const renderMarkdownOutput = (value) => {
 }
 
 const renderTextCellMarkdown = (value) => {
-  return renderMarkdownOutput(value)
+  const source = String(value || '')
+  if (!source) return ''
+  return textCellMarkdownRenderer.render(source)
 }
 
 const hasTextCellContent = (cell) => {
@@ -996,6 +1008,47 @@ const setTextEditorRef = (cellId, element) => {
   textEditorRefs.delete(cellId)
 }
 
+const setTextRenderedRef = (cellId, element) => {
+  if (!cellId) return
+  if (element) {
+    textRenderedRefs.set(cellId, element)
+    scheduleMathTypeset()
+    return
+  }
+  textRenderedRefs.delete(cellId)
+}
+
+const runMathTypeset = async () => {
+  if (typeof window === 'undefined') return
+  const mathJax = window.MathJax
+  if (!mathJax?.typesetPromise) return
+
+  const elements = [...textRenderedRefs.values()].filter(Boolean)
+  if (elements.length === 0) return
+
+  try {
+    await nextTick()
+    if (typeof mathJax.typesetClear === 'function') {
+      mathJax.typesetClear(elements)
+    }
+    await mathJax.typesetPromise(elements)
+  } catch (error) {
+    console.warn('Failed to typeset MathJax content', error)
+  }
+}
+
+const scheduleMathTypeset = () => {
+  if (mathTypesetQueued) return
+  mathTypesetQueued = true
+  mathTypesetChain = mathTypesetChain
+    .catch(() => {})
+    .then(async () => {
+      await nextTick()
+      mathTypesetQueued = false
+      await runMathTypeset()
+    })
+}
+
 const focusTextEditor = (cellId) => {
   nextTick(() => {
     const editor = textEditorRefs.get(cellId)
@@ -1012,6 +1065,7 @@ const enterTextEditMode = (cell) => {
   selectedCellId.value = cell.id
   editingTextCellId.value = cell.id
   focusTextEditor(cell.id)
+  scheduleMathTypeset()
 }
 
 const exitTextEditMode = (cell) => {
@@ -1025,6 +1079,7 @@ const handleTextCellInput = (cell) => {
   nextTick(() => {
     resizeTextEditor(textEditorRefs.get(cell?.id))
   })
+  scheduleMathTypeset()
 }
 
 const handleTextCellBlur = (cell) => {
@@ -1032,6 +1087,7 @@ const handleTextCellBlur = (cell) => {
   if (editingTextCellId.value === cell?.id) {
     editingTextCellId.value = null
   }
+  scheduleMathTypeset()
 }
 
 const isHtmlOutput = (item) => {
@@ -1713,6 +1769,7 @@ const loadNotebook = async () => {
     }
     await refreshSessionFiles({ silent: true })
     state.value = 'ready'
+    scheduleMathTypeset()
   } catch (err) {
     const message = err?.message || 'Не удалось загрузить блокнот.'
     state.value = message.includes('404') ? 'not_found' : 'error'
@@ -1731,11 +1788,14 @@ watch(notebookId, () => {
 onMounted(() => {
   document.addEventListener('click', handleDocumentClick)
   document.addEventListener('keydown', handleEscapeKey)
+  window.addEventListener('booml-mathjax-ready', scheduleMathTypeset)
+  scheduleMathTypeset()
 })
 
 onBeforeUnmount(() => {
   document.removeEventListener('click', handleDocumentClick)
   document.removeEventListener('keydown', handleEscapeKey)
+  window.removeEventListener('booml-mathjax-ready', scheduleMathTypeset)
   saveTimers.forEach((timer) => clearTimeout(timer))
   saveTimers.clear()
 })
