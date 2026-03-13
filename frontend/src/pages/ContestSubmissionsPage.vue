@@ -14,12 +14,21 @@
                 <h2 class="submissions-title">{{ contestTitle }}</h2>
                 <p class="submissions-meta">Все посылки учеников в контесте</p>
               </div>
-              <router-link
-                :to="contestRoute"
-                class="button button--secondary submissions-link"
-              >
-                Назад
-              </router-link>
+              <div class="submissions-head-actions">
+                <button
+                  type="button"
+                  class="button button--secondary"
+                  @click="showRulesModal = true"
+                >
+                  Правила
+                </button>
+                <router-link
+                  :to="contestRoute"
+                  class="button button--secondary submissions-link"
+                >
+                  Назад
+                </router-link>
+              </div>
             </div>
 
             <div class="filters-card">
@@ -214,6 +223,8 @@
         </template>
       </section>
     </main>
+
+    <ContestRulesModal v-model="showRulesModal" />
   </div>
 </template>
 
@@ -223,6 +234,8 @@ import { useRoute } from 'vue-router'
 import { contestApi } from '@/api'
 import UiHeader from '@/components/ui/UiHeader.vue'
 import UiBreadcrumbs from '@/components/ui/UiBreadcrumbs.vue'
+import ContestRulesModal from '@/components/contest/ContestRulesModal.vue'
+import { CONTEST_RULES_DONT_SHOW_KEY } from '@/utils/contestRules'
 
 const PAGE_SIZE = 20
 
@@ -245,6 +258,7 @@ const defaultFilters = () => ({
 })
 
 const contest = ref(null)
+const showRulesModal = ref(false)
 const submissions = ref([])
 const isLoading = ref(false)
 const error = ref('')
@@ -431,6 +445,14 @@ const loadSubmissions = async (page = 1) => {
       return
     }
 
+    try {
+      if (!localStorage.getItem(CONTEST_RULES_DONT_SHOW_KEY)) {
+        showRulesModal.value = true
+      }
+    } catch {
+      showRulesModal.value = true
+    }
+
     const data = await contestApi.getContestSubmissions(contestId.value, {
       page,
       pageSize: PAGE_SIZE,
@@ -529,6 +551,12 @@ watch(contestId, () => {
   margin: 0;
   font-size: 14px;
   color: var(--color-text-primary);
+}
+
+.submissions-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .submissions-link {
