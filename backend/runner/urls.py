@@ -77,6 +77,7 @@ from .views.profile import (get_my_profile,
                             delete_avatar,
                             update_profile_info,
                             )
+from .views.search import search
 
 
 app_name = 'runner'
@@ -253,4 +254,5 @@ urlpatterns = [
     path('backend/profiles/update-avatar/', update_avatar, name='profile-update-avatar'),
     path('backend/profiles/delete-avatar/', delete_avatar, name='profile-delete-avatar'),
     path('backend/profiles/update-info/', update_profile_info, name='profile-update-info'),
+    path('backend/search/', search, name='search')
 ]

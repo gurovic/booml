@@ -8,6 +8,7 @@
         </button>
 
         <nav v-if="isAuthorized" class="header__nav">
+          <UiSearch />
           <button
             type="button"
             class="header__nav-link"
@@ -70,6 +71,7 @@ import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/UserStore'
 import logo from '@/assets/logo.png'
+import UiSearch from '@/components/ui/UiSearch.vue'
 
 const router = useRouter()
 const userStore = useUserStore()
