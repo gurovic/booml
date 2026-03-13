@@ -18,6 +18,13 @@
           <button
             type="button"
             class="header__nav-link"
+            @click="handleNotebooksClick"
+          >
+            Блокноты
+          </button>
+          <button
+            type="button"
+            class="header__nav-link"
             @click="handlePolygonClick"
           >
             Полигон
@@ -86,6 +93,12 @@ const handleCoursesClick = () => {
 const handleProfileClick = () => {
   if (router.currentRoute.value.path !== '/profile') {
     router.push('/profile')
+  }
+}
+
+const handleNotebooksClick = () => {
+  if (router.currentRoute.value.path !== '/notebooks') {
+    router.push('/notebooks')
   }
 }
 </script>

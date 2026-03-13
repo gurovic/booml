@@ -1,14 +1,14 @@
 from django.contrib import messages
 from django.http import JsonResponse
-from django.shortcuts import get_object_or_404, redirect
+from django.shortcuts import redirect
 from django.views.decorators.http import require_http_methods
 
-from ..models import Notebook
+from ..services.permissions import get_user_writable_notebook_or_404
 
 
 @require_http_methods(["POST", "DELETE"])
 def delete_notebook(request, notebook_id):
-    notebook = get_object_or_404(Notebook, id=notebook_id)
+    notebook = get_user_writable_notebook_or_404(request.user, notebook_id)
 
     if request.headers.get("X-Requested-With") == "XMLHttpRequest":
         result = {"status": "success", "notebook_id": notebook.id}

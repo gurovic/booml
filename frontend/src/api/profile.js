@@ -1,11 +1,11 @@
 import { apiGet, apiPatch } from './http'
 
-export function getCurrentProfile() {
-    return apiGet('/backend/profiles/me/')
+export function getCurrentProfile(params = {}) {
+    return apiGet('/backend/profiles/me/', params)
 }
 
-export function getProfileById(userId) {
-    return apiGet(`/backend/profiles/${userId}/`)
+export function getProfileById(userId, params = {}) {
+    return apiGet(`/backend/profiles/${userId}/`, params)
 }
 
 export function getCurrentUser() {

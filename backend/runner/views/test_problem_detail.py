@@ -330,6 +330,8 @@ class ProblemDetailViewTests(TestCase):
         payload = response.json()
         self.assertIn("contest", payload)
         self.assertEqual(payload["contest"]["id"], contest.id)
+        self.assertTrue(payload["contest"]["allow_notifications"])
+        self.assertTrue(payload["contest"]["allow_student_questions"])
         self.assertTrue(payload["contest"]["can_submit"])
         self.assertEqual(payload["contest"]["time_state"], "running")
 

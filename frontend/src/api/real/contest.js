@@ -46,13 +46,32 @@ export async function createContest(courseId, contestData) {
   }
 }
 
-export async function getContestSubmissions(contestId, { page = 1, pageSize = 20 } = {}) {
+export async function getContestSubmissions(contestId, options = {}) {
   if (contestId == null || contestId === '') {
     return null
   }
+  const {
+    page = 1,
+    pageSize = 20,
+    ...filters
+  } = options
   const params = {}
   if (page != null) params.page = page
   if (pageSize != null) params.page_size = pageSize
+  const allowedFilterKeys = [
+    'problem_id',
+    'user_id',
+    'status',
+    'q',
+    'submitted_from',
+    'submitted_to',
+    'has_file',
+  ]
+  for (const key of allowedFilterKeys) {
+    const value = filters[key]
+    if (value === null || value === undefined || value === '') continue
+    params[key] = value
+  }
   try {
     return await apiGet(`backend/contest/${contestId}/submissions/`, params)
   } catch (err) {
@@ -112,6 +131,76 @@ export async function updateContest(contestId, contestData) {
     return await apiPost(`backend/contest/${contestId}/update/`, contestData)
   } catch (err) {
     console.error('Failed to update contest.', err)
+    throw err
+  }
+}
+
+export async function updateContestQuestionSettings(contestId, payload = {}) {
+  try {
+    return await apiPost(`backend/contest/${contestId}/questions/`, payload)
+  } catch (err) {
+    console.error('Failed to update contest question settings.', err)
+    throw err
+  }
+}
+
+export async function getContestNotifications(contestId, options = {}) {
+  if (contestId == null || contestId === '') {
+    return {
+      items: [],
+      unread_count: 0,
+      participants: [],
+      can_manage: false,
+      notifications_enabled: true,
+      questions_enabled: true,
+    }
+  }
+  const params = {}
+  if (options.limit != null) params.limit = options.limit
+  try {
+    return await apiGet(`backend/contest/${contestId}/notifications/`, params)
+  } catch (err) {
+    console.error('Failed to load contest notifications.', err)
+    throw err
+  }
+}
+
+export async function sendContestNotification(contestId, payload = {}) {
+  try {
+    return await apiPost(`backend/contest/${contestId}/notifications/send/`, payload)
+  } catch (err) {
+    console.error('Failed to send contest notification.', err)
+    throw err
+  }
+}
+
+export async function askContestQuestion(contestId, payload = {}) {
+  try {
+    return await apiPost(`backend/contest/${contestId}/notifications/ask/`, payload)
+  } catch (err) {
+    console.error('Failed to ask contest question.', err)
+    throw err
+  }
+}
+
+export async function answerContestQuestion(contestId, questionId, payload = {}) {
+  try {
+    return await apiPost(`backend/contest/${contestId}/notifications/${questionId}/answer/`, payload)
+  } catch (err) {
+    console.error('Failed to answer contest question.', err)
+    throw err
+  }
+}
+
+export async function markContestNotificationsRead(contestId, notificationIds = null) {
+  const payload = {}
+  if (Array.isArray(notificationIds)) {
+    payload.notification_ids = notificationIds
+  }
+  try {
+    return await apiPost(`backend/contest/${contestId}/notifications/read/`, payload)
+  } catch (err) {
+    console.error('Failed to mark contest notifications as read.', err)
     throw err
   }
 }

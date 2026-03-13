@@ -99,6 +99,20 @@ class ContestVisibilityTests(TestCase):
         self.assertEqual(contest.registration_type, Contest.Registration.OPEN)
         self.assertFalse(contest.is_rated)
 
+    def test_questions_are_forced_off_when_notifications_disabled(self):
+        contest = Contest.objects.create(
+            course=self.course,
+            title="No notifications",
+            created_by=self.teacher,
+            is_published=True,
+            allow_notifications=False,
+            allow_student_questions=True,
+        )
+
+        contest.refresh_from_db()
+        self.assertFalse(contest.allow_notifications)
+        self.assertFalse(contest.allow_student_questions)
+
     def test_private_contest_visibility_requires_allow_list(self):
         contest = Contest.objects.create(
             course=self.course,

@@ -225,7 +225,8 @@ class ProfileDetailSerializerTests(TestCase):
         data = serializer.data
 
         expected_fields = {'user', 'username', 'email', 'first_name', 'last_name',
-                           'full_name', 'role', 'avatar', 'avatar_url', 'recent_submissions'}
+                           'full_name', 'role', 'avatar', 'avatar_url',
+                           'recent_submissions', 'activity_heatmap'}
         self.assertEqual(set(data.keys()), expected_fields)
 
     def test_recent_submissions_field(self):
@@ -344,6 +345,147 @@ class ProfileDetailSerializerTests(TestCase):
         recent = serializer.data['recent_submissions']
 
         self.assertEqual(recent, [])
+
+    def test_activity_heatmap_field_shape(self):
+        """Тест структуры поля activity_heatmap"""
+        from datetime import date, timedelta
+
+        serializer = ProfileDetailSerializer(
+            instance=self.profile,
+            context={'request': self.request}
+        )
+        heatmap = serializer.data['activity_heatmap']
+
+        expected_keys = {
+            'start_date', 'end_date', 'period_type', 'selected_year', 'available_years',
+            'total_submissions', 'active_days',
+            'max_count', 'current_streak', 'best_streak', 'days'
+        }
+        self.assertEqual(set(heatmap.keys()), expected_keys)
+
+        start_date = date.fromisoformat(heatmap['start_date'])
+        end_date = date.fromisoformat(heatmap['end_date'])
+        self.assertEqual(heatmap['period_type'], 'rolling_365')
+        self.assertIsNone(heatmap['selected_year'])
+        self.assertEqual(end_date - start_date, timedelta(days=364))
+        self.assertEqual(len(heatmap['days']), 365)
+        self.assertTrue(len(heatmap['available_years']) >= 1)
+
+        first_day = heatmap['days'][0]
+        self.assertIn('date', first_day)
+        self.assertIn('count', first_day)
+        self.assertIn('level', first_day)
+
+    def test_activity_heatmap_aggregates_daily_counts(self):
+        """Тест корректной агрегации активности по дням"""
+        from datetime import datetime, time, timedelta
+        from django.utils import timezone
+
+        submissions = list(Submission.objects.filter(user=self.user).order_by('id'))
+        tz = timezone.get_current_timezone()
+        today = timezone.localdate()
+
+        offsets = [0, 0, 1, 3, 3]
+        for submission, days_ago in zip(submissions, offsets):
+            target_day = today - timedelta(days=days_ago)
+            submission.submitted_at = timezone.make_aware(
+                datetime.combine(target_day, time(hour=12)),
+                timezone=tz,
+            )
+            submission.save(update_fields=['submitted_at'])
+
+        serializer = ProfileDetailSerializer(
+            instance=self.profile,
+            context={'request': self.request}
+        )
+        heatmap = serializer.data['activity_heatmap']
+        count_by_date = {item['date']: item['count'] for item in heatmap['days']}
+
+        self.assertEqual(heatmap['total_submissions'], 5)
+        self.assertEqual(heatmap['active_days'], 3)
+        self.assertEqual(heatmap['max_count'], 2)
+
+        self.assertEqual(count_by_date[(today - timedelta(days=0)).isoformat()], 2)
+        self.assertEqual(count_by_date[(today - timedelta(days=1)).isoformat()], 1)
+        self.assertEqual(count_by_date[(today - timedelta(days=3)).isoformat()], 2)
+
+    def test_activity_heatmap_respects_selected_year(self):
+        """Тест выбора года для тепловой карты"""
+        from datetime import datetime, time
+        from django.utils import timezone
+
+        Submission.objects.filter(user=self.user).delete()
+
+        tz = timezone.get_current_timezone()
+        current_year = timezone.localdate().year
+        registration_year = current_year - 2
+        requested_year = current_year - 1
+
+        self.user.date_joined = timezone.make_aware(
+            datetime(registration_year, 6, 1, 12, 0, 0),
+            timezone=tz,
+        )
+        self.user.save(update_fields=['date_joined'])
+
+        for day in [10, 11]:
+            submission = Submission.objects.create(
+                user=self.user,
+                problem=self.problem,
+                status='pending',
+                metrics={'accuracy': 0.91}
+            )
+            submission.submitted_at = timezone.make_aware(
+                datetime(requested_year, 5, day, 12, 0, 0),
+                timezone=tz,
+            )
+            submission.save(update_fields=['submitted_at'])
+
+        submission_current_year = Submission.objects.create(
+            user=self.user,
+            problem=self.problem,
+            status='pending',
+            metrics={'accuracy': 0.82}
+        )
+        submission_current_year.submitted_at = timezone.make_aware(
+            datetime(current_year, 2, 1, 12, 0, 0),
+            timezone=tz,
+        )
+        submission_current_year.save(update_fields=['submitted_at'])
+
+        serializer = ProfileDetailSerializer(
+            instance=self.profile,
+            context={'request': self.request, 'activity_year': requested_year}
+        )
+        heatmap = serializer.data['activity_heatmap']
+
+        self.assertEqual(heatmap['selected_year'], requested_year)
+        self.assertEqual(heatmap['period_type'], 'year')
+        self.assertEqual(
+            heatmap['available_years'],
+            [registration_year, registration_year + 1, current_year]
+        )
+        self.assertEqual(heatmap['total_submissions'], 2)
+
+    def test_activity_heatmap_default_rolling_window_even_for_recent_user(self):
+        """По умолчанию должен быть режим последних 365 дней, даже для новых пользователей"""
+        from datetime import datetime
+        from django.utils import timezone
+
+        today = timezone.localdate()
+        self.user.date_joined = timezone.make_aware(
+            datetime(today.year, today.month, today.day, 12, 0, 0),
+            timezone=timezone.get_current_timezone(),
+        )
+        self.user.save(update_fields=['date_joined'])
+
+        serializer = ProfileDetailSerializer(
+            instance=self.profile,
+            context={'request': self.request}
+        )
+        heatmap = serializer.data['activity_heatmap']
+
+        self.assertEqual(heatmap['period_type'], 'rolling_365')
+        self.assertIsNone(heatmap['selected_year'])
 
     def test_get_full_name_inheritance(self):
         """Тест наследования метода get_full_name"""

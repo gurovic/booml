@@ -16,10 +16,15 @@ import PolygonPage from '@/pages/PolygonPage.vue'
 import PolygonProblemEditPage from '@/pages/PolygonProblemEditPage.vue'
 import SubmissionListPage from '@/pages/SubmissionListPage.vue'
 import NotebookPage from '@/pages/NotebookPage.vue'
+import NotebookListPage from '@/pages/NotebookListPage.vue'
 import ProfilePage from '@/pages/ProfilePage.vue'
 
 const router = createRouter({
   history: createWebHistory(),
+  scrollBehavior(to, from, savedPosition) {
+    if (savedPosition) return savedPosition
+    return { top: 0, left: 0 }
+  },
   routes: [
     {
       path: '/',
@@ -105,6 +110,10 @@ const router = createRouter({
       path: '/notebook/:id',
       name: 'notebook',
       component: NotebookPage,
+    },{
+      path: '/notebooks',
+      name: 'notebooks',
+      component: NotebookListPage,
     },
     {
       path: '/profile',

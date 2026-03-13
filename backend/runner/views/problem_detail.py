@@ -231,6 +231,7 @@ def _build_contest_context(contest: Contest, user):
     end_time = contest.get_end_time()
     can_submit, submit_block_reason = contest.is_submission_allowed(user)
     can_manage = contest.is_user_manager(user)
+    notifications_enabled = bool(contest.allow_notifications)
     return {
         "id": contest.id,
         "title": contest.title,
@@ -239,6 +240,8 @@ def _build_contest_context(contest: Contest, user):
         "duration_minutes": contest.duration_minutes,
         "has_time_limit": bool(contest.start_time and contest.duration_minutes),
         "allow_upsolving": bool(contest.allow_upsolving),
+        "allow_notifications": notifications_enabled,
+        "allow_student_questions": bool(notifications_enabled and contest.allow_student_questions),
         "time_state": contest.time_state(),
         "can_submit": bool(can_submit),
         "submit_block_reason": submit_block_reason or None,
@@ -380,6 +383,7 @@ def problem_detail_api(request):
         for submission in raw_submissions:
             metric_value = _primary_metric(submission.metrics)
             submitted = submission.submitted_at
+            # Send full ISO format datetime for frontend to format
             if submitted:
                 submitted = timezone.localtime(submitted, ZoneInfo("Europe/Moscow"))
             is_after_deadline = False
@@ -387,7 +391,7 @@ def problem_detail_api(request):
                 is_after_deadline = submission.submitted_at > contest_end_time
             submissions.append({
                 "id": submission.id,
-                "submitted_at": submitted.strftime("%H:%M") if submitted else None,
+                "submitted_at": submitted.isoformat() if submitted else None,
                 "status": submission.status,
                 "metric": metric_value,
                 "metrics": submission.metrics,
