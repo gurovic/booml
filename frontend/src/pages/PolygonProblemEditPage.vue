@@ -419,6 +419,7 @@
                     accept=".csv,.zip,.rar"
                     class="file-upload-input"
                     id="train-file"
+                    ref="trainFileInput"
                   />
                   <label for="train-file" class="file-upload-button">
                     Выбрать файл
@@ -447,6 +448,7 @@
                     accept=".csv,.zip,.rar"
                     class="file-upload-input"
                     id="test-file"
+                    ref="testFileInput"
                   />
                   <label for="test-file" class="file-upload-button">
                     Выбрать файл
@@ -475,6 +477,7 @@
                     accept=".csv"
                     class="file-upload-input"
                     id="sample-submission-file"
+                    ref="sampleSubmissionFileInput"
                   />
                   <label for="sample-submission-file" class="file-upload-button">
                     Выбрать файл
@@ -503,6 +506,7 @@
                     accept=".csv"
                     class="file-upload-input"
                     id="answer-file"
+                    ref="answerFileInput"
                   />
                   <label for="answer-file" class="file-upload-button">
                     Выбрать файл
@@ -622,6 +626,12 @@ const selectedFiles = reactive({
   answer_file: null,
 })
 
+const trainFileInput = ref(null)
+const testFileInput = ref(null)
+const sampleSubmissionFileInput = ref(null)
+const answerFileInput = ref(null)
+
+const fileInputRefs = { trainFileInput, testFileInput, sampleSubmissionFileInput, answerFileInput }
 const statementInput = ref(null)
 const statementViewMode = ref('split')
 const statementImageUrl = ref('')
@@ -1057,8 +1067,8 @@ const saveProblem = async () => {
     console.error('Failed to save problem', err)
     
     // Handle structured error response
-    if (err.response && err.response.data && err.response.data.errors) {
-      const responseErrors = err.response.data.errors
+    if (err.data && err.data.errors) {
+      const responseErrors = err.data.errors
       
       // Assign errors but avoid empty objects
       if (responseErrors.title) errors.title = responseErrors.title
@@ -1108,6 +1118,9 @@ const uploadFiles = async () => {
       selectedFiles[key] = null
     })
     
+    // Reset file input elements
+    Object.values(fileInputRefs).forEach(r => { if (r.value) r.value.value = '' })
+    
     successMessage.value = 'Файлы успешно загружены'
     setTimeout(() => { successMessage.value = null }, 3000)
   } catch (err) {
@@ -1133,9 +1146,9 @@ const publishProblem = async () => {
     console.error('Failed to publish problem', err)
     
     // Handle structured error response
-    if (err.response && err.response.data && err.response.data.errors) {
-      if (Array.isArray(err.response.data.errors)) {
-        errorMessage.value = err.response.data.errors.join('. ')
+    if (err.data && err.data.errors) {
+      if (Array.isArray(err.data.errors)) {
+        errorMessage.value = err.data.errors.join('. ')
       } else {
         errorMessage.value = 'Не удалось опубликовать задачу'
       }
