@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import time
 from collections import defaultdict
 
 from django.contrib.auth import get_user_model
@@ -24,6 +25,7 @@ User = get_user_model()
 _MAX_NOTIFICATION_TEXT_LENGTH = 4000
 _MAX_LIST_LIMIT = 500
 _DEFAULT_LIST_LIMIT = 200
+_LONG_POLL_SLEEP_SECONDS = 1.0
 
 
 def _notifications_enabled(contest: Contest) -> bool:
@@ -54,6 +56,16 @@ def _parse_positive_int(value, *, default: int) -> int:
     except (TypeError, ValueError):
         return -1
     return parsed if parsed > 0 else -1
+
+
+def _parse_non_negative_int(value, *, default: int) -> int:
+    if value in (None, ""):
+        return default
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return -1
+    return parsed if parsed >= 0 else -1
 
 
 def _read_json_payload(request):
@@ -209,6 +221,21 @@ def _broadcast_to_users(
     )
 
 
+def _visible_notifications_queryset(
+    *,
+    contest: Contest,
+    user,
+    can_manage: bool,
+    visible_kinds: tuple[str, ...],
+):
+    notifications_qs = ContestNotification.objects.filter(contest=contest, kind__in=visible_kinds)
+    if not can_manage:
+        notifications_qs = notifications_qs.filter(
+            Q(recipient_links__user=user) | Q(author=user)
+        ).distinct()
+    return notifications_qs
+
+
 @login_required
 def contest_notifications(request, contest_id: int):
     if request.method != "GET":
@@ -226,22 +253,56 @@ def contest_notifications(request, contest_id: int):
     if limit <= 0:
         return JsonResponse({"detail": "limit must be a positive integer"}, status=400)
     limit = min(limit, _MAX_LIST_LIMIT)
+    raw_since_id = request.GET.get("since_id")
+    since_id = None
+    if raw_since_id not in (None, ""):
+        since_id = _parse_non_negative_int(raw_since_id, default=-1)
+        if since_id < 0:
+            return JsonResponse({"detail": "since_id must be a non-negative integer"}, status=400)
+
+    raw_wait_seconds = request.GET.get("wait_seconds")
+    wait_seconds = None
+    if raw_wait_seconds not in (None, ""):
+        wait_seconds = _parse_non_negative_int(raw_wait_seconds, default=-1)
+        if wait_seconds < 0:
+            return JsonResponse({"detail": "wait_seconds must be a non-negative integer"}, status=400)
 
     visible_kinds = _visible_notification_kinds(contest)
+    base_notifications_qs = _visible_notifications_queryset(
+        contest=contest,
+        user=request.user,
+        can_manage=can_manage,
+        visible_kinds=visible_kinds,
+    )
+    has_updates = False
+    if since_id is not None and visible_kinds:
+        deadline = None if wait_seconds is None else time.monotonic() + wait_seconds
+        while True:
+            has_updates = base_notifications_qs.filter(id__gt=since_id).exists()
+            if has_updates:
+                break
+            if deadline is not None:
+                seconds_left = deadline - time.monotonic()
+                if seconds_left <= 0:
+                    break
+                sleep_seconds = min(_LONG_POLL_SLEEP_SECONDS, seconds_left)
+            else:
+                sleep_seconds = _LONG_POLL_SLEEP_SECONDS
+            if sleep_seconds <= 0:
+                break
+            time.sleep(sleep_seconds)
 
     notifications_qs = (
-        ContestNotification.objects.filter(contest=contest)
-        .filter(kind__in=visible_kinds)
+        base_notifications_qs
         .select_related("author", "parent__author")
         .prefetch_related("recipient_links__user")
         .order_by("-created_at", "-id")
     )
-    if not can_manage:
-        notifications_qs = notifications_qs.filter(
-            Q(recipient_links__user=request.user) | Q(author=request.user)
-        ).distinct()
 
     notifications = list(notifications_qs[:limit])
+    latest_id = int(notifications[0].id) if notifications else 0
+    if since_id is not None and not has_updates:
+        has_updates = latest_id > since_id
     answer_count_by_question = defaultdict(int)
     for item in notifications:
         if item.kind == ContestNotification.Kind.ANSWER and item.parent_id:
@@ -281,6 +342,8 @@ def contest_notifications(request, contest_id: int):
             "can_manage": bool(can_manage),
             "notifications_enabled": _notifications_enabled(contest),
             "questions_enabled": _questions_enabled(contest),
+            "latest_id": latest_id,
+            "has_updates": bool(has_updates),
         },
         status=200,
     )

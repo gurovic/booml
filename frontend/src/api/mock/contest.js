@@ -496,7 +496,7 @@ export async function updateContestQuestionSettings(contestId, payload = {}) {
   })
 }
 
-export async function getContestNotifications(contestId) {
+export async function getContestNotifications(contestId, options = {}) {
   const numericId = Number(contestId)
   const notificationsEnabled = isNotificationsEnabled(numericId)
   if (!notificationsEnabled) {
@@ -507,6 +507,8 @@ export async function getContestNotifications(contestId) {
       can_manage: true,
       notifications_enabled: false,
       questions_enabled: false,
+      latest_id: 0,
+      has_updates: false,
     })
   }
   const items = Array.isArray(mockContestNotifications[numericId])
@@ -517,15 +519,31 @@ export async function getContestNotifications(contestId) {
     ? items
     : items.filter(item => item.kind === 'announcement')
   filteredItems.sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
-  const unread_count = filteredItems.filter(item => item.is_read === false).length
+  const limit = Number(options.limit)
+  const normalizedLimit = Number.isFinite(limit) && limit > 0 ? Math.floor(limit) : null
+  const limitedItems = normalizedLimit != null ? filteredItems.slice(0, normalizedLimit) : filteredItems
+  const sinceId = Number(options.since_id || 0)
+  const hasSinceId = Object.prototype.hasOwnProperty.call(options, 'since_id')
+  const hasUpdates = limitedItems.some(item => Number(item.id) > sinceId)
+  if (hasSinceId && !hasUpdates) {
+    const rawWait = Number(options.wait_seconds)
+    const waitMs = Number.isFinite(rawWait) && rawWait > 0
+      ? Math.min(1000, Math.max(200, rawWait * 100))
+      : 1000
+    await new Promise(resolve => setTimeout(resolve, waitMs))
+  }
+  const unread_count = limitedItems.filter(item => item.is_read === false).length
   const participants = mockContestParticipants[numericId] || []
+  const latest_id = limitedItems.length ? Number(limitedItems[0].id || 0) : 0
   return Promise.resolve({
-    items: filteredItems,
+    items: limitedItems,
     unread_count,
     participants,
     can_manage: true,
     notifications_enabled: notificationsEnabled,
     questions_enabled: questionsEnabled,
+    latest_id,
+    has_updates: hasUpdates,
   })
 }
 

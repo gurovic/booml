@@ -280,3 +280,48 @@ class ContestNotificationsViewTests(TestCase):
             contest_id=self.contest.id,
         )
         self.assertEqual(ask_response.status_code, 403)
+
+    def test_notifications_list_supports_since_id(self):
+        first_response = self._post_json(
+            send_contest_notification,
+            self.teacher,
+            {"text": "Первое объявление", "audience": "all"},
+            contest_id=self.contest.id,
+        )
+        first_id = int(json.loads(first_response.content.decode())["notification"]["id"])
+
+        second_response = self._post_json(
+            send_contest_notification,
+            self.teacher,
+            {"text": "Второе объявление", "audience": "all"},
+            contest_id=self.contest.id,
+        )
+        second_id = int(json.loads(second_response.content.decode())["notification"]["id"])
+
+        response = self._get(
+            contest_notifications,
+            self.student_1,
+            query_string=f"?since_id={first_id}&wait_seconds=0",
+            contest_id=self.contest.id,
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = json.loads(response.content.decode())
+        self.assertTrue(payload["has_updates"])
+        self.assertEqual(payload["latest_id"], second_id)
+
+    def test_notifications_list_validates_long_poll_params(self):
+        invalid_since = self._get(
+            contest_notifications,
+            self.student_1,
+            query_string="?since_id=-1",
+            contest_id=self.contest.id,
+        )
+        self.assertEqual(invalid_since.status_code, 400)
+
+        invalid_wait = self._get(
+            contest_notifications,
+            self.student_1,
+            query_string="?wait_seconds=abc",
+            contest_id=self.contest.id,
+        )
+        self.assertEqual(invalid_wait.status_code, 400)
