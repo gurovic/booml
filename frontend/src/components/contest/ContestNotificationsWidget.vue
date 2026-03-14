@@ -256,7 +256,7 @@ import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { contestApi } from '@/api'
 import { useUserStore } from '@/stores/UserStore'
 
-const POLL_INTERVAL_MS = 10000
+const LONG_POLL_RETRY_DELAY_MS = 1500
 
 const props = defineProps({
   contestId: {
@@ -300,10 +300,7 @@ const toasts = ref([])
 const toastTimers = new Map()
 const questionsEnabledFromApi = ref(true)
 let toastSeq = 0
-let socket = null
-let reconnectTimer = null
-let reconnectAttempt = 0
-let pollTimer = null
+let longPollSessionId = 0
 let wasUnmounted = false
 
 const contestTitleSafe = computed(() => props.contestTitle || `Контест #${props.contestId}`)
@@ -512,8 +509,13 @@ const resumeToast = (toastId) => {
   toastTimers.set(toastId, timer)
 }
 
-const loadNotifications = async ({ silent = false, emitForNew = false } = {}) => {
-  if (!props.contestId) return
+const loadNotifications = async ({
+  silent = false,
+  emitForNew = false,
+  requestOptions = {},
+} = {}) => {
+  const contestId = Number(props.contestId)
+  if (!Number.isFinite(contestId) || contestId <= 0) return false
 
   const previousById = new Map(items.value.map(item => [Number(item.id), item]))
 
@@ -523,7 +525,13 @@ const loadNotifications = async ({ silent = false, emitForNew = false } = {}) =>
   }
 
   try {
-    const response = await contestApi.getContestNotifications(props.contestId, { limit: 300 })
+    const response = await contestApi.getContestNotifications(contestId, {
+      limit: 300,
+      ...requestOptions,
+    })
+    if (wasUnmounted || Number(props.contestId) !== contestId) {
+      return false
+    }
     const list = Array.isArray(response?.items) ? response.items : []
     questionsEnabledFromApi.value = response?.questions_enabled !== false
     const questionsEnabledNow = Boolean(props.questionsEnabled) && questionsEnabledFromApi.value
@@ -557,10 +565,12 @@ const loadNotifications = async ({ silent = false, emitForNew = false } = {}) =>
         }
       }
     }
+    return true
   } catch (err) {
     if (!silent) {
       loadError.value = err?.message || 'Не удалось загрузить уведомления.'
     }
+    return false
   } finally {
     if (!silent) {
       isLoading.value = false
@@ -709,122 +719,47 @@ const sendAnswer = async (questionItem) => {
   }
 }
 
-const resolveSocketUrl = () => {
-  if (!props.contestId || typeof window === 'undefined' || !window.location) return ''
+const delay = async (ms) => {
+  if (typeof window === 'undefined') return
+  await new Promise(resolve => window.setTimeout(resolve, ms))
+}
 
-  const backendBase = process.env.VUE_APP_BACKEND_URL
-  if (backendBase) {
-    try {
-      const parsed = new URL(backendBase, window.location.origin)
-      const protocol = parsed.protocol === 'https:' ? 'wss:' : 'ws:'
-      return `${protocol}//${parsed.host}/ws/contests/${props.contestId}/notifications/`
-    } catch (_) {
-      // fallback to current host
+const getLatestNotificationId = () => {
+  let maxId = 0
+  for (const item of items.value) {
+    const normalized = Number(item?.id || 0)
+    if (!Number.isFinite(normalized)) continue
+    if (normalized > maxId) maxId = normalized
+  }
+  return maxId
+}
+
+const stopLongPolling = () => {
+  longPollSessionId += 1
+}
+
+const runLongPolling = async (sessionId) => {
+  while (!wasUnmounted && sessionId === longPollSessionId && props.contestId) {
+    const sinceId = getLatestNotificationId()
+    const ok = await loadNotifications({
+      silent: true,
+      emitForNew: true,
+      requestOptions: {
+        since_id: sinceId,
+      },
+    })
+    if (wasUnmounted || sessionId !== longPollSessionId) return
+    if (!ok) {
+      await delay(LONG_POLL_RETRY_DELAY_MS)
     }
   }
-
-  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-  return `${protocol}//${window.location.host}/ws/contests/${props.contestId}/notifications/`
 }
 
-const clearReconnectTimer = () => {
-  if (reconnectTimer != null) {
-    window.clearTimeout(reconnectTimer)
-    reconnectTimer = null
-  }
-}
-
-const stopPolling = () => {
-  if (pollTimer != null) {
-    window.clearInterval(pollTimer)
-    pollTimer = null
-  }
-}
-
-const startPolling = () => {
-  stopPolling()
-  if (!props.contestId || typeof window === 'undefined') return
-
-  pollTimer = window.setInterval(() => {
-    void loadNotifications({ silent: true, emitForNew: true })
-  }, POLL_INTERVAL_MS)
-}
-
-const disconnectSocket = () => {
-  clearReconnectTimer()
-  if (socket) {
-    socket.onopen = null
-    socket.onmessage = null
-    socket.onerror = null
-    socket.onclose = null
-    try {
-      socket.close()
-    } catch (_) {
-      // close race
-    }
-    socket = null
-  }
-}
-
-const scheduleReconnect = () => {
-  if (wasUnmounted || !props.contestId) return
-
-  clearReconnectTimer()
-  reconnectAttempt += 1
-  const delay = Math.min(15000, 1000 * (2 ** Math.min(reconnectAttempt, 4)))
-  reconnectTimer = window.setTimeout(() => {
-    reconnectTimer = null
-    connectSocket()
-  }, delay)
-}
-
-const handleSocketMessage = async (event) => {
-  let data = null
-  try {
-    data = JSON.parse(event.data || '{}')
-  } catch (_) {
-    return
-  }
-
-  const incoming = normalizeItem(data?.notification)
-  if (!incoming) return
-  if (!questionsEnabledEffective.value && incoming.kind !== 'announcement') return
-
-  upsertItem(incoming)
-  if (Number.isFinite(Number(data?.unread_count))) {
-    unreadCount.value = Number(data.unread_count)
-  }
-
-  if (isOpen.value) {
-    await markRead([incoming.id])
-  } else {
-    addToast(incoming)
-  }
-}
-
-const connectSocket = () => {
-  if (typeof window === 'undefined' || typeof window.WebSocket === 'undefined') return
+const startLongPolling = () => {
   if (!props.contestId) return
-
-  disconnectSocket()
-
-  const wsUrl = resolveSocketUrl()
-  if (!wsUrl) return
-
-  socket = new window.WebSocket(wsUrl)
-  socket.onopen = () => {
-    reconnectAttempt = 0
-  }
-  socket.onmessage = (event) => {
-    void handleSocketMessage(event)
-  }
-  socket.onerror = () => {
-    // onclose handles reconnect
-  }
-  socket.onclose = () => {
-    socket = null
-    scheduleReconnect()
-  }
+  longPollSessionId += 1
+  const sessionId = longPollSessionId
+  void runLongPolling(sessionId)
 }
 
 watch(
@@ -835,14 +770,11 @@ watch(
     participants.value = []
     questionsEnabledFromApi.value = true
     activeTab.value = 'announcements'
-    disconnectSocket()
-    stopPolling()
-    reconnectAttempt = 0
+    stopLongPolling()
 
     if (props.contestId) {
       await loadNotifications()
-      connectSocket()
-      startPolling()
+      startLongPolling()
     }
   },
   { immediate: true }
@@ -876,8 +808,7 @@ watch(announcementAudience, (next) => {
 
 onBeforeUnmount(() => {
   wasUnmounted = true
-  disconnectSocket()
-  stopPolling()
+  stopLongPolling()
   for (const timer of toastTimers.values()) {
     window.clearTimeout(timer)
   }

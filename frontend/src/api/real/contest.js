@@ -157,6 +157,8 @@ export async function getContestNotifications(contestId, options = {}) {
   }
   const params = {}
   if (options.limit != null) params.limit = options.limit
+  if (options.since_id != null) params.since_id = options.since_id
+  if (options.wait_seconds != null) params.wait_seconds = options.wait_seconds
   try {
     return await apiGet(`backend/contest/${contestId}/notifications/`, params)
   } catch (err) {
