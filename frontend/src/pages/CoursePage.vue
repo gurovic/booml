@@ -57,6 +57,20 @@
             </div>
           </div>
 
+          <div v-if="!isAuthorized" class="guest-hint">
+            <p class="guest-hint__text">
+              Чтобы участвовать в контестах курса и сохранять прогресс, войдите или зарегистрируйтесь.
+            </p>
+            <div class="guest-hint__actions">
+              <button class="button button--primary" type="button" @click="goToAuth('register')">
+                Зарегистрироваться
+              </button>
+              <button class="button button--secondary" type="button" @click="goToAuth('login')">
+                Войти
+              </button>
+            </div>
+          </div>
+
           <div v-if="renderedCourseDescription" class="course-description" v-html="renderedCourseDescription"></div>
 
           <UiLinkList
@@ -283,6 +297,7 @@ import UiBreadcrumbs from '@/components/ui/UiBreadcrumbs.vue'
 import UiLinkList from '@/components/ui/UiLinkList.vue'
 import { arrayMove } from '@/utils/arrayMove'
 import { renderProblemStatement } from '@/utils/problemMarkdown'
+import { buildAuthRedirect } from '@/utils/redirect'
 
 const route = useRoute()
 const router = useRouter()
@@ -434,7 +449,13 @@ const loadContests = async () => {
   } catch (err) {
     console.error('Failed to load contests.', err)
     if (!isAuthorized.value && isAuthRequiredError(err)) {
-      await router.replace({ name: 'auth-required', query: { redirect: route.fullPath } })
+      await router.replace({
+        name: 'auth-required',
+        query: buildAuthRedirect({
+          redirect: route.fullPath,
+          reason: 'generic',
+        }),
+      })
       return
     }
     error.value = err?.message || 'Не удалось загрузить контесты.'
@@ -578,6 +599,17 @@ const goToLeaderboard = () => {
   const title = course.value?.title || queryTitle.value
   const query = title ? { title } : {}
   router.push({ name: 'course-leaderboard', params: { id: courseId.value }, query })
+}
+
+const goToAuth = (mode = 'register', reason = 'generic') => {
+  const target = mode === 'login' ? 'login' : 'register'
+  router.push({
+    name: target,
+    query: buildAuthRedirect({
+      redirect: route.fullPath,
+      reason,
+    }),
+  })
 }
 
 const saveCourseSettings = async () => {
@@ -734,6 +766,33 @@ watch(
   display: flex;
   gap: 10px;
   align-items: center;
+  flex-wrap: wrap;
+}
+
+.guest-hint {
+  margin-top: 16px;
+  border: 1px solid var(--color-border-default);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.92) 0%, rgba(247, 250, 255, 0.96) 100%);
+  border-radius: 12px;
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.guest-hint__text {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--color-text-secondary);
+  max-width: 640px;
+}
+
+.guest-hint__actions {
+  display: flex;
+  gap: 8px;
   flex-wrap: wrap;
 }
 

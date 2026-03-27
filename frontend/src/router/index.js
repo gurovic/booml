@@ -20,7 +20,7 @@ import NotebookListPage from '@/pages/NotebookListPage.vue'
 import ProfilePage from '@/pages/ProfilePage.vue'
 import AuthRequiredPage from '@/pages/AuthRequiredPage.vue'
 import { useUserStore } from '@/stores/UserStore'
-import { sanitizeRedirectPath } from '@/utils/redirect'
+import { buildAuthRedirect, sanitizeRedirectPath } from '@/utils/redirect'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -53,13 +53,13 @@ const router = createRouter({
       path: '/submission/:id',
       name: 'submission',
       component: SubmissionPage,
-      meta: { requiresAuth: true },
+      meta: { requiresAuth: true, authReason: 'submissions' },
     },
     {
       path: '/problem/:id/submissions',
       name: 'problem-submissions',
       component: SubmissionListPage,
-      meta: { requiresAuth: true },
+      meta: { requiresAuth: true, authReason: 'submissions' },
     },
     {
       path: '/section/:id',
@@ -75,7 +75,7 @@ const router = createRouter({
       path: '/course/:id/leaderboard/',
       name: 'course-leaderboard',
       component: CourseLeaderboardPage,
-      meta: { requiresAuth: true },
+      meta: { requiresAuth: true, authReason: 'leaderboard' },
     },
     {
       path: '/demo/leaderboard/',
@@ -96,7 +96,7 @@ const router = createRouter({
       path: '/contest/:id/leaderboard',
       name: 'contest-leaderboard',
       component: ContestLeaderboardPage,
-      meta: { requiresAuth: true },
+      meta: { requiresAuth: true, authReason: 'leaderboard' },
     },{
       path: '/login',
       name: 'login',
@@ -109,32 +109,32 @@ const router = createRouter({
       path: '/polygon',
       name: 'polygon',
       component: PolygonPage,
-      meta: { requiresAuth: true },
+      meta: { requiresAuth: true, authReason: 'generic' },
     },{
       path: '/polygon/problem/:id',
       name: 'polygon-problem-edit',
       component: PolygonProblemEditPage,
-      meta: { requiresAuth: true },
+      meta: { requiresAuth: true, authReason: 'generic' },
     },
     
     {
       path: '/notebook/:id',
       name: 'notebook',
       component: NotebookPage,
-      meta: { requiresAuth: true },
+      meta: { requiresAuth: true, authReason: 'notebook' },
     },
     {
       path: '/notebooks',
       name: 'notebooks',
       component: NotebookListPage,
-      meta: { requiresAuth: true },
+      meta: { requiresAuth: true, authReason: 'notebook' },
     },
 
     {
       path: '/profile',
       name: 'profile',
       component: ProfilePage,
-      meta: { requiresAuth: true },
+      meta: { requiresAuth: true, authReason: 'generic' },
     },
     {
       path: '/auth-required',
@@ -144,6 +144,16 @@ const router = createRouter({
   ],
 })
 
+const resolveAuthReason = (to) => {
+  for (let idx = to.matched.length - 1; idx >= 0; idx -= 1) {
+    const candidate = to.matched[idx]?.meta?.authReason
+    if (typeof candidate === 'string' && candidate.trim()) {
+      return candidate.trim()
+    }
+  }
+  return 'generic'
+}
+
 router.beforeEach((to) => {
   const userStore = useUserStore()
   const isAuthorized = !!userStore.currentUser
@@ -152,7 +162,10 @@ router.beforeEach((to) => {
   if (!isAuthorized && requiresAuth) {
     return {
       name: 'auth-required',
-      query: { redirect: to.fullPath },
+      query: buildAuthRedirect({
+        redirect: to.fullPath,
+        reason: resolveAuthReason(to),
+      }),
     }
   }
 
