@@ -233,6 +233,7 @@ import GuestActionCard from '@/components/ui/GuestActionCard.vue'
 import ContestNotificationsWidget from '@/components/contest/ContestNotificationsWidget.vue'
 import { normalizeContestProblemLabel, toContestProblemLabel } from '@/utils/contestProblemLabel'
 import { formatCountdown, formatDateTimeMsk, toTimestamp } from '@/utils/datetime'
+import { pushToAuthRoute } from '@/utils/authNavigation'
 import { buildAuthRedirect } from '@/utils/redirect'
 
 const route = useRoute()
@@ -272,13 +273,11 @@ const isAuthRequiredError = (err) => {
   return status === 401 || status === 403
 }
 const goToAuth = (mode = 'register', reason = 'generic') => {
-  const target = mode === 'login' ? 'login' : 'register'
-  router.push({
-    name: target,
-    query: buildAuthRedirect({
-      redirect: route.fullPath,
-      reason,
-    }),
+  return pushToAuthRoute({
+    router,
+    route,
+    mode,
+    reason,
   })
 }
 const currentProblemId = computed(() => Number(route.params.id))

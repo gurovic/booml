@@ -435,6 +435,7 @@ import { CONTEST_RULES_DONT_SHOW_KEY } from '@/utils/contestRules'
 import { arrayMove } from '@/utils/arrayMove'
 import { toContestProblemLabel } from '@/utils/contestProblemLabel'
 import { formatCountdown, formatDateTimeMsk, toTimestamp } from '@/utils/datetime'
+import { pushToAuthRoute } from '@/utils/authNavigation'
 import { buildAuthRedirect } from '@/utils/redirect'
 
 const route = useRoute()
@@ -598,13 +599,11 @@ const contestSubmissionsRoute = computed(() => {
 })
 
 const goToAuth = (mode = 'register', reason = 'generic') => {
-  const target = mode === 'login' ? 'login' : 'register'
-  router.push({
-    name: target,
-    query: buildAuthRedirect({
-      redirect: route.fullPath,
-      reason,
-    }),
+  return pushToAuthRoute({
+    router,
+    route,
+    mode,
+    reason,
   })
 }
 
@@ -980,6 +979,8 @@ watch(showAddProblemDialog, (newValue) => {
 </script>
 
 <style scoped>
+@import '@/styles/guestHint.css';
+
 .contest-page {
   min-height: 100vh;
   background: var(--color-bg-default);
@@ -1109,29 +1110,6 @@ watch(showAddProblemDialog, (newValue) => {
 
 .guest-hint {
   margin-bottom: 12px;
-  border: 1px solid var(--color-border-default);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.92) 0%, rgba(247, 250, 255, 0.96) 100%);
-  border-radius: 12px;
-  padding: 14px 16px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.guest-hint__text {
-  margin: 0;
-  font-size: 14px;
-  line-height: 1.5;
-  color: var(--color-text-secondary);
-  max-width: 640px;
-}
-
-.guest-hint__actions {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
 }
 
 .contest-timing {
