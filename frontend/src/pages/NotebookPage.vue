@@ -506,7 +506,7 @@
                     type="button"
                     class="footer-pill"
                     :aria-label="getInsertActionLabel(action.id, cell.id)"
-                    @click="createNotebookCell(action.id)"
+                    @click="createNotebookCell(action.id, cell.id)"
                   >
                     {{ action.label }}
                   </button>
@@ -1642,7 +1642,7 @@ const selectCell = (cellId) => {
   selectedCellId.value = cellId
 }
 
-const createNotebookCell = async (type) => {
+const createNotebookCell = async (type, targetCellId = null) => {
   if (!hasValidId.value || !['code', 'text'].includes(type)) return
   try {
     const response = await createCell(notebookId.value, type)
@@ -1651,10 +1651,25 @@ const createNotebookCell = async (type) => {
       await loadNotebook()
       return
     }
+
     if (!Array.isArray(notebook.value.cells)) {
       notebook.value.cells = []
     }
-    notebook.value.cells.push(created)
+
+    if (targetCellId) {
+      const targetIndex = notebook.value.cells.findIndex(cell => cell.id === targetCellId)
+      if (targetIndex !== -1) {
+        notebook.value.cells.splice(targetIndex + 1, 0, created)
+        notebook.value.cells.forEach((cell, index) => {
+          cell.execution_order = index
+        })
+      } else {
+        notebook.value.cells.push(created)
+      }
+    } else {
+      notebook.value.cells.push(created)
+    }
+
     lastSavedContent.set(created.id, typeof created.content === 'string' ? created.content : '')
     selectedCellId.value = created.id
     if (created.cell_type === 'text') {
