@@ -76,7 +76,7 @@
             </li>
             </ul>
           </li>
-          <li class="problem__notebook problem__menu-item" v-if="userStore.isAuthenticated">
+          <li class="problem__notebook problem__menu-item" v-if="isAuthorized">
             <div v-if="problem.notebook_id" class="problem__notebook-exists">
               <a :href="`/notebook/${problem.notebook_id}`" class="problem__notebook-button">
                 Перейти в блокнот
@@ -96,7 +96,15 @@
               </div>
             </div>
           </li>
-          <li class="problem__submit problem__menu-item" v-if="userStore.isAuthenticated">
+          <li class="problem__notebook problem__menu-item" v-else>
+            <GuestActionCard
+              title="Тетрадь"
+              description="После регистрации вы сможете открыть личную тетрадь для этой задачи и сохранять прогресс."
+              @register="goToAuth('register', 'notebook')"
+              @login="goToAuth('login', 'notebook')"
+            />
+          </li>
+          <li class="problem__submit problem__menu-item" v-if="isAuthorized">
             <h2 class="problem__submit-title problem__item-title">Отправить решение</h2>
             <div class="problem__submit-form">
               <p class="problem__submit-hint">Выберите один способ: файл или вставка CSV-текста</p>
@@ -139,7 +147,15 @@ id,pred
               </div>
             </div>
           </li>
-          <li class="problem__submissions problem__menu-item" v-if="userStore.isAuthenticated">
+          <li class="problem__submit problem__menu-item" v-else>
+            <GuestActionCard
+              title="Сдача решения"
+              description="Чтобы отправлять CSV-решения и получать результаты проверки, зарегистрируйтесь."
+              @register="goToAuth('register', 'submit')"
+              @login="goToAuth('login', 'submit')"
+            />
+          </li>
+          <li class="problem__submissions problem__menu-item" v-if="isAuthorized">
             <h2 class="problem__submissions-title problem__item-title">Последние посылки</h2>
             <ul class="problem__submissions-list">
               <li class="problem__submission-head">
@@ -181,6 +197,14 @@ id,pred
               Все посылки
             </router-link>
           </li>
+          <li class="problem__submissions problem__menu-item" v-else>
+            <GuestActionCard
+              title="История посылок"
+              description="После входа будет доступна история ваших отправок, статусы проверок и набранные баллы."
+              @register="goToAuth('register', 'submissions')"
+              @login="goToAuth('login', 'submissions')"
+            />
+          </li>
         </ul>
       </div>
       <div v-else-if="isLoadingProblem" class="problem__state">
@@ -205,9 +229,12 @@ import { renderProblemStatement } from '@/utils/problemMarkdown'
 import UiHeader from '@/components/ui/UiHeader.vue'
 import UiBreadcrumbs from '@/components/ui/UiBreadcrumbs.vue'
 import UiIdPill from '@/components/ui/UiIdPill.vue'
+import GuestActionCard from '@/components/ui/GuestActionCard.vue'
 import ContestNotificationsWidget from '@/components/contest/ContestNotificationsWidget.vue'
 import { normalizeContestProblemLabel, toContestProblemLabel } from '@/utils/contestProblemLabel'
 import { formatCountdown, formatDateTimeMsk, toTimestamp } from '@/utils/datetime'
+import { pushToAuthRoute } from '@/utils/authNavigation'
+import { buildAuthRedirect } from '@/utils/redirect'
 
 const route = useRoute()
 const router = useRouter()
@@ -244,6 +271,14 @@ const isAuthorized = computed(() => !!userStore.currentUser)
 const isAuthRequiredError = (err) => {
   const status = Number(err?.status)
   return status === 401 || status === 403
+}
+const goToAuth = (mode = 'register', reason = 'generic') => {
+  return pushToAuthRoute({
+    router,
+    route,
+    mode,
+    reason,
+  })
 }
 const currentProblemId = computed(() => Number(route.params.id))
 const breadcrumbsContest = computed(() => contestDetails.value)
@@ -320,7 +355,13 @@ const loadProblem = async () => {
     resolveContestProblemLabelFromLoadedProblems()
   } catch (err) {
     if (!isAuthorized.value && isAuthRequiredError(err)) {
-      await router.replace({ name: 'auth-required', query: { redirect: route.fullPath } })
+      await router.replace({
+        name: 'auth-required',
+        query: buildAuthRedirect({
+          redirect: route.fullPath,
+          reason: 'generic',
+        }),
+      })
       return
     }
     if (requestId !== problemLoadRequestId) return

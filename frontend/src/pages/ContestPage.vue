@@ -73,6 +73,19 @@
           <div v-if="contest.description" class="contest-description">
             {{ contest.description }}
           </div>
+          <div v-if="!isAuthorized" class="guest-hint">
+            <p class="guest-hint__text">
+              Чтобы участвовать в контесте и отслеживать личные результаты, войдите или зарегистрируйтесь.
+            </p>
+            <div class="guest-hint__actions">
+              <button class="button button--primary" type="button" @click="goToAuth('register')">
+                Зарегистрироваться
+              </button>
+              <button class="button button--secondary" type="button" @click="goToAuth('login')">
+                Войти
+              </button>
+            </div>
+          </div>
           <div v-if="contestHasTimeLimit" class="contest-timing">
             <div class="contest-timing__top">
               <p class="contest-timing__state">{{ contestTimeStateLabel }}</p>
@@ -422,6 +435,8 @@ import { CONTEST_RULES_DONT_SHOW_KEY } from '@/utils/contestRules'
 import { arrayMove } from '@/utils/arrayMove'
 import { toContestProblemLabel } from '@/utils/contestProblemLabel'
 import { formatCountdown, formatDateTimeMsk, toTimestamp } from '@/utils/datetime'
+import { pushToAuthRoute } from '@/utils/authNavigation'
+import { buildAuthRedirect } from '@/utils/redirect'
 
 const route = useRoute()
 const router = useRouter()
@@ -583,6 +598,15 @@ const contestSubmissionsRoute = computed(() => {
   return { name: 'contest-submissions', params: { id: contestId.value }, query }
 })
 
+const goToAuth = (mode = 'register', reason = 'generic') => {
+  return pushToAuthRoute({
+    router,
+    route,
+    mode,
+    reason,
+  })
+}
+
 const loadContest = async ({ silent = false } = {}) => {
   if (!hasValidId.value) {
     contest.value = null
@@ -608,7 +632,13 @@ const loadContest = async ({ silent = false } = {}) => {
   } catch (err) {
     console.error('Failed to load contest.', err)
     if (!isAuthorized.value && isAuthRequiredError(err)) {
-      await router.replace({ name: 'auth-required', query: { redirect: route.fullPath } })
+      await router.replace({
+        name: 'auth-required',
+        query: buildAuthRedirect({
+          redirect: route.fullPath,
+          reason: 'generic',
+        }),
+      })
       return
     }
     if (!silent) {
@@ -949,6 +979,8 @@ watch(showAddProblemDialog, (newValue) => {
 </script>
 
 <style scoped>
+@import '@/styles/guestHint.css';
+
 .contest-page {
   min-height: 100vh;
   background: var(--color-bg-default);
@@ -1073,6 +1105,10 @@ watch(showAddProblemDialog, (newValue) => {
   color: var(--color-text-secondary);
   font-size: 15px;
   line-height: 1.5;
+  margin-bottom: 12px;
+}
+
+.guest-hint {
   margin-bottom: 12px;
 }
 

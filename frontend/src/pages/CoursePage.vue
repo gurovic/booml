@@ -57,6 +57,20 @@
             </div>
           </div>
 
+          <div v-if="!isAuthorized" class="guest-hint">
+            <p class="guest-hint__text">
+              Чтобы участвовать в контестах курса и сохранять прогресс, войдите или зарегистрируйтесь.
+            </p>
+            <div class="guest-hint__actions">
+              <button class="button button--primary" type="button" @click="goToAuth('register')">
+                Зарегистрироваться
+              </button>
+              <button class="button button--secondary" type="button" @click="goToAuth('login')">
+                Войти
+              </button>
+            </div>
+          </div>
+
           <div v-if="renderedCourseDescription" class="course-description" v-html="renderedCourseDescription"></div>
 
           <UiLinkList
@@ -283,6 +297,8 @@ import UiBreadcrumbs from '@/components/ui/UiBreadcrumbs.vue'
 import UiLinkList from '@/components/ui/UiLinkList.vue'
 import { arrayMove } from '@/utils/arrayMove'
 import { renderProblemStatement } from '@/utils/problemMarkdown'
+import { pushToAuthRoute } from '@/utils/authNavigation'
+import { buildAuthRedirect } from '@/utils/redirect'
 
 const route = useRoute()
 const router = useRouter()
@@ -434,7 +450,13 @@ const loadContests = async () => {
   } catch (err) {
     console.error('Failed to load contests.', err)
     if (!isAuthorized.value && isAuthRequiredError(err)) {
-      await router.replace({ name: 'auth-required', query: { redirect: route.fullPath } })
+      await router.replace({
+        name: 'auth-required',
+        query: buildAuthRedirect({
+          redirect: route.fullPath,
+          reason: 'generic',
+        }),
+      })
       return
     }
     error.value = err?.message || 'Не удалось загрузить контесты.'
@@ -580,6 +602,15 @@ const goToLeaderboard = () => {
   router.push({ name: 'course-leaderboard', params: { id: courseId.value }, query })
 }
 
+const goToAuth = (mode = 'register', reason = 'generic') => {
+  return pushToAuthRoute({
+    router,
+    route,
+    mode,
+    reason,
+  })
+}
+
 const saveCourseSettings = async () => {
   try {
     await courseApi.updateCourse(courseId.value, { is_open: courseIsOpen.value })
@@ -662,6 +693,8 @@ watch(
 </script>
 
 <style scoped>
+@import '@/styles/guestHint.css';
+
 .contest-page {
   min-height: 100vh;
   background: var(--color-bg-default);
@@ -735,6 +768,10 @@ watch(
   gap: 10px;
   align-items: center;
   flex-wrap: wrap;
+}
+
+.guest-hint {
+  margin-top: 16px;
 }
 
 .course-description {

@@ -86,7 +86,7 @@
                 <div class="card__footer">
                     <p class="card__footer-text">
                         Нет аккаунта?
-                        <router-link to="/register" class="card__footer-link">
+                        <router-link :to="{ name: 'register', query: authLinkQuery }" class="card__footer-link">
                             Зарегистрируйтесь
                         </router-link>
                     </p>
@@ -97,10 +97,14 @@
 </template>
 
 <script setup>
-import { ref, reactive } from 'vue'
+import { computed, ref, reactive } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/UserStore'
-import { resolveRedirectFromQuery } from '@/utils/redirect'
+import {
+    buildAuthRedirect,
+    resolveAuthReasonFromQuery,
+    resolveRedirectFromQuery,
+} from '@/utils/redirect'
 import '@/assets/styles/form.css'
 
 const router = useRouter()
@@ -114,9 +118,16 @@ const formData = reactive({
 })
 const formErrors = reactive({})
 
-const resolveRedirect = () => {
-    return resolveRedirectFromQuery(route.query)
-}
+const redirectPath = computed(() => resolveRedirectFromQuery(route.query))
+const authReason = computed(() => resolveAuthReasonFromQuery(route.query))
+const authLinkQuery = computed(() => (
+    buildAuthRedirect({
+        redirect: redirectPath.value,
+        reason: authReason.value,
+    })
+))
+
+const resolveRedirect = () => redirectPath.value
 
 const clearErrors = () => {
     Object.keys(formErrors).forEach(key => {
