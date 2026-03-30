@@ -12,6 +12,16 @@ const buildUrl = (endpoint, params = {}) => {
 
 const NETWORK_ERROR_MESSAGE = 'Не удалось связаться с сервером. Проверьте соединение и попробуйте снова.'
 
+function isLoginRedirect(res) {
+  if (!res || !res.redirected || !res.url) return false
+  try {
+    const url = new URL(res.url)
+    return /\/login\/?$/i.test(url.pathname)
+  } catch (_) {
+    return false
+  }
+}
+
 async function guardedFetch(url, init) {
   try {
     return await fetch(url, init)
@@ -35,6 +45,10 @@ export async function apiGet(endpoint, params = {}) {
     },
     credentials: 'include',
   })
+
+  if (isLoginRedirect(res)) {
+    throw toApiError(401, 'Authentication credentials were not provided')
+  }
 
   if (!res.ok) {
     await throwApiError(res)
@@ -107,6 +121,10 @@ async function apiWrite(method, endpoint, data = {}, options = {}) {
     body: isFormData ? data : JSON.stringify(data),
     credentials: options.credentials || 'include',
   })
+
+  if (isLoginRedirect(res)) {
+    throw toApiError(401, 'Authentication credentials were not provided')
+  }
 
   if (!res.ok) {
     await throwApiError(res)
