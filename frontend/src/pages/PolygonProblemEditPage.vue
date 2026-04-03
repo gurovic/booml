@@ -1029,7 +1029,13 @@ const loadProblem = async () => {
     }
   } catch (err) {
     console.error('Failed to load problem', err)
-    error.value = 'Не удалось загрузить данные задачи. Попробуйте позже.'
+    if (err?.status === 403) {
+      error.value = 'У вас нет прав на редактирование этой задачи.'
+    } else if (err?.status === 404) {
+      error.value = 'Задача не найдена.'
+    } else {
+      error.value = 'Не удалось загрузить данные задачи. Попробуйте позже.'
+    }
   } finally {
     loading.value = false
   }
