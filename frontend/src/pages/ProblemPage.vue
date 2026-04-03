@@ -1231,6 +1231,10 @@ const handleCreateNotebook = async () => {
 
 .problem__submission-col--status {
   white-space: normal;
+}
+
+.problem__submission-href .problem__submission-col--status {
+  white-space: normal;
   overflow: hidden;
   display: -webkit-box;
   -webkit-box-orient: vertical;
@@ -1281,7 +1285,7 @@ const handleCreateNotebook = async () => {
     padding: 9px 10px;
   }
 
-  .problem__submission-col--status {
+  .problem__submission-href .problem__submission-col--status {
     font-size: 12px;
   }
 }
