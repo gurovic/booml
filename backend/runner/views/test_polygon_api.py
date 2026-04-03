@@ -1,8 +1,14 @@
-from django.contrib.auth import get_user_model
-from django.test import TestCase
 import json
+import os
+import shutil
+import tempfile
+
+from django.contrib.auth import get_user_model
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import TestCase, override_settings
 
 from ..models.problem import Problem
+from ..models.problem_data import ProblemData
 
 User = get_user_model()
 
@@ -75,6 +81,7 @@ class PolygonProblemsApiTests(TestCase):
         self.assertIn('rating', problem)
         self.assertIn('is_published', problem)
         self.assertIn('author_username', problem)
+        self.assertIn('can_edit', problem)
         self.assertIn('created_at', problem)
 
     def test_search_filters_by_title(self):
@@ -86,6 +93,28 @@ class PolygonProblemsApiTests(TestCase):
         items = payload.get("items", []) if isinstance(payload, dict) else payload
         self.assertEqual(len(items), 1)
         self.assertEqual(items[0]["id"], self.other_problem.id)
+
+    def test_editable_only_returns_only_editable_problems(self):
+        legacy_problem = Problem.objects.create(
+            title="Legacy Editable",
+            author=None,
+            is_published=True,
+            rating=1300,
+        )
+        self.client.login(username="author", password="pass")
+        resp = self.client.get(self.url, {"editable_only": 1})
+        self.assertEqual(resp.status_code, 200)
+
+        payload = resp.json()
+        items = payload.get("items", []) if isinstance(payload, dict) else payload
+        problem_ids = [item["id"] for item in items]
+
+        self.assertIn(self.problem1.id, problem_ids)
+        self.assertIn(self.problem2.id, problem_ids)
+        self.assertIn(legacy_problem.id, problem_ids)
+        self.assertNotIn(self.other_problem.id, problem_ids)
+        self.assertNotIn(self.other_draft.id, problem_ids)
+        self.assertTrue(all(item["can_edit"] for item in items))
 
 
 class CreatePolygonProblemApiTests(TestCase):
@@ -224,6 +253,27 @@ class GetPolygonProblemApiTests(TestCase):
         self.client.login(username="staff", password="pass")
         resp = self.client.get(self.url)
         self.assertEqual(resp.status_code, 200)
+
+    def test_get_problem_skips_missing_uploaded_files(self):
+        media_dir = tempfile.mkdtemp(prefix="polygon_problem_media_")
+        self.addCleanup(lambda: shutil.rmtree(media_dir, ignore_errors=True))
+
+        with override_settings(MEDIA_ROOT=media_dir):
+            problem_data = ProblemData.objects.create(
+                problem=self.problem,
+                train_file=SimpleUploadedFile("train.csv", b"id,target\n1,0\n"),
+            )
+            file_path = problem_data.train_file.path
+            self.assertTrue(os.path.exists(file_path))
+            os.remove(file_path)
+
+            self.client.login(username="owner", password="pass")
+            resp = self.client.get(self.url)
+
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertIn("files", data)
+        self.assertNotIn("train_file", data["files"])
 
 
 class UpdatePolygonProblemApiTests(TestCase):

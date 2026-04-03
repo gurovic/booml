@@ -200,6 +200,7 @@ const loadProblems = async () => {
       q: search.value,
       page: page.value,
       page_size: pageSize,
+      editable_only: 1,
     })
 
     // Backward-compatible: endpoint returns either an array (no paging) or an object (paging).

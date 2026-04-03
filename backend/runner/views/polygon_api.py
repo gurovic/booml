@@ -13,6 +13,43 @@ from ..models.problem_data import ProblemData
 from ..services.metrics import get_available_metrics
 
 
+def _is_problem_editable_by_user(problem, user):
+    if user.is_staff or user.is_superuser:
+        return True
+    return problem.author is None or problem.author == user
+
+
+def _is_truthy_param(value):
+    return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _serialize_problem_file(file_field):
+    if not file_field:
+        return None
+
+    try:
+        storage = getattr(file_field, "storage", None)
+        if storage is not None and hasattr(storage, "exists") and not storage.exists(file_field.name):
+            return None
+    except Exception:
+        return None
+
+    try:
+        url = file_field.url
+    except Exception:
+        return None
+
+    payload = {
+        "url": url,
+        "name": Path(file_field.name).name,
+    }
+    try:
+        payload["size"] = file_field.size if hasattr(file_field, "size") else None
+    except Exception:
+        payload["size"] = None
+    return payload
+
+
 def _get_owned_problem(problem_id, user):
     """Return (problem, error_response).
 
@@ -24,11 +61,7 @@ def _get_owned_problem(problem_id, user):
     or when the user is staff/superuser.
     """
     problem = get_object_or_404(Problem, pk=problem_id)
-    if (
-        problem.author is not None
-        and problem.author != user
-        and not (user.is_staff or user.is_superuser)
-    ):
+    if not _is_problem_editable_by_user(problem, user):
         return None, Response({'error': 'Доступ запрещён'}, status=status.HTTP_403_FORBIDDEN)
     return problem, None
 
@@ -48,12 +81,16 @@ def polygon_problems_api(request):
         return Response({'error': 'Authentication required'}, status=status.HTTP_401_UNAUTHORIZED)
     
     q = (request.GET.get("q") or "").strip()
+    editable_only = _is_truthy_param(request.GET.get("editable_only"))
     page_raw = request.GET.get("page")
     page_size_raw = request.GET.get("page_size")
     use_paging = bool(q) or page_raw is not None or page_size_raw is not None
 
     problems_qs = Problem.objects.all()
-    if not (request.user.is_staff or request.user.is_superuser):
+    if editable_only:
+        if not (request.user.is_staff or request.user.is_superuser):
+            problems_qs = problems_qs.filter(Q(author=request.user) | Q(author__isnull=True))
+    elif not (request.user.is_staff or request.user.is_superuser):
         # Keep drafts private: only the author can see them.
         problems_qs = problems_qs.filter(Q(author=request.user) | Q(is_published=True))
     if q:
@@ -67,6 +104,7 @@ def polygon_problems_api(request):
             "rating": problem.rating,
             "is_published": problem.is_published,
             "author_username": getattr(problem.author, "username", None),
+            "can_edit": _is_problem_editable_by_user(problem, request.user),
             "created_at": problem.created_at.strftime("%Y-%m-%d") if problem.created_at else None,
         }
 
@@ -183,12 +221,9 @@ def get_polygon_problem_api(request, problem_id):
     if problem_data:
         for field_name in ('train_file', 'test_file', 'sample_submission_file', 'answer_file'):
             file_field = getattr(problem_data, field_name, None)
-            if file_field:
-                files_data[field_name] = {
-                    'url': file_field.url,
-                    'name': Path(file_field.name).name,
-                    'size': file_field.size if hasattr(file_field, 'size') else None,
-                }
+            serialized = _serialize_problem_file(file_field)
+            if serialized:
+                files_data[field_name] = serialized
     
     return Response({
         'id': problem.id,
@@ -376,12 +411,9 @@ def upload_polygon_problem_file_api(request, problem_id):
     if problem_data:
         for field_name in ALLOWED_EXTENSIONS.keys():
             file_field = getattr(problem_data, field_name, None)
-            if file_field:
-                files_data[field_name] = {
-                    'url': file_field.url,
-                    'name': Path(file_field.name).name,
-                    'size': file_field.size if hasattr(file_field, 'size') else None,
-                }
+            serialized = _serialize_problem_file(file_field)
+            if serialized:
+                files_data[field_name] = serialized
     
     return Response({
         'files': files_data,
