@@ -15,9 +15,9 @@
               <h1 class="course-title">Раздел "{{ sectionTitle }}"</h1>
             </div>
 
-            <div v-if="canCreateInSection || canDeleteSection" class="course-header__actions">
+            <div v-if="canCreateCourse || canCreateSubsection || canDeleteSection" class="course-header__actions">
               <button
-                v-if="canCreateInSection"
+                v-if="canCreateCourse"
                 class="button button--primary"
                 type="button"
                 @click="showCreateCourseDialog = true"
@@ -25,7 +25,7 @@
                 Создать курс
               </button>
               <button
-                v-if="canCreateInSection"
+                v-if="canCreateSubsection"
                 class="button button--secondary"
                 type="button"
                 @click="showCreateSectionDialog = true"
@@ -222,9 +222,17 @@ const canDeleteSection = computed(() => {
   return Number(section.value.owner_id) === Number(userStore.currentUser.id)
 })
 
-const canCreateInSection = computed(() => {
+const canCreateCourse = computed(() => {
   if (!isAuthorized.value || !section.value) return false
+  if (typeof section.value.can_create_course === 'boolean') return section.value.can_create_course
   if (typeof section.value.can_manage === 'boolean') return section.value.can_manage
+  if (section.value.is_root) return isTeacher.value
+  return Number(section.value.owner_id) === Number(userStore.currentUser.id)
+})
+
+const canCreateSubsection = computed(() => {
+  if (!isAuthorized.value || !section.value) return false
+  if (typeof section.value.can_create_subsection === 'boolean') return section.value.can_create_subsection
   if (section.value.is_root) return isTeacher.value
   return Number(section.value.owner_id) === Number(userStore.currentUser.id)
 })
@@ -314,7 +322,7 @@ const deleteThisSection = async () => {
 }
 
 const createCourse = async () => {
-  if (!canCreateInSection.value) return
+  if (!canCreateCourse.value) return
   const title = newCourse.value.title.trim()
   if (!title) {
     createError.value = 'Название курса обязательно'
@@ -345,7 +353,7 @@ const createCourse = async () => {
 }
 
 const createSubsection = async () => {
-  if (!canCreateInSection.value) return
+  if (!canCreateSubsection.value) return
   const title = newSection.value.title.trim()
   if (!title) {
     createError.value = 'Название раздела обязательно'

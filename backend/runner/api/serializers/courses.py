@@ -198,13 +198,9 @@ class SectionCreateSerializer(serializers.Serializer):
                     raise serializers.ValidationError(
                         {"parent_id": "Only teachers can create sections in root categories"}
                     )
-            elif (
-                not can_admin_everywhere
-                and parent.owner_id != owner.id
-                and not SectionTeacher.objects.filter(section=parent, user=owner).exists()
-            ):
+            elif not can_admin_everywhere and parent.owner_id != owner.id:
                 raise serializers.ValidationError(
-                    {"parent_id": "Only section owner or assigned teacher can create nested sections"}
+                    {"parent_id": "Only section owner can create nested sections"}
                 )
         return data
 
