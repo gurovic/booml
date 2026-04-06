@@ -165,6 +165,7 @@
                   Добавить
                 </button>
               </div>
+              <div v-if="settingsError" class="form-error settings-error">{{ settingsError }}</div>
 
 
           </div>
@@ -318,6 +319,7 @@ const showCreateDialog = ref(false)
 const isCreating = ref(false)
 const createError = ref('')
 const showSettingsDialog = ref(false)
+const settingsError = ref('')
 const courseIsOpen = ref(false)
 const newParticipantUsername = ref('')
 const newParticipantRole = ref('student')
@@ -466,10 +468,12 @@ const loadContests = async () => {
 }
 
 const openSettingsDialog = () => {
+  settingsError.value = ''
   showSettingsDialog.value = true
 }
 
 const closeSettingsDialog = () => {
+  settingsError.value = ''
   showSettingsDialog.value = false
 }
 
@@ -612,12 +616,13 @@ const goToAuth = (mode = 'register', reason = 'generic') => {
 }
 
 const saveCourseSettings = async () => {
+  settingsError.value = ''
   try {
     await courseApi.updateCourse(courseId.value, { is_open: courseIsOpen.value })
     await loadContests()
   } catch (err) {
     console.error('Failed to update course:', err)
-    error.value = err?.message || 'Не удалось обновить курс'
+    settingsError.value = err?.message || 'Не удалось обновить курс'
   }
 }
 
@@ -625,6 +630,7 @@ const addParticipant = async () => {
   const username = newParticipantUsername.value.trim()
   if (!username) return
 
+  settingsError.value = ''
   try {
     const payload =
       newParticipantRole.value === 'teacher'
@@ -633,16 +639,18 @@ const addParticipant = async () => {
 
     await courseApi.updateCourseParticipants(courseId.value, payload)
     newParticipantUsername.value = ''
+    newParticipantRole.value = 'student'
     await loadContests()
   } catch (err) {
     console.error('Failed to add participant:', err)
-    error.value = err?.message || 'Не удалось добавить участника'
+    settingsError.value = err?.message || 'Не удалось добавить участника'
   }
 }
 
 const toggleParticipantRole = async (p) => {
   if (!p?.username || p.is_owner) return
   const nextRole = p.role === 'teacher' ? 'student' : 'teacher'
+  settingsError.value = ''
   try {
     const payload =
       nextRole === 'teacher'
@@ -652,19 +660,20 @@ const toggleParticipantRole = async (p) => {
     await loadContests()
   } catch (err) {
     console.error('Failed to update role:', err)
-    error.value = err?.message || 'Не удалось обновить роль'
+    settingsError.value = err?.message || 'Не удалось обновить роль'
   }
 }
 
 const removeParticipant = async (p) => {
   if (!p?.username || p.is_owner) return
   if (!confirm(`Удалить пользователя ${p.username} из курса?`)) return
+  settingsError.value = ''
   try {
     await courseApi.removeCourseParticipants(courseId.value, [p.username])
     await loadContests()
   } catch (err) {
     console.error('Failed to remove participant:', err)
-    error.value = err?.message || 'Не удалось удалить участника'
+    settingsError.value = err?.message || 'Не удалось удалить участника'
   }
 }
 
@@ -962,6 +971,10 @@ watch(
 
 .settings-participants-add {
   margin-top: 3px;
+}
+
+.settings-error {
+  margin-top: 8px;
 }
 
 .course-settings__row {
