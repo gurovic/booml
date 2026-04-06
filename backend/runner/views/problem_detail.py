@@ -9,6 +9,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from runner.api.views import build_descriptor_from_problem
+from runner.api.serializers.submissions import _extract_submission_score
 
 from ..forms import SubmissionUploadForm
 from ..models import Contest, ContestProblem
@@ -374,6 +375,7 @@ def problem_detail_api(request):
         raw_submissions = (
             Submission.objects
             .filter(problem=problem, user=request.user)
+            .select_related("problem__descriptor")
             .order_by("-submitted_at")[:5]
         )
 
@@ -393,6 +395,7 @@ def problem_detail_api(request):
                 "status": submission.status,
                 "metric": metric_value,
                 "metrics": submission.metrics,
+                "score": _extract_submission_score(submission),
                 "is_after_deadline": is_after_deadline,
             })
         
