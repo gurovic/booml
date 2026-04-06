@@ -585,7 +585,18 @@ def contest_problem_leaderboard(request, contest_id: int):
     if not contest.is_visible_to(request.user):
         return JsonResponse({"detail": "Forbidden"}, status=403)
     if not contest.are_problems_visible_to(request.user):
-        return JsonResponse({"detail": "Forbidden"}, status=403)
+        return JsonResponse(
+            {
+                "contest_id": contest.id,
+                "leaderboards": [],
+                "overall_leaderboard": {
+                    "scoring": contest.scoring,
+                    "problems_count": 0,
+                    "entries": [],
+                },
+            },
+            status=200,
+        )
 
     leaderboards, overall_leaderboard = build_contest_leaderboards(contest)
     return JsonResponse(

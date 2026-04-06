@@ -371,7 +371,7 @@ class ContestLeaderboardViewTests(TestCase):
         self.assertIsNotNone(alice_overall["total_score"])
         self.assertIsNone(alice_overall["upsolving_total_score"])
 
-    def test_student_cannot_view_leaderboard_before_start(self):
+    def test_student_views_empty_leaderboard_before_start(self):
         self.contest.start_time = timezone.now() + timedelta(hours=1)
         self.contest.duration_minutes = 60
         self.contest.save(update_fields=["start_time", "duration_minutes"])
@@ -380,4 +380,8 @@ class ContestLeaderboardViewTests(TestCase):
         request.user = self.alice
         response = contest_problem_leaderboard.__wrapped__(request, contest_id=self.contest.id)
 
-        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.status_code, 200)
+        data = json.loads(response.content)
+        self.assertEqual(data["leaderboards"], [])
+        self.assertEqual(data["overall_leaderboard"]["entries"], [])
+        self.assertEqual(data["overall_leaderboard"]["problems_count"], 0)
