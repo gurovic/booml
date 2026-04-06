@@ -40,7 +40,7 @@ def _build_section_tree(sections, courses, favorite_positions=None, *, user=None
     is_admin = bool(
         user
         and getattr(user, "is_authenticated", False)
-        and (is_platform_admin(user) or user.is_staff or user.is_superuser)
+        and is_platform_admin(user)
     )
 
     def build(section):
@@ -181,9 +181,7 @@ class CourseTreeView(APIView):
     def get(self, request):
         sections = list(Section.objects.select_related("parent", "owner").all())
         courses_qs = Course.objects.select_related("section", "owner").all()
-        is_admin = bool(
-            is_platform_admin(request.user) or request.user.is_staff or request.user.is_superuser
-        )
+        is_admin = bool(is_platform_admin(request.user))
 
         section_teacher_ids = set()
         if request.user.is_authenticated and not is_admin:
