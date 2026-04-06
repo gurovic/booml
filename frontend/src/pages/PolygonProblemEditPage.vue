@@ -665,6 +665,33 @@ const clearMessages = () => {
   errors.descriptor = {}
 }
 
+const validateRating = () => {
+  const rating = Number(formData.rating)
+
+  if (!Number.isFinite(rating)) {
+    errors.rating = 'Укажите рейтинг сложности'
+    return false
+  }
+
+  if (!Number.isInteger(rating)) {
+    errors.rating = 'Рейтинг должен быть целым числом'
+    return false
+  }
+
+  if (rating < 800 || rating > 3000) {
+    errors.rating = 'Рейтинг должен быть от 800 до 3000'
+    return false
+  }
+
+  if (rating % 100 !== 0) {
+    errors.rating = 'Рейтинг должен быть кратен 100'
+    return false
+  }
+
+  errors.rating = null
+  return true
+}
+
 const withStatementSelection = (transform) => {
   const input = statementInput.value
   if (!input || typeof transform !== 'function') return
@@ -1043,6 +1070,12 @@ const loadProblem = async () => {
 
 const saveProblem = async () => {
   clearMessages()
+
+  if (!validateRating()) {
+    errorMessage.value = 'Проверьте правильность заполнения полей'
+    return
+  }
+
   saving.value = true
   
   try {
