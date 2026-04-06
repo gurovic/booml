@@ -920,7 +920,7 @@ watch(
 .settings-modal {
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 8px;
 }
 
 .settings-section__head {
@@ -961,7 +961,7 @@ watch(
 }
 
 .settings-participants-add {
-  margin-top: 3px;
+  margin-top: 10px;
 }
 
 .course-settings__row {
