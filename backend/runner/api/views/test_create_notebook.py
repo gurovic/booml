@@ -4,7 +4,7 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
 
-from runner.models import Notebook, Problem
+from runner.models import Notebook, NotebookFolder, Problem
 
 User = get_user_model()
 
@@ -31,6 +31,49 @@ class CreateNotebookAPITests(TestCase):
         self.assertEqual(notebook.title, "My Notebook")
         self.assertIsNone(notebook.problem)
 
+    def test_create_notebook_in_custom_folder(self):
+        folder = NotebookFolder.objects.create(
+            owner=self.user,
+            title="Мои заметки",
+            kind=NotebookFolder.Kind.CUSTOM,
+        )
+        resp = self.client.post(
+            self.create_url,
+            {"title": "Notebook in folder", "folder_id": folder.id},
+            content_type="application/json",
+        )
+
+        self.assertEqual(resp.status_code, HTTPStatus.CREATED)
+        data = resp.json()
+        self.assertEqual(data["folder_id"], folder.id)
+
+        notebook = Notebook.objects.get(pk=data["id"])
+        self.assertEqual(notebook.folder_id, folder.id)
+
+    def test_reject_create_notebook_in_tasks_folder(self):
+        tasks_folder = NotebookFolder.get_or_create_tasks_folder(self.user)
+        resp = self.client.post(
+            self.create_url,
+            {"title": "Should fail", "folder_id": tasks_folder.id},
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, HTTPStatus.BAD_REQUEST)
+
+    def test_reject_create_notebook_in_tasks_subfolder(self):
+        tasks_folder = NotebookFolder.get_or_create_tasks_folder(self.user)
+        tasks_subfolder = NotebookFolder.objects.create(
+            owner=self.user,
+            parent=tasks_folder,
+            title="Tasks child",
+            kind=NotebookFolder.Kind.CUSTOM,
+        )
+        resp = self.client.post(
+            self.create_url,
+            {"title": "Should fail", "folder_id": tasks_subfolder.id},
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, HTTPStatus.BAD_REQUEST)
+
     def test_create_notebook_with_problem(self):
         """Test creating a notebook for a problem"""
         resp = self.client.post(
@@ -43,11 +86,14 @@ class CreateNotebookAPITests(TestCase):
         self.assertIn("id", data)
         self.assertEqual(data["problem_id"], self.problem.id)
         self.assertIn("Test Problem", data["title"])
+        self.assertIsNotNone(data.get("folder_id"))
         
         # Verify notebook was created with problem association
         notebook = Notebook.objects.get(pk=data["id"])
         self.assertEqual(notebook.owner, self.user)
         self.assertEqual(notebook.problem, self.problem)
+        self.assertIsNotNone(notebook.folder)
+        self.assertEqual(notebook.folder.kind, NotebookFolder.Kind.TASKS)
 
     def test_create_duplicate_notebook_for_problem(self):
         """Test that creating a second notebook for the same problem returns the existing one"""

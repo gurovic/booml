@@ -6,7 +6,8 @@ from django.shortcuts import get_object_or_404
 from django.template.loader import render_to_string
 from django.views.decorators.http import require_http_methods
 
-from ..models import Cell, Notebook
+from ..models import Cell
+from ..services.permissions import get_user_writable_notebook_or_404
 
 
 def _parse_payload(request):
@@ -40,7 +41,7 @@ def _reindex_cells(cells):
 @transaction.atomic
 @require_http_methods(["PATCH", "POST"])
 def move_cell(request, notebook_id, cell_id):
-    notebook = get_object_or_404(Notebook, id=notebook_id)
+    notebook = get_user_writable_notebook_or_404(request.user, notebook_id)
     payload = _parse_payload(request)
 
     target_position = payload.get('target_position')
@@ -71,7 +72,7 @@ def move_cell(request, notebook_id, cell_id):
 @transaction.atomic
 @require_http_methods(["POST"])
 def copy_cell(request, notebook_id, cell_id):
-    notebook = get_object_or_404(Notebook, id=notebook_id)
+    notebook = get_user_writable_notebook_or_404(request.user, notebook_id)
     payload = _parse_payload(request)
 
     cells = list(notebook.cells.select_for_update().order_by('execution_order'))

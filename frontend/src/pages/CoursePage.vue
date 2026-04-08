@@ -32,7 +32,15 @@
             </div>
             <div class="course-header__actions">
               <button
+                class="button button--secondary"
+                type="button"
+                @click="goToLeaderboard"
+              >
+                Таблица результатов курса
+              </button>
+              <button
                 v-if="canCreateContest"
+                type="button"
                 class="button button--primary create-contest-btn"
                 @click="showCreateDialog = true"
               >
@@ -48,7 +56,23 @@
               </button>
             </div>
           </div>
-          
+
+          <div v-if="!isAuthorized" class="guest-hint">
+            <p class="guest-hint__text">
+              Чтобы участвовать в контестах курса и сохранять прогресс, войдите или зарегистрируйтесь.
+            </p>
+            <div class="guest-hint__actions">
+              <button class="button button--primary" type="button" @click="goToAuth('register')">
+                Зарегистрироваться
+              </button>
+              <button class="button button--secondary" type="button" @click="goToAuth('login')">
+                Войти
+              </button>
+            </div>
+          </div>
+
+          <div v-if="renderedCourseDescription" class="course-description" v-html="renderedCourseDescription"></div>
+
           <UiLinkList
             class="course-contests-list"
             title="Контесты"
@@ -141,6 +165,7 @@
                   Добавить
                 </button>
               </div>
+              <div v-if="settingsError" class="form-error settings-error">{{ settingsError }}</div>
 
 
           </div>
@@ -191,6 +216,45 @@
               <option value="partial">Частичная оценка</option>
             </select>
           </div>
+          <div class="form-group">
+            <label class="form-checkbox">
+              <input type="checkbox" v-model="newContest.has_time_limit" />
+              <span>Контест с ограничением по времени</span>
+            </label>
+          </div>
+          <div v-if="newContest.has_time_limit" class="contest-timing-config">
+            <div class="contest-timing-config__head">Параметры времени</div>
+            <div class="form-row form-row--timing">
+              <div class="form-group form-group--compact">
+                <label for="contest-start-time" class="form-label">Начало</label>
+                <input
+                  id="contest-start-time"
+                  v-model="newContest.start_time"
+                  type="datetime-local"
+                  class="form-input form-input--datetime"
+                />
+              </div>
+              <div class="form-group form-group--compact">
+                <label for="contest-end-time" class="form-label">Окончание</label>
+                <input
+                  id="contest-end-time"
+                  v-model="newContest.end_time"
+                  type="datetime-local"
+                  class="form-input form-input--datetime"
+                />
+              </div>
+            </div>
+            <label class="form-checkbox form-checkbox--subtle">
+              <input type="checkbox" v-model="newContest.allow_upsolving" />
+              <span>Разрешить дорешку после дедлайна</span>
+            </label>
+          </div>
+          <div class="form-group">
+            <label class="form-checkbox">
+              <input type="checkbox" v-model="newContest.allow_student_questions" />
+              <span>Разрешить ученикам задавать вопросы в уведомлениях</span>
+            </label>
+          </div>
           <div class="form-row">
             <div class="form-group">
               <label class="form-checkbox">
@@ -233,6 +297,9 @@ import UiHeader from '@/components/ui/UiHeader.vue'
 import UiBreadcrumbs from '@/components/ui/UiBreadcrumbs.vue'
 import UiLinkList from '@/components/ui/UiLinkList.vue'
 import { arrayMove } from '@/utils/arrayMove'
+import { renderProblemStatement } from '@/utils/problemMarkdown'
+import { pushToAuthRoute } from '@/utils/authNavigation'
+import { buildAuthRedirect } from '@/utils/redirect'
 
 const route = useRoute()
 const router = useRouter()
@@ -252,6 +319,7 @@ const showCreateDialog = ref(false)
 const isCreating = ref(false)
 const createError = ref('')
 const showSettingsDialog = ref(false)
+const settingsError = ref('')
 const courseIsOpen = ref(false)
 const newParticipantUsername = ref('')
 const newParticipantRole = ref('student')
@@ -261,17 +329,33 @@ const newContest = ref({
   title: '',
   description: '',
   scoring: 'ioi',
+  has_time_limit: false,
+  start_time: '',
+  end_time: '',
+  allow_upsolving: false,
+  allow_notifications: true,
+  allow_student_questions: true,
   is_published: false,
   is_rated: false,
 })
 
 const courseTitle = computed(() => course.value?.title || queryTitle.value || '...')
+const renderedCourseDescription = computed(() => {
+  const desc = course.value?.description
+  if (typeof desc !== 'string' || !desc.trim()) return ''
+  return renderProblemStatement(desc)
+})
 const isAuthorized = computed(() => !!userStore.currentUser)
 
 const isFavoriteCourse = computed(() => {
   const cid = Number(courseId.value)
   return favorites.value.some(x => Number(x.course_id) === cid)
 })
+
+const isAuthRequiredError = (err) => {
+  const status = Number(err?.status)
+  return status === 401 || status === 403
+}
 
 const loadFavorites = async () => {
   if (!isAuthorized.value) {
@@ -367,6 +451,16 @@ const loadContests = async () => {
     await loadFavorites()
   } catch (err) {
     console.error('Failed to load contests.', err)
+    if (!isAuthorized.value && isAuthRequiredError(err)) {
+      await router.replace({
+        name: 'auth-required',
+        query: buildAuthRedirect({
+          redirect: route.fullPath,
+          reason: 'generic',
+        }),
+      })
+      return
+    }
     error.value = err?.message || 'Не удалось загрузить контесты.'
   } finally {
     isLoading.value = false
@@ -374,10 +468,12 @@ const loadContests = async () => {
 }
 
 const openSettingsDialog = () => {
+  settingsError.value = ''
   showSettingsDialog.value = true
 }
 
 const closeSettingsDialog = () => {
+  settingsError.value = ''
   showSettingsDialog.value = false
 }
 
@@ -388,9 +484,22 @@ const closeCreateDialog = () => {
     title: '',
     description: '',
     scoring: 'ioi',
+    has_time_limit: false,
+    start_time: '',
+    end_time: '',
+    allow_upsolving: false,
+    allow_notifications: true,
+    allow_student_questions: true,
     is_published: false,
     is_rated: false,
   }
+}
+
+const toIsoDateTime = (localValue) => {
+  if (!localValue) return null
+  const dt = new Date(localValue)
+  if (Number.isNaN(dt.getTime())) return null
+  return dt.toISOString()
 }
 
 const createContest = async () => {
@@ -404,10 +513,32 @@ const createContest = async () => {
   createError.value = ''
   
   try {
+    const hasTimeLimit = !!newContest.value.has_time_limit
+    const startIso = hasTimeLimit ? toIsoDateTime(newContest.value.start_time) : null
+    const endIso = hasTimeLimit ? toIsoDateTime(newContest.value.end_time) : null
+    if (hasTimeLimit) {
+      if (!startIso || !endIso) {
+        createError.value = 'Для контеста по времени укажите дату начала и окончания'
+        isCreating.value = false
+        return
+      }
+      if (new Date(endIso).getTime() <= new Date(startIso).getTime()) {
+        createError.value = 'Время окончания должно быть позже времени начала'
+        isCreating.value = false
+        return
+      }
+    }
+
     const contestData = {
       title,
       description: newContest.value.description,
       scoring: newContest.value.scoring,
+      has_time_limit: hasTimeLimit,
+      start_time: startIso,
+      end_time: endIso,
+      allow_upsolving: hasTimeLimit ? !!newContest.value.allow_upsolving : false,
+      allow_notifications: newContest.value.allow_notifications !== false,
+      allow_student_questions: newContest.value.allow_student_questions !== false,
       is_published: newContest.value.is_published,
       is_rated: newContest.value.is_rated,
     }
@@ -469,13 +600,29 @@ const deleteContest = async (item) => {
   }
 }
 
+const goToLeaderboard = () => {
+  const title = course.value?.title || queryTitle.value
+  const query = title ? { title } : {}
+  router.push({ name: 'course-leaderboard', params: { id: courseId.value }, query })
+}
+
+const goToAuth = (mode = 'register', reason = 'generic') => {
+  return pushToAuthRoute({
+    router,
+    route,
+    mode,
+    reason,
+  })
+}
+
 const saveCourseSettings = async () => {
+  settingsError.value = ''
   try {
     await courseApi.updateCourse(courseId.value, { is_open: courseIsOpen.value })
     await loadContests()
   } catch (err) {
     console.error('Failed to update course:', err)
-    error.value = err?.message || 'Не удалось обновить курс'
+    settingsError.value = err?.message || 'Не удалось обновить курс'
   }
 }
 
@@ -483,6 +630,7 @@ const addParticipant = async () => {
   const username = newParticipantUsername.value.trim()
   if (!username) return
 
+  settingsError.value = ''
   try {
     const payload =
       newParticipantRole.value === 'teacher'
@@ -491,16 +639,18 @@ const addParticipant = async () => {
 
     await courseApi.updateCourseParticipants(courseId.value, payload)
     newParticipantUsername.value = ''
+    newParticipantRole.value = 'student'
     await loadContests()
   } catch (err) {
     console.error('Failed to add participant:', err)
-    error.value = err?.message || 'Не удалось добавить участника'
+    settingsError.value = err?.message || 'Не удалось добавить участника'
   }
 }
 
 const toggleParticipantRole = async (p) => {
   if (!p?.username || p.is_owner) return
   const nextRole = p.role === 'teacher' ? 'student' : 'teacher'
+  settingsError.value = ''
   try {
     const payload =
       nextRole === 'teacher'
@@ -510,19 +660,20 @@ const toggleParticipantRole = async (p) => {
     await loadContests()
   } catch (err) {
     console.error('Failed to update role:', err)
-    error.value = err?.message || 'Не удалось обновить роль'
+    settingsError.value = err?.message || 'Не удалось обновить роль'
   }
 }
 
 const removeParticipant = async (p) => {
   if (!p?.username || p.is_owner) return
   if (!confirm(`Удалить пользователя ${p.username} из курса?`)) return
+  settingsError.value = ''
   try {
     await courseApi.removeCourseParticipants(courseId.value, [p.username])
     await loadContests()
   } catch (err) {
     console.error('Failed to remove participant:', err)
-    error.value = err?.message || 'Не удалось удалить участника'
+    settingsError.value = err?.message || 'Не удалось удалить участника'
   }
 }
 
@@ -540,9 +691,19 @@ const deleteThisCourse = async () => {
 watch(courseId, () => {
   loadContests()
 }, { immediate: true })
+
+watch(
+  () => newContest.value.has_time_limit,
+  (enabled) => {
+    if (enabled) return
+    newContest.value.allow_upsolving = false
+  }
+)
 </script>
 
 <style scoped>
+@import '@/styles/guestHint.css';
+
 .contest-page {
   min-height: 100vh;
   background: var(--color-bg-default);
@@ -616,6 +777,115 @@ watch(courseId, () => {
   gap: 10px;
   align-items: center;
   flex-wrap: wrap;
+}
+
+.guest-hint {
+  margin-top: 16px;
+}
+
+.course-description {
+  margin-top: 20px;
+  padding: 16px 0;
+  color: var(--color-text-primary);
+  line-height: 1.6;
+}
+
+.course-description :deep(p) {
+  margin: 0 0 12px;
+}
+
+.course-description :deep(p:last-child) {
+  margin-bottom: 0;
+}
+
+.course-description :deep(ul),
+.course-description :deep(ol) {
+  margin: 12px 0;
+  padding-left: 1.5em;
+}
+
+.course-description :deep(li) {
+  margin: 4px 0;
+}
+
+.course-description :deep(a) {
+  color: var(--color-primary);
+  text-decoration: none;
+}
+
+.course-description :deep(a:hover) {
+  text-decoration: underline;
+}
+
+.course-description :deep(pre) {
+  margin: 16px 0 20px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1px solid var(--color-border-default);
+  background: #0f172a;
+  color: #e2e8f0;
+  overflow-x: auto;
+}
+
+.course-description :deep(code) {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+.course-description :deep(p code),
+.course-description :deep(li code),
+.course-description :deep(td code) {
+  padding: 0.1em 0.35em;
+  border-radius: 6px;
+  background: rgba(15, 23, 42, 0.08);
+}
+
+.course-description :deep(blockquote) {
+  margin: 16px 0;
+  padding: 10px 14px;
+  border-left: 4px solid var(--color-primary);
+  background: var(--color-bg-muted);
+  border-radius: 0 10px 10px 0;
+}
+
+.course-description :deep(.statement-color) {
+  font-weight: 700;
+}
+
+.course-description :deep(.math-block) {
+  margin: 16px 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.course-description :deep(.math-block .katex-display) {
+  margin: 0;
+  text-align: center;
+}
+
+.course-description :deep(.math-block .katex-display > .katex) {
+  white-space: nowrap;
+}
+
+.course-description :deep(h1) {
+  font-size: 22px;
+  font-weight: 600;
+  margin: 24px 0 12px;
+}
+
+.course-description :deep(h1:first-child) {
+  margin-top: 0;
+}
+
+.course-description :deep(h2) {
+  font-size: 20px;
+  font-weight: 500;
+  margin: 20px 0 10px;
+}
+
+.course-description :deep(h3) {
+  font-size: 18px;
+  font-weight: 500;
+  margin: 16px 0 8px;
 }
 
 .course-settings {
@@ -701,6 +971,10 @@ watch(courseId, () => {
 
 .settings-participants-add {
   margin-top: 3px;
+}
+
+.settings-error {
+  margin-top: 8px;
 }
 
 .course-settings__row {
@@ -945,6 +1219,10 @@ watch(courseId, () => {
   margin-bottom: 0;
 }
 
+.form-group--compact {
+  margin-bottom: 0;
+}
+
 .form-label {
   display: block;
   margin-bottom: 6px;
@@ -981,8 +1259,45 @@ watch(courseId, () => {
 }
 
 .form-row {
-  display: flex;
-  gap: 16px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  align-items: start;
+}
+
+.form-row .form-group {
+  min-width: 0;
+}
+
+.form-row--timing {
+  margin-bottom: 12px;
+}
+
+.contest-timing-config {
+  margin: 0 0 16px;
+  padding: 14px;
+  border: 1px solid var(--color-border-default, #d0d0d0);
+  border-radius: 12px;
+  background: var(--color-bg-muted, #f8fafc);
+}
+
+.contest-timing-config__head {
+  margin-bottom: 10px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--color-text-muted, #64748b);
+}
+
+.form-input--datetime {
+  min-height: 42px;
+  background: #fff;
+}
+
+.form-checkbox--subtle {
+  font-size: 13px;
+  color: var(--color-text-secondary, #334155);
 }
 
 .form-checkbox {
@@ -1017,6 +1332,13 @@ watch(courseId, () => {
 
   .course-title {
     font-size: 32px;
+  }
+}
+
+@media (max-width: 700px) {
+  .form-row {
+    grid-template-columns: 1fr;
+    gap: 10px;
   }
 }
 </style>

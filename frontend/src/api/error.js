@@ -93,6 +93,17 @@ function normalizeText(text) {
   return String(text || '').replace(/\s+/g, ' ').trim()
 }
 
+function getMissingUsersMessage(parsed) {
+  if (!parsed || typeof parsed !== 'object') return ''
+  const detail = normalizeText(parsed.detail)
+  if (!/Some users not found/i.test(detail)) return ''
+  const missing = Array.isArray(parsed.missing)
+    ? parsed.missing.map(item => normalizeText(item)).filter(Boolean)
+    : []
+  if (!missing.length) return 'Некоторые пользователи не найдены.'
+  return `Пользователь не найден: ${missing.join(', ')}`
+}
+
 function extractFirstMessage(value) {
   if (value == null) return ''
   if (typeof value === 'string') return normalizeText(value)
@@ -148,6 +159,8 @@ function fallbackByStatus(status) {
 
 export function getApiErrorMessage(status, responseText = '') {
   const parsed = parseJsonMaybe(responseText)
+  const missingUsersMessage = getMissingUsersMessage(parsed)
+  if (missingUsersMessage) return missingUsersMessage
   const rawMessage = parsed ? extractFirstMessage(parsed) : normalizeText(responseText)
   const cleaned = mapKnownMessage(rawMessage)
 
@@ -168,5 +181,6 @@ export function toApiError(status, responseText = '') {
   const message = getApiErrorMessage(status, responseText)
   const error = new Error(message)
   error.status = status
+  error.data = parseJsonMaybe(responseText)
   return error
 }

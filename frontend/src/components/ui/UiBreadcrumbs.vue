@@ -27,15 +27,18 @@ import { useRoute } from 'vue-router'
 import { contestApi } from '@/api'
 import { ensureCourseTreeLoaded, getCourseById, getSectionById, getSectionChain } from '@/utils/courseTreeCache'
 import { normalizeContestProblemLabel } from '@/utils/contestProblemLabel'
+import { useUserStore } from '@/stores/UserStore'
 
 const props = defineProps({
   section: { type: Object, default: null },
   course: { type: Object, default: null },
   contest: { type: Object, default: null },
   problem: { type: Object, default: null },
+  profile: { type: Object, default: null },
 })
 
 const route = useRoute()
+const userStore = useUserStore()
 const items = ref([])
 const fetchedContest = ref(null)
 
@@ -146,11 +149,24 @@ const refresh = async () => {
   const list = []
   _pushHome(list)
 
+  if (name === 'profile') {
+    list.push({
+      key: 'profile',
+      label: 'Профиль',
+      title: 'Профиль пользователя',
+      to: null,
+    })
+    items.value = list
+    return
+  }
+
   if (name === 'courses') {
+    const isAuthorized = !!userStore.currentUser
+    const label = isAuthorized ? 'Мои курсы' : 'Каталог курсов'
     list.push({
       key: 'courses',
-      label: 'Мои курсы',
-      title: 'Мои курсы',
+      label,
+      title: label,
       to: null,
     })
     items.value = list
@@ -194,17 +210,33 @@ const refresh = async () => {
     }
   }
 
+  if (name === 'course-leaderboard') {
+    courseId = Number(routeId.value)
+  }
+
   if (name === 'problem') {
     contestId = contestFromQuery.value
 
     // When opened from a contest page we pass ?contest=<id> so we can reconstruct the full path.
     if (contestId) {
-      try {
-        const c = await contestApi.getContest(contestId)
-        fetchedContest.value = c
-        courseId = Number(c?.course || null)
-      } catch (e) {
-        // ignore, show partial crumbs
+      const propContestId = Number(props.contest?.id || null)
+      const propContestCourseId = Number(props.contest?.course || props.contest?.course_id || null)
+      const canUseContestFromProps =
+        propContestId === Number(contestId) &&
+        Number.isFinite(propContestCourseId) &&
+        propContestCourseId > 0
+
+      if (canUseContestFromProps) {
+        fetchedContest.value = props.contest
+        courseId = propContestCourseId
+      } else {
+        try {
+          const c = await contestApi.getContest(contestId)
+          fetchedContest.value = c
+          courseId = Number(c?.course || null)
+        } catch (e) {
+          // ignore, show partial crumbs
+        }
       }
     }
   }
@@ -315,6 +347,16 @@ const refresh = async () => {
       label: title,
       title,
       to: { name: 'contest', params: { id: contestId }, query: { title } },
+    })
+  }
+
+  // If we're on course leaderboard page, add the "Таблица результатов" crumb.
+  if (name === 'course-leaderboard') {
+    list.push({
+      key: 'course-leaderboard',
+      label: 'Таблица результатов',
+      title: 'Таблица результатов',
+      to: null,
     })
   }
 

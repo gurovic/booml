@@ -2,9 +2,11 @@ from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from django.core.files.base import ContentFile
 from django.utils.crypto import get_random_string
+from django.utils import timezone
 
 from ...models.submission import Submission
 from ...models.problem import Problem
+from ...models.contest import Contest
 from ...models.prevalidation import PreValidation
 from ...services.problem_scoring import (
     default_curve_p,
@@ -72,6 +74,7 @@ def _extract_submission_score(submission: Submission):
 
 class SubmissionCreateSerializer(serializers.ModelSerializer):
     problem_id = serializers.IntegerField(write_only=True)
+    contest_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
     file = serializers.FileField(write_only=True, required=False, allow_null=True)
     raw_text = serializers.CharField(
         write_only=True,
@@ -84,7 +87,7 @@ class SubmissionCreateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Submission
-        fields = ["id", "problem_id", "file", "raw_text", "submitted_at", "status", "code_size"]
+        fields = ["id", "problem_id", "contest_id", "file", "raw_text", "submitted_at", "status", "code_size"]
         read_only_fields = ["id", "submitted_at", "status", "code_size"]
 
     def validate_file(self, f):
@@ -119,12 +122,45 @@ class SubmissionCreateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 {"non_field_errors": ["Передайте либо CSV-файл, либо текст решения"]}
             )
+
+        contest_id = attrs.get("contest_id")
+        if contest_id is not None:
+            request = self.context.get("request")
+            user = getattr(request, "user", None)
+            problem_id = attrs.get("problem_id")
+
+            try:
+                contest = (
+                    Contest.objects.select_related("course")
+                    .prefetch_related("allowed_participants")
+                    .get(pk=contest_id)
+                )
+            except Contest.DoesNotExist:
+                raise serializers.ValidationError({"contest_id": "Контест не найден"})
+
+            if not contest.problems.filter(pk=problem_id, is_published=True).exists():
+                raise serializers.ValidationError(
+                    {"contest_id": "Эта задача не входит в выбранный контест"}
+                )
+
+            if not user or not contest.is_visible_to(user):
+                raise serializers.ValidationError({"contest_id": "Нет доступа к выбранному контесту"})
+
+            can_submit, reason = contest.is_submission_allowed(user, at=timezone.now())
+            if not can_submit:
+                raise serializers.ValidationError(
+                    {"contest_id": reason or "Отправка в этом контесте недоступна"}
+                )
+
+            attrs["_contest"] = contest
         return attrs
 
     def create(self, validated_data):
         request = self.context.get("request")
         user = request.user
         problem_id = validated_data.pop("problem_id")
+        validated_data.pop("contest_id", None)
+        validated_data.pop("_contest", None)
         raw_text = validated_data.get("raw_text")
 
         try:

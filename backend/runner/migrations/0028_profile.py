@@ -10,6 +10,8 @@ class Migration(migrations.Migration):
     dependencies = [
         ("auth", "0012_alter_user_first_name_max_length"),
         ("runner", "0027_merge_20260220_0535"),
+        ('auth', '0012_alter_user_first_name_max_length'),
+        ('runner', '0027_merge_20260220_0535'),
     ]
 
     operations = [
@@ -39,6 +41,15 @@ class Migration(migrations.Migration):
             options={
                 "verbose_name": "Профиль",
                 "verbose_name_plural": "Профили",
+            name='Profile',
+            fields=[
+                ('user', models.OneToOneField(on_delete=django.db.models.deletion.CASCADE, primary_key=True, related_name='profile', serialize=False, to=settings.AUTH_USER_MODEL)),
+                ('role', models.CharField(choices=[('student', 'Студент/Ученик'), ('teacher', 'Учитель')], default='student', max_length=20)),
+                ('avatar', models.ImageField(blank=True, null=True, upload_to='avatars/')),
+            ],
+            options={
+                'verbose_name': 'Профиль',
+                'verbose_name_plural': 'Профили',
             },
         ),
     ]

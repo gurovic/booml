@@ -23,7 +23,14 @@
           @dragstart="onDragStart(idx, $event)"
           @dragend="onDragEnd"
         >
-          <span class="material-symbols-rounded" aria-hidden="true">drag_indicator</span>
+          <svg class="menu-list__drag-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <circle cx="8" cy="6" r="1.65" />
+            <circle cx="8" cy="12" r="1.65" />
+            <circle cx="8" cy="18" r="1.65" />
+            <circle cx="16" cy="6" r="1.65" />
+            <circle cx="16" cy="12" r="1.65" />
+            <circle cx="16" cy="18" r="1.65" />
+          </svg>
         </button>
         <UiIdPill
           v-if="item.idPill != null"
@@ -194,9 +201,11 @@ export default {
   cursor: grabbing;
 }
 
-.menu-list__drag-handle :deep(.material-symbols-rounded) {
-  font-size: 18px;
-  line-height: 1;
+.menu-list__drag-icon {
+  width: 18px;
+  height: 18px;
+  display: block;
+  fill: currentColor;
 }
 
 .menu-list__item--dragging {
