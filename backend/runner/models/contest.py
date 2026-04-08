@@ -1,7 +1,9 @@
 import uuid
+from datetime import timedelta
 
 from django.conf import settings
 from django.db import models
+from django.utils import timezone
 
 from .course import Course, CourseParticipant
 
@@ -37,6 +39,18 @@ class Contest(models.Model):
         null=True,
         blank=True,
         help_text="Contest duration in minutes",
+    )
+    allow_upsolving = models.BooleanField(
+        default=False,
+        help_text="Allow submissions after contest deadline",
+    )
+    allow_notifications = models.BooleanField(
+        default=True,
+        help_text="Enable announcements and question/answer notifications for the contest",
+    )
+    allow_student_questions = models.BooleanField(
+        default=True,
+        help_text="Allow students to ask questions in contest notifications",
     )
     class Scoring(models.TextChoices):
         ICPC = "icpc", "ICPC (penalty by time)"
@@ -132,37 +146,94 @@ class Contest(models.Model):
     def __str__(self):
         return f"{self.title} ({self.course})"
 
+    def save(self, *args, **kwargs):
+        if not self.allow_notifications:
+            self.allow_student_questions = False
+            update_fields = kwargs.get("update_fields")
+            if update_fields is not None and "allow_student_questions" not in update_fields:
+                kwargs["update_fields"] = set(update_fields) | {"allow_student_questions"}
+        super().save(*args, **kwargs)
+
+    def is_user_manager(self, user) -> bool:
+        if not getattr(user, "is_authenticated", False):
+            return False
+        if user.is_staff or user.is_superuser:
+            return True
+        if self.course.owner_id == user.id:
+            return True
+        return self.course.participants.filter(
+            user=user,
+            role=CourseParticipant.Role.TEACHER,
+        ).exists()
+
+    def get_end_time(self):
+        if self.start_time is None or self.duration_minutes is None:
+            return None
+        return self.start_time + timedelta(minutes=self.duration_minutes)
+
+    def time_state(self, at=None) -> str:
+        now = at or timezone.now()
+        end_time = self.get_end_time()
+
+        if self.start_time is not None and now < self.start_time:
+            return "not_started"
+        if end_time is not None and now >= end_time:
+            return "upsolving" if self.allow_upsolving else "finished"
+        if self.start_time is not None:
+            return "running"
+        return "always_open"
+
+    def is_submission_allowed(self, user, at=None):
+        if not getattr(user, "is_authenticated", False):
+            return False, "Авторизуйтесь, чтобы отправлять решения."
+        if self.is_user_manager(user):
+            return True, ""
+        if not self.is_visible_to(user):
+            return False, "Контест недоступен для отправки."
+
+        state = self.time_state(at=at)
+        if state == "not_started":
+            return False, "Контест ещё не начался."
+        if state == "finished":
+            return False, "Контест завершён, отправка недоступна."
+        return True, ""
+
+    def are_problems_visible_to(self, user, at=None) -> bool:
+        if self.is_user_manager(user):
+            return True
+        return self.time_state(at=at) != "not_started"
+
     def is_visible_to(self, user):
         """
         Drafts are visible only to course teachers (including course owner).
         Published contests follow access_type and course membership.
         """
-        if not user.is_authenticated:
-            return False
+        if not getattr(user, "is_authenticated", False):
+            return bool(
+                self.is_published
+                and self.access_type == self.AccessType.PUBLIC
+                and self.course.is_open
+            )
 
-        is_admin = user.is_staff or user.is_superuser
-        is_teacher = (
-            self.course.owner_id == user.id
-            or self.course.participants.filter(user=user, role=CourseParticipant.Role.TEACHER).exists()
-        )
-        if is_admin or is_teacher:
+        if self.is_user_manager(user):
             return True
 
-        # Only approved & published contests are visible to non-owners.
-        if not self.is_published or self.approval_status != self.ApprovalStatus.APPROVED:
+        if not self.is_published:
             return False
 
         if self.access_type == self.AccessType.PRIVATE:
-            return self.allowed_participants.filter(pk=user.pk).exists()
+            has_base_access = self.allowed_participants.filter(pk=user.pk).exists()
+        elif self.access_type == self.AccessType.LINK and self.allowed_participants.filter(pk=user.pk).exists():
+            has_base_access = True
+        elif self.access_type == self.AccessType.PUBLIC and self.course.is_open:
+            has_base_access = True
+        else:
+            has_base_access = self.course.participants.filter(user=user).exists()
 
-        if self.access_type == self.AccessType.LINK:
-            if self.allowed_participants.filter(pk=user.pk).exists():
-                return True
+        if not has_base_access:
+            return False
 
-        if self.access_type == self.AccessType.PUBLIC and self.course.is_open:
-            return True
-
-        return self.course.participants.filter(user=user).exists()
+        return True
 
     def ensure_access_token(self):
         if not self.access_token:

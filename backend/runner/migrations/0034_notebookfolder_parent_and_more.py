@@ -21,5 +21,12 @@ class Migration(migrations.Migration):
         migrations.AddIndex(
             model_name="notebookfolder",
             index=models.Index(fields=["owner", "parent"], name="nb_folder_owner_parent_idx"),
+            model_name='notebookfolder',
+            name='parent',
+            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='children', to='runner.notebookfolder'),
+        ),
+        migrations.AddIndex(
+            model_name='notebookfolder',
+            index=models.Index(fields=['owner', 'parent'], name='nb_folder_owner_parent_idx'),
         ),
     ]

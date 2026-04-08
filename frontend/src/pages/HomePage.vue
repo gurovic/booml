@@ -4,7 +4,24 @@
     <div class="home__content">
       <div class="home__layout">
         <div class="home__main">
-          <div v-for="section in sections" :key="section.id" class="section-card">
+          <div v-if="!isAuthorized" class="section-card guest-welcome">
+            <h1 class="guest-welcome__title">Добро пожаловать в BOOML</h1>
+            <p class="guest-welcome__text">
+              <span v-if="hasAnyCourses">
+                Платформа для соревнований и обучения ML: смотрите открытые курсы и задачи. Чтобы отправлять решения и
+                сохранять прогресс, войдите или зарегистрируйтесь.
+              </span>
+              <span v-else>
+                Открытых курсов сейчас нет. Войдите или зарегистрируйтесь, чтобы получить доступ к учебному разделу.
+              </span>
+            </p>
+            <div class="guest-welcome__actions">
+              <button class="button button--primary" @click="router.push('/login')">Войти</button>
+              <button class="button button--secondary" @click="router.push('/register')">Регистрация</button>
+            </div>
+          </div>
+
+          <div v-for="section in visibleSections" :key="section.id" class="section-card">
             <div class="section-header-row">
               <button
                 type="button"
@@ -46,7 +63,7 @@
             </ul>
           </div>
 
-          <div v-if="standalone.length && isAuthorized" class="section-card">
+          <div v-if="standalone.length" class="section-card">
             <div class="section-header-row">
               <button
                 type="button"
@@ -77,18 +94,26 @@
             </ul>
           </div>
 
-          <div v-if="(!sections.length && !standalone.length) || (!isAuthorized)" class="section-card empty-state">
+          <div v-if="!hasAnyCourses" class="section-card empty-state">
             <div class="empty-state__content">
               <h2 class="empty-state__title">Нет доступных курсов</h2>
               <p class="empty-state__text">
-                Войдите в систему, чтобы увидеть доступные курсы
+                {{ isAuthorized ? 'Пока у вас нет доступных курсов.' : 'Открытых курсов пока нет. Войдите, чтобы получить доступ к учебному разделу.' }}
               </p>
-              <button
-                class="button button--primary empty-state__button"
-                @click="router.push('/login')"
-              >
-                Войти
-              </button>
+              <div class="empty-state__actions" v-if="!isAuthorized">
+                <button
+                  class="button button--primary empty-state__button"
+                  @click="router.push('/login')"
+                >
+                  Войти
+                </button>
+                <button
+                  class="button button--secondary empty-state__button"
+                  @click="router.push('/register')"
+                >
+                  Регистрация
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -221,6 +246,34 @@ const hasChildren = item => Array.isArray(item?.children) && item.children.lengt
 // Root nodes from the API are sections; render them even if empty so teachers can add content.
 const sections = computed(() => courses.value.filter(item => item?.type === 'section'))
 const standalone = computed(() => courses.value.filter(item => item?.type !== 'section'))
+
+const hasCoursesInNode = (node) => {
+  if (!node) return false
+  if (node.type === 'course') return true
+  const children = Array.isArray(node.children) ? node.children : []
+  return children.some(child => hasCoursesInNode(child))
+}
+
+const sectionHasCourses = computed(() => {
+  const result = new Map()
+  for (const section of sections.value) {
+    result.set(section.id, hasCoursesInNode(section))
+  }
+  return result
+})
+
+const visibleSections = computed(() => {
+  if (isAuthorized.value) return sections.value
+  return sections.value.filter(section => sectionHasCourses.value.get(section.id))
+})
+
+const hasAnyCourses = computed(() => {
+  if (standalone.value.length > 0) return true
+  if (isAuthorized.value) {
+    return sections.value.some(section => sectionHasCourses.value.get(section.id))
+  }
+  return visibleSections.value.length > 0
+})
 
 const orderedChildren = section => {
   const list = section.children || []
@@ -487,6 +540,31 @@ onMounted(loadSidebar)
   padding: 10px;
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
   border: 1px solid #e5e9f1;
+}
+
+.guest-welcome {
+  padding: 20px;
+}
+
+.guest-welcome__title {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--color-text-title);
+}
+
+.guest-welcome__text {
+  margin: 10px 0 0;
+  color: var(--color-text-primary);
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.guest-welcome__actions {
+  margin-top: 14px;
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 /* legacy class, kept for other inline sections if any */
@@ -1003,6 +1081,14 @@ onMounted(loadSidebar)
 .empty-state__button {
   margin-top: 8px;
   padding: 10px 24px;
+}
+
+.empty-state__actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 @media (min-width: 900px) {

@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/5.1/ref/settings/
 """
 
 import os
+import sys
 from pathlib import Path
 from dotenv import load_dotenv
 from django.core.exceptions import ImproperlyConfigured
@@ -42,6 +43,7 @@ else:
 
 
 MODE = os.getenv("MODE", "dev")
+RUNNING_TESTS = len(sys.argv) > 1 and sys.argv[1] == "test"
 
 if MODE	== "prod":
     CSRF_TRUSTED_ORIGINS = os.getenv("CSRF_TRUSTED_ORIGINS", "").split(",")
@@ -236,6 +238,45 @@ STATICFILES_DIRS = [
 RUNNER_USE_CELERY_QUEUE = os.environ.get("RUNNER_USE_CELERY_QUEUE", "0").lower() in {"1", "true", "yes"}
 CELERY_TASK_ALWAYS_EAGER = False  # для реального async
 CELERY_TASK_EAGER_PROPAGATES = True
+
+if RUNNING_TESTS:
+    LOGGING = {
+        "version": 1,
+        "disable_existing_loggers": False,
+        "handlers": {
+            "console": {
+                "class": "logging.StreamHandler",
+                "level": "ERROR",
+            }
+        },
+        "loggers": {
+            "kombu.connection": {
+                "handlers": ["console"],
+                "level": "ERROR",
+                "propagate": False,
+            },
+            "runner.services.report_service": {
+                "handlers": ["console"],
+                "level": "CRITICAL",
+                "propagate": False,
+            },
+            "runner.views.receive_test_result": {
+                "handlers": ["console"],
+                "level": "CRITICAL",
+                "propagate": False,
+            },
+            "runner.services.checker": {
+                "handlers": ["console"],
+                "level": "ERROR",
+                "propagate": False,
+            },
+            "runner.services.worker": {
+                "handlers": ["console"],
+                "level": "CRITICAL",
+                "propagate": False,
+            },
+        },
+    }
 
 CHANNEL_LAYER_REDIS_URL = os.getenv("CHANNEL_LAYER_REDIS_URL", "").strip()
 if CHANNEL_LAYER_REDIS_URL:

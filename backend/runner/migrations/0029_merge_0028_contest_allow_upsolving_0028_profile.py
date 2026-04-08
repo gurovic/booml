@@ -8,6 +8,8 @@ class Migration(migrations.Migration):
     dependencies = [
         ("runner", "0028_contest_allow_upsolving"),
         ("runner", "0028_profile"),
+        ('runner', '0028_contest_allow_upsolving'),
+        ('runner', '0028_profile'),
     ]
 
     operations = [

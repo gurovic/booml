@@ -14,12 +14,21 @@
                 <h2 class="leaderboard-title">{{ contestTitle }}</h2>
                 <p v-if="scoringLabel" class="leaderboard-meta">{{ scoringLabel }}</p>
               </div>
-              <router-link
-                :to="contestRoute"
-                class="button button--secondary leaderboard-link"
-              >
-                Назад
-              </router-link>
+              <div class="leaderboard-head-actions">
+                <button
+                  type="button"
+                  class="button button--secondary"
+                  @click="showRulesModal = true"
+                >
+                  Правила
+                </button>
+                <router-link
+                  :to="contestRoute"
+                  class="button button--secondary leaderboard-link"
+                >
+                  Назад
+                </router-link>
+              </div>
             </div>
 
             <p v-if="!entries.length" class="note">Пока нет участников.</p>
@@ -39,8 +48,15 @@
                       class="leaderboard-cell leaderboard-cell--head leaderboard-cell--problem"
                       :title="column.title"
                     >
-                      <span class="leaderboard-cell__title">{{ column.shortTitle }}</span>
-                      <span v-if="column.metric" class="leaderboard-cell__meta">{{ column.metric }}</span>
+                      <router-link
+                        v-if="column.route"
+                        :to="column.route"
+                        class="leaderboard-problem-link"
+                        :title="`Открыть задачу ${column.shortTitle}`"
+                      >
+                        <span class="leaderboard-cell__title">{{ column.shortTitle }}</span>
+                      </router-link>
+                      <span v-else class="leaderboard-cell__title">{{ column.shortTitle }}</span>
                     </th>
                   </tr>
                 </thead>
@@ -57,7 +73,9 @@
                       :key="column.id"
                       class="leaderboard-cell leaderboard-cell--problem"
                     >
-                      {{ formatMetric(problemResults[entry.user_id]?.[column.id]) }}
+                      <span class="leaderboard-problem-value">
+                        {{ formatMetric(problemResults[entry.user_id]?.[column.id]) }}
+                      </span>
                     </td>
                   </tr>
                 </tbody>
@@ -67,6 +85,8 @@
         </template>
       </section>
     </main>
+
+    <ContestRulesModal v-model="showRulesModal" />
   </div>
 </template>
 
@@ -76,6 +96,9 @@ import { useRoute } from 'vue-router'
 import { contestApi } from '@/api'
 import UiHeader from '@/components/ui/UiHeader.vue'
 import UiBreadcrumbs from '@/components/ui/UiBreadcrumbs.vue'
+import ContestRulesModal from '@/components/contest/ContestRulesModal.vue'
+import { CONTEST_RULES_DONT_SHOW_KEY } from '@/utils/contestRules'
+import { normalizeContestProblemLabel, toContestProblemLabel } from '@/utils/contestProblemLabel'
 
 const route = useRoute()
 const contestId = computed(() => Number(route.params.id))
@@ -86,6 +109,7 @@ const queryTitle = computed(() => {
 })
 
 const contest = ref(null)
+const showRulesModal = ref(false)
 const overallLeaderboard = ref(null)
 const problemLeaderboards = ref([])
 const isLoading = ref(false)
@@ -116,19 +140,57 @@ const scoringLabel = computed(() => {
 const showPenalty = computed(() => scoringType.value === 'icpc')
 const scoreLabel = computed(() => (showPenalty.value ? 'Решено' : 'Баллы'))
 
+const contestLabelToIndex = (rawLabel) => {
+  const label = normalizeContestProblemLabel(rawLabel)
+  if (!label) return Number.MAX_SAFE_INTEGER
+  let result = 0
+  for (const char of label) {
+    result = result * 26 + (char.charCodeAt(0) - 64)
+  }
+  return result - 1
+}
+
 const problemColumns = computed(() => {
   const list = Array.isArray(problemLeaderboards.value)
     ? problemLeaderboards.value
     : []
-  return list.map((board) => {
-    const title = board.problem_title || `Задача ${board.problem_id}`
-    const trimmed = title.length > 16 ? `${title.slice(0, 16)}…` : title
+  const contestProblems = Array.isArray(contest.value?.problems) ? contest.value.problems : []
+  const contestOrderById = new Map(
+    contestProblems
+      .filter((item) => item?.id != null)
+      .map((item, idx) => [Number(item.id), idx])
+  )
+  const byProblemId = new Map(
+    contestProblems
+      .filter((item) => item?.id != null)
+      .map((item) => [Number(item.id), item])
+  )
+
+  const columns = list.map((board, index) => {
+    const numericProblemId = Number(board.problem_id)
+    const contestProblem = byProblemId.get(numericProblemId)
+    const title = contestProblem?.title || board.problem_title || `Задача ${board.problem_id}`
+    const label = normalizeContestProblemLabel(contestProblem?.label) || toContestProblemLabel(index)
+    const order = contestOrderById.get(numericProblemId)
+    const sortOrder = Number.isInteger(order) ? order : contestLabelToIndex(label)
     return {
       id: board.problem_id,
       title,
-      shortTitle: trimmed,
-      metric: board.metric || '',
+      shortTitle: label,
+      sortOrder,
+      route: hasValidId.value
+        ? {
+            name: 'problem',
+            params: { id: board.problem_id },
+            query: { contest: contestId.value, problem_label: label },
+          }
+        : null,
     }
+  })
+
+  return columns.sort((a, b) => {
+    if (a.sortOrder !== b.sortOrder) return a.sortOrder - b.sortOrder
+    return String(a.shortTitle).localeCompare(String(b.shortTitle))
   })
 })
 
@@ -197,9 +259,16 @@ const loadLeaderboard = async () => {
   try {
     const [leaderboardData, contestData] = await Promise.all([
       contestApi.getContestLeaderboard(contestId.value),
-      queryTitle.value ? Promise.resolve(null) : contestApi.getContest(contestId.value),
+      contestApi.getContest(contestId.value),
     ])
     contest.value = contestData
+    try {
+      if (!localStorage.getItem(CONTEST_RULES_DONT_SHOW_KEY)) {
+        showRulesModal.value = true
+      }
+    } catch {
+      showRulesModal.value = true
+    }
     overallLeaderboard.value = leaderboardData?.overall_leaderboard ?? null
     problemLeaderboards.value = Array.isArray(leaderboardData?.leaderboards)
       ? leaderboardData.leaderboards
@@ -229,7 +298,7 @@ watch(contestId, () => {
 }
 
 .contest-content {
-  max-width: 960px;
+  max-width: 1440px;
   margin: 0 auto;
   padding: 0 16px 40px;
 }
@@ -271,6 +340,12 @@ watch(contestId, () => {
   color: var(--color-text-primary);
 }
 
+.leaderboard-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .leaderboard-link {
   display: inline-flex;
   align-items: center;
@@ -280,7 +355,8 @@ watch(contestId, () => {
 
 .leaderboard-table-wrap {
   width: 100%;
-  overflow-x: auto;
+  max-height: min(72vh, 920px);
+  overflow: auto;
   padding-bottom: 4px;
 }
 
@@ -303,10 +379,14 @@ watch(contestId, () => {
   color: #ffffff;
   font-weight: 500;
   text-align: left;
+  position: sticky;
+  top: 0;
+  z-index: 6;
+  background-color: #9480C9;
 }
 
 .leaderboard-table thead tr {
-  background-color: #9480C9;
+  background-color: transparent;
 }
 
 .leaderboard-table thead tr th:first-child {
@@ -352,19 +432,55 @@ watch(contestId, () => {
 }
 
 .leaderboard-cell--problem {
-  min-width: 140px;
+  min-width: 76px;
+  width: 76px;
+  text-align: center;
+  padding-left: 10px;
+  padding-right: 10px;
+  border-left: 1px solid rgba(122, 95, 180, 0.24);
 }
 
 .leaderboard-cell__title {
   display: block;
-  font-size: 13px;
+  font-size: 15px;
+  font-weight: 600;
   line-height: 1.2;
 }
 
-.leaderboard-cell__meta {
-  display: block;
-  font-size: 11px;
-  opacity: 0.8;
+.leaderboard-cell--head.leaderboard-cell--problem {
+  border-left-color: rgba(255, 255, 255, 0.3);
+}
+
+.leaderboard-problem-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  color: inherit;
+  text-decoration: none;
+  border-radius: 8px;
+  padding: 2px 0;
+}
+
+.leaderboard-problem-link:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.leaderboard-problem-link:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.8);
+  outline-offset: 1px;
+}
+
+.leaderboard-problem-value {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  padding: 2px 8px;
+  border-radius: 0;
+  border: none;
+  background: transparent;
+  font-variant-numeric: tabular-nums;
 }
 
 .state {
@@ -391,12 +507,6 @@ watch(contestId, () => {
   color: var(--color-text-primary);
 }
 
-@media (min-width: 900px) {
-  .contest-content {
-    padding: 0 24px 48px;
-  }
-}
-
 @media (max-width: 640px) {
   .leaderboard-cell {
     padding: 12px 14px;
@@ -404,11 +514,7 @@ watch(contestId, () => {
   }
 
   .leaderboard-cell__title {
-    font-size: 12px;
-  }
-
-  .leaderboard-cell__meta {
-    font-size: 10px;
+    font-size: 14px;
   }
 
   .leaderboard-cell--name {
@@ -420,7 +526,15 @@ watch(contestId, () => {
   }
 
   .leaderboard-cell--problem {
-    min-width: 120px;
+    min-width: 64px;
+    width: 64px;
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+
+  .leaderboard-problem-value {
+    min-width: 38px;
+    padding: 2px 6px;
   }
 }
 </style>

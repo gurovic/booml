@@ -186,7 +186,7 @@
                 <div class="card__footer">
                     <p class="card__footer-text">
                         Уже есть аккаунт?
-                        <router-link to="/login" class="card__footer-link">
+                        <router-link :to="{ name: 'login', query: authLinkQuery }" class="card__footer-link">
                             Войдите
                         </router-link>
                     </p>
@@ -197,12 +197,18 @@
 </template>
 
 <script setup>
-import { ref, reactive } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, ref, reactive } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/UserStore'
+import {
+    buildAuthRedirect,
+    resolveAuthReasonFromQuery,
+    resolveRedirectFromQuery,
+} from '@/utils/redirect'
 import '@/assets/styles/form.css'
 
 const router = useRouter()
+const route = useRoute()
 const userStore = useUserStore()
 
 const loading = ref(false)
@@ -229,6 +235,17 @@ const roles = [
     }
 ]
 
+const redirectPath = computed(() => resolveRedirectFromQuery(route.query))
+const authReason = computed(() => resolveAuthReasonFromQuery(route.query))
+const authLinkQuery = computed(() => (
+    buildAuthRedirect({
+        redirect: redirectPath.value,
+        reason: authReason.value,
+    })
+))
+
+const resolveRedirect = () => redirectPath.value
+
 const clearErrors = () => {
     Object.keys(formErrors).forEach(key => {
         delete formErrors[key]
@@ -246,7 +263,7 @@ const handleSubmit = async () => {
             const loginResult = await userStore.loginUser(formData.username, formData.password)
 
             if (loginResult.success) {
-                await router.push('/')
+                await router.push(resolveRedirect())
             } else {
                 formErrors.general = 'Регистрация прошла успешно, но не удалось войти автоматически. Пожалуйста, войдите вручную.'
             }

@@ -101,11 +101,11 @@
         </table>
 
         <div v-if="totalPages > 1" class="pager">
-          <button class="pager__btn" type="button" :disabled="page === 1" @click="setPage(page - 1)">
+          <button class="button button--secondary pager__btn" type="button" :disabled="page === 1" @click="setPage(page - 1)">
             Назад
           </button>
           <div class="pager__info">Стр. {{ page }} / {{ totalPages }}</div>
-          <button class="pager__btn" type="button" :disabled="page === totalPages" @click="setPage(page + 1)">
+          <button class="button button--secondary pager__btn" type="button" :disabled="page === totalPages" @click="setPage(page + 1)">
             Вперёд
           </button>
         </div>
@@ -200,6 +200,7 @@ const loadProblems = async () => {
       q: search.value,
       page: page.value,
       page_size: pageSize,
+      editable_only: 1,
     })
 
     // Backward-compatible: endpoint returns either an array (no paging) or an object (paging).
@@ -422,22 +423,11 @@ onMounted(loadProblems)
   align-items: center;
   gap: 12px;
   padding: 16px 16px 0;
+  margin-bottom: 16px;
 }
 
 .pager__btn {
-  border: 1px solid rgba(22, 33, 89, 0.18);
-  background: #ffffff;
-  padding: 8px 12px;
-  border-radius: 10px;
-  cursor: pointer;
-  font-weight: 700;
-  color: rgba(22, 33, 89, 0.9);
   white-space: nowrap;
-}
-
-.pager__btn:disabled {
-  opacity: 0.5;
-  cursor: default;
 }
 
 .pager__info {

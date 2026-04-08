@@ -19,7 +19,7 @@ from .views.save_cell_output import save_cell_output
 from .views.save_text_cell import save_text_cell
 from .views.create_text_cell import create_text_cell
 from .views.import_notebook import import_notebook
-from .views.export_notebook import export_notebook
+from .views.export_notebook import export_notebook, export_notebooks_archive
 from .views.reorder_cells import copy_cell, move_cell
 from .views.get_reports_list import get_reports_list
 from .views.receive_test_result import receive_test_result
@@ -27,6 +27,7 @@ from .views.contest_draft import (
     add_problem_to_contest,
     bulk_add_problems_to_contest,
     contest_detail,
+    contest_submissions,
     create_contest,
     contest_success,
     delete_contest,
@@ -37,8 +38,17 @@ from .views.contest_draft import (
     reorder_contest_problems,
     remove_problem_from_contest,
     set_contest_access,
+    set_contest_questions,
+    update_contest,
 )
-from .views.contest_leaderboard import contest_problem_leaderboard
+from .views.contest_notifications import (
+    answer_contest_question,
+    ask_contest_question,
+    contest_notifications,
+    mark_contest_notifications_read,
+    send_contest_notification,
+)
+from .views.contest_leaderboard import contest_problem_leaderboard, course_leaderboard
 from .views.course import course_contests, course_detail
 from .views.course import (
     update_course,
@@ -61,6 +71,13 @@ from .views.polygon_api import (
     publish_polygon_problem_api,
 )
 from .views.api import start_api
+from .views.profile import (get_my_profile,
+                            get_profile_by_id,
+                            update_avatar,
+                            delete_avatar,
+                            update_profile_info,
+                            )
+from .views.search import search
 
 
 app_name = 'runner'
@@ -85,20 +102,37 @@ urlpatterns = [
     path('course/<int:course_id>/contests/', course_contests, name='course_contests'),
     path('backend/course/<int:course_id>/update/', update_course, name='backend_course_update'),
     path('backend/course/<int:course_id>/delete/', delete_course, name='backend_course_delete'),
+    path('backend/course/<int:course_id>/leaderboard/', course_leaderboard, name='backend_course_leaderboard'),
     path('backend/course/<int:course_id>/participants/update/', update_course_participants, name='backend_course_participants_update'),
     path('backend/course/<int:course_id>/participants/remove/', remove_course_participants, name='backend_course_participants_remove'),
     path('backend/course/<int:course_id>/contests/reorder/', reorder_course_contests, name='backend_course_contests_reorder'),
     path('contest/', list_contests, name='contest_list'),
     path('contest/<int:contest_id>/', contest_detail, name='contest_detail'),
+    path('contest/<int:contest_id>/submissions/', contest_submissions, name='contest_submissions'),
     path('contest/<int:contest_id>/leaderboard/', contest_problem_leaderboard, name='contest_problem_leaderboard'),
     path('contest/<int:course_id>/new/', create_contest, name='create_contest'),
     path('contest/<int:contest_id>/delete/', delete_contest, name='delete_contest'),
+    path('contest/<int:contest_id>/update/', update_contest, name='contest_update'),
+    path('contest/<int:contest_id>/questions/', set_contest_questions, name='contest_set_questions'),
     path('contest/<int:contest_id>/access/', set_contest_access, name='contest_set_access'),
     path('contest/<int:contest_id>/participants/', manage_contest_participants, name='contest_manage_participants'),
     path('contest/<int:contest_id>/problems/add/', add_problem_to_contest, name='contest_add_problem'),
     path('contest/<int:contest_id>/problems/bulk_add/', bulk_add_problems_to_contest, name='contest_bulk_add_problems'),
     path('contest/<int:contest_id>/problems/reorder/', reorder_contest_problems, name='contest_reorder_problems'),
     path('contest/<int:contest_id>/problems/remove/', remove_problem_from_contest, name='contest_remove_problem'),
+    path('contest/<int:contest_id>/notifications/', contest_notifications, name='contest_notifications'),
+    path('contest/<int:contest_id>/notifications/send/', send_contest_notification, name='contest_notifications_send'),
+    path('contest/<int:contest_id>/notifications/ask/', ask_contest_question, name='contest_notifications_ask'),
+    path(
+        'contest/<int:contest_id>/notifications/<int:notification_id>/answer/',
+        answer_contest_question,
+        name='contest_notifications_answer',
+    ),
+    path(
+        'contest/<int:contest_id>/notifications/read/',
+        mark_contest_notifications_read,
+        name='contest_notifications_mark_read',
+    ),
     path('contest/<int:contest_id>/moderate/', moderate_contest, name='contest_moderate'),
     path('contests/pending/', list_pending_contests, name='contest_list_pending'),
     path('contest/success/', contest_success, name='contest_success'),
@@ -109,8 +143,13 @@ urlpatterns = [
     path('notebook/<int:notebook_id>/device/', update_notebook_device, name='update_notebook_device'),
     path('notebook/<int:notebook_id>/', notebook_detail, name='notebook_detail'),
     path('backend/notebook/<int:notebook_id>/', notebook_detail_api, name='backend_notebook_detail'),
+    path('backend/notebook/<int:notebook_id>/rename/', rename_notebook, name='backend_rename_notebook'),
+    path('backend/notebook/<int:notebook_id>/delete/', delete_notebook, name='backend_delete_notebook'),
     path('backend/notebook/<int:notebook_id>/cell/<int:cell_id>/save_output/', save_cell_output, name='backend_save_cell_output'),
     path('backend/notebook/<int:notebook_id>/cell/<int:cell_id>/save_text/', save_text_cell, name='backend_save_text_cell'),
+    path('backend/notebook/<int:notebook_id>/cell/new/', create_cell, name='backend_create_cell'),
+    path('backend/notebook/<int:notebook_id>/cell/<int:cell_id>/delete/', delete_cell, name='backend_delete_cell'),
+    path('backend/notebook/<int:notebook_id>/cell/<int:cell_id>/move/', move_cell, name='backend_move_cell'),
     path('notebook/<int:notebook_id>/cell/new/', create_cell, name='create_cell'),
     path('notebook/<int:notebook_id>/cell/new/latex/', create_latex_cell, name='create_latex_cell'),
     path('notebook/<int:notebook_id>/cell/<int:cell_id>/delete/', delete_cell, name='delete_cell'),
@@ -121,6 +160,9 @@ urlpatterns = [
     path('notebook/<int:notebook_id>/create_text_cell/', create_text_cell, name='create_text_cell'),
     path('notebook/import/', import_notebook, name='import_notebook'),
     path('notebook/<int:notebook_id>/export/', export_notebook, name='export_notebook'),
+    path('backend/notebook/import/', import_notebook, name='backend_import_notebook'),
+    path('backend/notebook/<int:notebook_id>/export/', export_notebook, name='backend_export_notebook'),
+    path('backend/notebooks/export/', export_notebooks_archive, name='backend_export_notebooks_archive'),
     path('run_code/', run_code, name='run_code'),
     path('polygon/', problem_list_polygon, name='polygon'),
     path('polygon/new/', create_problem_polygon, name='polygon_create_problem'),
@@ -139,9 +181,16 @@ urlpatterns = [
     path('backend/course/<int:course_id>/', course_detail, name='backend_course_detail'),
     path('backend/contest/', list_contests, name='backend_contest_list'),
     path('backend/contest/<int:contest_id>/', contest_detail, name='backend_contest_detail'),
+    path(
+        'backend/contest/<int:contest_id>/submissions/',
+        contest_submissions,
+        name='backend_contest_submissions',
+    ),
     # Frontend talks to backend through /backend/* (see frontend devServer proxy).
     path('backend/contest/<int:course_id>/new/', create_contest, name='backend_create_contest'),
     path('backend/contest/<int:contest_id>/delete/', delete_contest, name='backend_delete_contest'),
+    path('backend/contest/<int:contest_id>/update/', update_contest, name='backend_contest_update'),
+    path('backend/contest/<int:contest_id>/questions/', set_contest_questions, name='backend_contest_set_questions'),
     path(
         'backend/contest/<int:contest_id>/leaderboard/',
         contest_problem_leaderboard,
@@ -167,6 +216,31 @@ urlpatterns = [
         remove_problem_from_contest,
         name='backend_contest_remove_problem',
     ),
+    path(
+        'backend/contest/<int:contest_id>/notifications/',
+        contest_notifications,
+        name='backend_contest_notifications',
+    ),
+    path(
+        'backend/contest/<int:contest_id>/notifications/send/',
+        send_contest_notification,
+        name='backend_contest_notifications_send',
+    ),
+    path(
+        'backend/contest/<int:contest_id>/notifications/ask/',
+        ask_contest_question,
+        name='backend_contest_notifications_ask',
+    ),
+    path(
+        'backend/contest/<int:contest_id>/notifications/<int:notification_id>/answer/',
+        answer_contest_question,
+        name='backend_contest_notifications_answer',
+    ),
+    path(
+        'backend/contest/<int:contest_id>/notifications/read/',
+        mark_contest_notifications_read,
+        name='backend_contest_notifications_mark_read',
+    ),
     path('backend/register/', backend_register, name='backend_register'),
     path('backend/login/', backend_login, name='backend_login'),
     path('backend/logout/', backend_logout, name='backend_logout'),
@@ -175,4 +249,10 @@ urlpatterns = [
     path('backend/csrf-token/', get_csrf_token, name='backend_csrf_token'),
     path('backend/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('backend/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    path('backend/profiles/me/', get_my_profile, name='profile-me'),
+    path('backend/profiles/<int:user_id>/', get_profile_by_id, name='profile-detail'),
+    path('backend/profiles/update-avatar/', update_avatar, name='profile-update-avatar'),
+    path('backend/profiles/delete-avatar/', delete_avatar, name='profile-delete-avatar'),
+    path('backend/profiles/update-info/', update_profile_info, name='profile-update-info'),
+    path('backend/search/', search, name='search')
 ]

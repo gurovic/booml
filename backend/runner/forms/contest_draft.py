@@ -16,6 +16,9 @@ class ContestForm(forms.ModelForm):
             "source",
             "start_time",
             "duration_minutes",
+            "allow_upsolving",
+            "allow_notifications",
+            "allow_student_questions",
             "is_published",
             "status",
             "scoring",
@@ -23,6 +26,27 @@ class ContestForm(forms.ModelForm):
             "is_rated",
             "problems",
         ]
+
+    def clean(self):
+        cleaned = super().clean()
+        start_time = cleaned.get("start_time")
+        duration = cleaned.get("duration_minutes")
+        allow_upsolving = bool(cleaned.get("allow_upsolving"))
+        allow_notifications = bool(cleaned.get("allow_notifications"))
+
+        if duration and not start_time:
+            self.add_error("start_time", "Укажите время начала для контеста с дедлайном.")
+
+        if allow_upsolving and (not start_time or not duration):
+            self.add_error(
+                "allow_upsolving",
+                "Дорешка доступна только для контеста с ограничением по времени.",
+            )
+
+        if not allow_notifications:
+            cleaned["allow_student_questions"] = False
+
+        return cleaned
 
     def save(self, commit=True, created_by=None, course=None):
         contest = super().save(commit=False)

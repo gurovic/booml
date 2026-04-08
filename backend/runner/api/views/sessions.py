@@ -12,11 +12,12 @@ from typing import Any, Optional
 from django.http import FileResponse, Http404
 from django.shortcuts import get_object_or_404
 from rest_framework import permissions, status
-from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from ...models.notebook import Notebook
+from ...models.notebook_folder import NotebookFolder
 from ...models.problem import Problem
 from ...models.problem_data import ProblemData
 from ...services.runtime import (
@@ -53,6 +54,26 @@ MAX_CHART_POINTS = 5000
 DEFAULT_CHART_BINS = 20
 DEFAULT_BAR_TOP_N = 30
 MAX_BAR_TOP_N = 200
+
+
+def folder_has_ancestor(folder: NotebookFolder, ancestor_id: int) -> bool:
+    current = folder
+    visited: set[int] = set()
+    while current is not None:
+        if current.id in visited:
+            return False
+        visited.add(current.id)
+        if current.id == ancestor_id:
+            return True
+        if current.parent_id is None:
+            return False
+        current = (
+            NotebookFolder.objects
+            .filter(id=current.parent_id, owner_id=folder.owner_id)
+            .only("id", "owner_id", "parent_id", "kind")
+            .first()
+        )
+    return False
 
 
 def build_notebook_session_id(notebook_id: int) -> str:
@@ -139,6 +160,7 @@ class CreateNotebookView(APIView):
         serializer.is_valid(raise_exception=True)
 
         problem_id = serializer.validated_data.get("problem_id")
+        folder_id = serializer.validated_data.get("folder_id")
         title = serializer.validated_data.get("title") or "Новый блокнот"
         
         # If problem_id is provided, set title based on problem
@@ -147,6 +169,7 @@ class CreateNotebookView(APIView):
             if problem is None:
                 problem = get_object_or_404(Problem, pk=problem_id)
             title = f"Блокнот для задачи: {problem.title}"
+            tasks_folder = NotebookFolder.get_or_create_tasks_folder(request.user)
             
             # Check if notebook for this problem already exists for this user
             existing_notebook = Notebook.objects.filter(
@@ -155,11 +178,15 @@ class CreateNotebookView(APIView):
             ).first()
             
             if existing_notebook:
+                if existing_notebook.folder_id != tasks_folder.id:
+                    existing_notebook.folder = tasks_folder
+                    existing_notebook.save(update_fields=["folder", "updated_at"])
                 return Response(
                     {
                         "id": existing_notebook.id,
                         "title": existing_notebook.title,
                         "problem_id": existing_notebook.problem_id,
+                        "folder_id": existing_notebook.folder_id,
                         "created_at": existing_notebook.created_at,
                         "message": "Notebook already exists for this problem"
                     },
@@ -169,11 +196,24 @@ class CreateNotebookView(APIView):
             notebook = Notebook.objects.create(
                 owner=request.user,
                 problem=problem,
+                folder=tasks_folder,
                 title=title
             )
         else:
+            folder = None
+            if folder_id is not None:
+                folder = NotebookFolder.objects.filter(
+                    id=folder_id,
+                    owner=request.user,
+                ).first()
+                if folder is None:
+                    raise ValidationError({"folder_id": "Folder not found"})
+                tasks_folder = NotebookFolder.get_or_create_tasks_folder(request.user)
+                if folder_has_ancestor(folder, tasks_folder.id):
+                    raise ValidationError({"folder_id": "В папке «Блокноты для задач» нельзя создавать блокноты"})
             notebook = Notebook.objects.create(
                 owner=request.user,
+                folder=folder,
                 title=title
             )
 
@@ -182,6 +222,7 @@ class CreateNotebookView(APIView):
                 "id": notebook.id,
                 "title": notebook.title,
                 "problem_id": notebook.problem_id,
+                "folder_id": notebook.folder_id,
                 "created_at": notebook.created_at,
             },
             status=status.HTTP_201_CREATED
@@ -394,6 +435,38 @@ class SessionFileDownloadView(APIView):
             raise Http404("File not found")
 
         return FileResponse(candidate.open("rb"), as_attachment=True, filename=candidate.name)
+
+    def delete(self, request):
+        serializer = SessionFileDownloadSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        session_id = serializer.validated_data["session_id"]
+        relative_path = serializer.validated_data["path"]
+
+        session = get_session(session_id, touch=False)
+        if session is None:
+            raise Http404("Session not found")
+
+        notebook_id = extract_notebook_id(session_id)
+        if notebook_id is not None:
+            notebook = get_object_or_404(Notebook, pk=notebook_id)
+            if notebook.owner_id is not None and not getattr(request.user, "is_authenticated", False):
+                raise PermissionDenied("Недостаточно прав для работы с этим блокнотом")
+            ensure_notebook_access(request.user, notebook)
+
+        candidate = (session.workdir / relative_path).resolve()
+        try:
+            candidate.relative_to(session.workdir.resolve())
+        except ValueError:
+            raise Http404("File outside sandbox")
+
+        if not candidate.exists() or not candidate.is_file():
+            raise Http404("File not found")
+
+        candidate.unlink()
+        return Response(
+            {"session_id": session_id, "path": relative_path, "deleted": True},
+            status=status.HTTP_200_OK,
+        )
 
 
 class SessionFilePreviewView(APIView):
