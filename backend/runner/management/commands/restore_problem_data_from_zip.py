@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import csv
 import io
+import os
 import textwrap
 import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from django.core.files.base import ContentFile
+from django.core.files.storage import FileSystemStorage
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
@@ -474,9 +476,6 @@ def _normalize_csv_bytes(payload: bytes, rules: tuple[str, ...]) -> tuple[bytes,
 
 
 def _save_problem_file(problem_data: ProblemData, kind: str, payload: bytes) -> None:
-    import os
-    from django.core.files.storage import FileSystemStorage
-
     field_name = KIND_TO_FIELD[kind]
     canonical_name = CANONICAL_FILENAMES[kind]
     field_file = getattr(problem_data, field_name)
@@ -511,7 +510,10 @@ def _save_problem_file(problem_data: ProblemData, kind: str, payload: bytes) -> 
         # idempotent/atomic. Delete old paths and save under the canonical name.
         for candidate in {generated_name, current_name}:
             if candidate:
-                storage.delete(candidate)
+                try:
+                    storage.delete(candidate)
+                except Exception:
+                    pass
         field_file.save(canonical_name, ContentFile(payload), save=False)
 
 
