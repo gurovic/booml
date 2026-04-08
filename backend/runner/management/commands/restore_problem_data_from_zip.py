@@ -431,19 +431,21 @@ def _normalize_csv_bytes(payload: bytes, rules: tuple[str, ...]) -> tuple[bytes,
     if not rules:
         return payload, []
 
-    rows = list(csv.reader(io.StringIO(payload.decode("utf-8-sig"), newline="")))
-    if not rows:
+    reader = csv.reader(io.StringIO(payload.decode("utf-8-sig"), newline=""))
+    try:
+        header = next(reader)
+    except StopIteration:
         return payload, []
 
-    header = rows[0]
     actions: list[str] = []
 
     if "rename_blank_first_header" in rules and header and not (header[0] or "").strip():
         header[0] = "id"
         actions.append("renamed blank first header to id")
 
+    keep_indices: list[int] | None = None
     if "dedupe_duplicate_columns" in rules:
-        keep_indices: list[int] = []
+        indices: list[int] = []
         seen: set[str] = set()
         dropped: list[str] = []
         for index, name in enumerate(header):
@@ -452,43 +454,65 @@ def _normalize_csv_bytes(payload: bytes, rules: tuple[str, ...]) -> tuple[bytes,
                 dropped.append(key or f"column_{index + 1}")
                 continue
             seen.add(key)
-            keep_indices.append(index)
-        if len(keep_indices) != len(header):
-            rows = [[row[i] if i < len(row) else "" for i in keep_indices] for row in rows]
+            indices.append(index)
+        if len(indices) != len(header):
+            header = [header[i] for i in indices]
+            keep_indices = indices
             actions.append(f"dropped duplicate columns: {', '.join(dropped)}")
 
     if not actions:
         return payload, []
 
-    stream = io.StringIO(newline="")
-    writer = csv.writer(stream, lineterminator="\n")
-    writer.writerows(rows)
-    return stream.getvalue().encode("utf-8"), actions
-
-
-def _prepared_problem_files(
-    archive: zipfile.ZipFile,
-    spec: ProblemRestoreSpec,
-) -> dict[str, tuple[str, bytes, list[str]]]:
-    prepared: dict[str, tuple[str, bytes, list[str]]] = {}
-    for kind in KIND_ORDER:
-        member = spec.files[kind]
-        raw_bytes = archive.read(member)
-        normalized, actions = _normalize_csv_bytes(raw_bytes, spec.normalizers_by_kind.get(kind, ()))
-        prepared[kind] = (member, normalized, actions)
-    return prepared
+    out = io.StringIO(newline="")
+    writer = csv.writer(out, lineterminator="\n")
+    writer.writerow(header)
+    for row in reader:
+        if keep_indices is not None:
+            row = [row[i] if i < len(row) else "" for i in keep_indices]
+        writer.writerow(row)
+    return out.getvalue().encode("utf-8"), actions
 
 
 def _save_problem_file(problem_data: ProblemData, kind: str, payload: bytes) -> None:
+    import os
+    from django.core.files.storage import FileSystemStorage
+
     field_name = KIND_TO_FIELD[kind]
     canonical_name = CANONICAL_FILENAMES[kind]
     field_file = getattr(problem_data, field_name)
+    storage = field_file.storage
     generated_name = field_file.field.generate_filename(problem_data, canonical_name)
     current_name = field_file.name or ""
-    for candidate in {generated_name, current_name}:
-        if candidate:
-            field_file.storage.delete(candidate)
-    field_file.save(canonical_name, ContentFile(payload), save=False)
+
+    if isinstance(storage, FileSystemStorage):
+        # Write to a temp file first so the old file survives if the write fails,
+        # then atomically replace to avoid leaving the system in an inconsistent state.
+        final_path = storage.path(generated_name)
+        os.makedirs(os.path.dirname(final_path), exist_ok=True)
+        tmp_path = final_path + ".tmp"
+        try:
+            with open(tmp_path, "wb") as fh:
+                fh.write(payload)
+            os.replace(tmp_path, final_path)
+        except Exception:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            raise
+        if current_name and current_name != generated_name:
+            try:
+                storage.delete(current_name)
+            except Exception:
+                pass
+        field_file.name = generated_name
+    else:
+        # For other storage backends (e.g. object stores) writes are typically
+        # idempotent/atomic. Delete old paths and save under the canonical name.
+        for candidate in {generated_name, current_name}:
+            if candidate:
+                storage.delete(candidate)
+        field_file.save(canonical_name, ContentFile(payload), save=False)
 
 
 def _sync_descriptor(problem: Problem, spec: ProblemRestoreSpec, *, apply: bool) -> str:
@@ -577,61 +601,60 @@ class Command(BaseCommand):
             if missing_members:
                 raise CommandError("Missing zip members:\n" + "\n".join(missing_members))
 
-            prepared = {
-                problem_id: _prepared_problem_files(archive, RESTORE_SPECS[problem_id])
-                for problem_id in selected_ids
-            }
+            self.stdout.write(
+                f"restore_problem_data_from_zip: apply={apply} zip={zip_path}"
+            )
+            self.stdout.write(
+                "selected problems: " + ", ".join(str(problem_id) for problem_id in selected_ids)
+            )
+            self.stdout.write(
+                "skipped existing problems: " + ", ".join(str(problem_id) for problem_id in SKIPPED_EXISTING_PROBLEMS)
+            )
+            self.stdout.write(
+                "ignored zip-only problems: " + ", ".join(str(problem_id) for problem_id in IGNORED_ZIP_ONLY_PROBLEMS)
+            )
 
-        self.stdout.write(
-            f"restore_problem_data_from_zip: apply={apply} zip={zip_path}"
-        )
-        self.stdout.write(
-            "selected problems: " + ", ".join(str(problem_id) for problem_id in selected_ids)
-        )
-        self.stdout.write(
-            "skipped existing problems: " + ", ".join(str(problem_id) for problem_id in SKIPPED_EXISTING_PROBLEMS)
-        )
-        self.stdout.write(
-            "ignored zip-only problems: " + ", ".join(str(problem_id) for problem_id in IGNORED_ZIP_ONLY_PROBLEMS)
-        )
+            with transaction.atomic():
+                for problem_id in selected_ids:
+                    spec = RESTORE_SPECS[problem_id]
+                    problem = problems[problem_id]
+                    problem_data = ProblemData.objects.filter(problem=problem).first()
+                    problem_data_action = "create" if problem_data is None else "update"
+                    title_suffix = ""
+                    if problem.title != spec.expected_title:
+                        title_suffix = f" [title mismatch: expected '{spec.expected_title}']"
 
-        with transaction.atomic():
-            for problem_id in selected_ids:
-                spec = RESTORE_SPECS[problem_id]
-                problem = problems[problem_id]
-                problem_data = ProblemData.objects.filter(problem=problem).first()
-                problem_data_action = "create" if problem_data is None else "update"
-                title_suffix = ""
-                if problem.title != spec.expected_title:
-                    title_suffix = f" [title mismatch: expected '{spec.expected_title}']"
-
-                self.stdout.write(
-                    f"\nproblem {problem_id}: {problem.title}{title_suffix}"
-                )
-
-                if apply and problem_data is None:
-                    problem_data = ProblemData.objects.create(problem=problem)
-
-                for kind in KIND_ORDER:
-                    member, payload, actions = prepared[problem_id][kind]
-                    action_label = "; ".join(actions) if actions else "as-is"
                     self.stdout.write(
-                        f"  {kind}: {member} -> {CANONICAL_FILENAMES[kind]} [{action_label}]"
+                        f"\nproblem {problem_id}: {problem.title}{title_suffix}"
                     )
+
+                    if apply and problem_data is None:
+                        problem_data = ProblemData.objects.create(problem=problem)
+
+                    for kind in KIND_ORDER:
+                        member = spec.files[kind]
+                        raw_bytes = archive.read(member)
+                        payload, actions = _normalize_csv_bytes(
+                            raw_bytes, spec.normalizers_by_kind.get(kind, ())
+                        )
+                        action_label = "; ".join(actions) if actions else "as-is"
+                        self.stdout.write(
+                            f"  {kind}: {member} -> {CANONICAL_FILENAMES[kind]} [{action_label}]"
+                        )
+                        if apply:
+                            assert problem_data is not None
+                            _save_problem_file(problem_data, kind, payload)
+
                     if apply:
                         assert problem_data is not None
-                        _save_problem_file(problem_data, kind, payload)
+                        problem_data.save(update_fields=list(KIND_TO_FIELD.values()) + ["updated_at"])
 
-                if apply:
-                    assert problem_data is not None
-                    problem_data.save(update_fields=list(KIND_TO_FIELD.values()) + ["updated_at"])
+                    descriptor_action = _sync_descriptor(problem, spec, apply=apply)
+                    self.stdout.write(f"  problem_data: {problem_data_action}")
+                    self.stdout.write(f"  descriptor: {descriptor_action}")
 
-                descriptor_action = _sync_descriptor(problem, spec, apply=apply)
-                self.stdout.write(f"  problem_data: {problem_data_action}")
-                self.stdout.write(f"  descriptor: {descriptor_action}")
-
-            if not apply:
-                transaction.set_rollback(True)
+                if not apply:
+                    transaction.set_rollback(True)
 
         mode = "applied" if apply else "dry-run completed"
         self.stdout.write(self.style.SUCCESS(mode))
