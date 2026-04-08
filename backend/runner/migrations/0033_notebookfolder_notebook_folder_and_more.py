@@ -9,18 +9,21 @@ def move_problem_notebooks_to_tasks_folder(apps, schema_editor):
     Notebook = apps.get_model("runner", "Notebook")
     NotebookFolder = apps.get_model("runner", "NotebookFolder")
 
-    owner_ids = (
-        Notebook.objects.filter(owner_id__isnull=False, problem_id__isnull=False)
-        .values_list("owner_id", flat=True)
-        .distinct()
-    )
+    owner_ids = Notebook.objects.filter(
+        owner_id__isnull=False,
+        problem_id__isnull=False,
+    ).values_list("owner_id", flat=True).distinct()
+
     for owner_id in owner_ids:
         folder, _ = NotebookFolder.objects.get_or_create(
             owner_id=owner_id,
             kind="tasks",
-            defaults={"title": "Блокноты для задач"},
+            defaults={"title": "Task notebooks"},
         )
-        Notebook.objects.filter(owner_id=owner_id, problem_id__isnull=False).update(folder_id=folder.id)
+        Notebook.objects.filter(
+            owner_id=owner_id,
+            problem_id__isnull=False,
+        ).update(folder_id=folder.id)
 
 
 def noop_reverse(apps, schema_editor):
@@ -49,7 +52,13 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name="notebook",
             name="folder",
-            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name="notebooks", to="runner.notebookfolder"),
+            field=models.ForeignKey(
+                blank=True,
+                null=True,
+                on_delete=django.db.models.deletion.SET_NULL,
+                related_name="notebooks",
+                to="runner.notebookfolder",
+            ),
         ),
         migrations.RunPython(move_problem_notebooks_to_tasks_folder, noop_reverse),
         migrations.AddIndex(
@@ -58,6 +67,10 @@ class Migration(migrations.Migration):
         ),
         migrations.AddConstraint(
             model_name="notebookfolder",
-            constraint=models.UniqueConstraint(condition=models.Q(("kind", "tasks")), fields=("owner", "kind"), name="unique_owner_tasks_notebook_folder"),
+            constraint=models.UniqueConstraint(
+                condition=models.Q(kind="tasks"),
+                fields=("owner", "kind"),
+                name="unique_owner_tasks_notebook_folder",
+            ),
         ),
     ]
