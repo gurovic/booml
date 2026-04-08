@@ -6,7 +6,7 @@ from django.test import TestCase
 from runner.models import Problem, ProblemData, ProblemDescriptor
 
 
-migration_module = importlib.import_module("runner.migrations.0028_restore_problem_task_metadata")
+migration_module = importlib.import_module("runner.migrations.0035_restore_problem_task_metadata")
 
 
 class RestoreProblemTaskMetadataMigrationTests(TestCase):
