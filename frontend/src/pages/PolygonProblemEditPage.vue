@@ -24,7 +24,7 @@
             v-if="!problem?.is_published"
             class="button button--primary" 
             @click="publishProblem"
-            :disabled="publishing"
+            :disabled="publishing || saving || uploading"
           >
             {{ publishing ? 'Публикация...' : 'Опубликовать' }}
           </button>
@@ -554,7 +554,7 @@
             v-if="!problem?.is_published"
             class="button button--primary" 
             @click="publishProblem"
-            :disabled="publishing"
+            :disabled="publishing || saving || uploading"
           >
             {{ publishing ? 'Публикация...' : 'Опубликовать' }}
           </button>
@@ -1035,8 +1035,7 @@ const loadProblem = async () => {
   }
 }
 
-const saveProblem = async () => {
-  clearMessages()
+const persistProblem = async ({ showSuccessMessage = true } = {}) => {
   saving.value = true
   
   try {
@@ -1061,8 +1060,11 @@ const saveProblem = async () => {
     // Update problem data
     problem.value = { ...problem.value, ...data }
     
-    successMessage.value = 'Задача успешно сохранена'
-    setTimeout(() => { successMessage.value = null }, 3000)
+    if (showSuccessMessage) {
+      successMessage.value = 'Задача успешно сохранена'
+      setTimeout(() => { successMessage.value = null }, 3000)
+    }
+    return data
   } catch (err) {
     console.error('Failed to save problem', err)
     
@@ -1082,9 +1084,15 @@ const saveProblem = async () => {
     } else {
       errorMessage.value = 'Не удалось сохранить задачу'
     }
+    throw err
   } finally {
     saving.value = false
   }
+}
+
+const saveProblem = async () => {
+  clearMessages()
+  await persistProblem()
 }
 
 const handleFileSelect = (fieldName, event) => {
@@ -1092,8 +1100,11 @@ const handleFileSelect = (fieldName, event) => {
   selectedFiles[fieldName] = file || null
 }
 
-const uploadFiles = async () => {
-  clearMessages()
+const persistFiles = async ({ showSuccessMessage = true } = {}) => {
+  if (!hasSelectedFiles.value) {
+    return null
+  }
+
   uploading.value = true
   
   try {
@@ -1121,14 +1132,23 @@ const uploadFiles = async () => {
     // Reset file input elements
     Object.values(fileInputRefs).forEach(r => { if (r.value) r.value.value = '' })
     
-    successMessage.value = 'Файлы успешно загружены'
-    setTimeout(() => { successMessage.value = null }, 3000)
+    if (showSuccessMessage) {
+      successMessage.value = 'Файлы успешно загружены'
+      setTimeout(() => { successMessage.value = null }, 3000)
+    }
+    return data
   } catch (err) {
     console.error('Failed to upload files', err)
     errorMessage.value = 'Не удалось загрузить файлы. Проверьте формат файлов.'
+    throw err
   } finally {
     uploading.value = false
   }
+}
+
+const uploadFiles = async () => {
+  clearMessages()
+  await persistFiles()
 }
 
 const publishProblem = async () => {
@@ -1137,9 +1157,14 @@ const publishProblem = async () => {
   
   try {
     const problemId = route.params.id
+    await persistProblem({ showSuccessMessage: false })
+    await persistFiles({ showSuccessMessage: false })
     const data = await publishPolygonProblem(problemId)
     
-    problem.value.is_published = true
+    problem.value = {
+      ...problem.value,
+      is_published: true,
+    }
     successMessage.value = data.message || 'Задача успешно опубликована'
     setTimeout(() => { successMessage.value = null }, 5000)
   } catch (err) {
