@@ -8,6 +8,7 @@ from ...models.submission import Submission
 from ...models.problem import Problem
 from ...models.contest import Contest
 from ...models.prevalidation import PreValidation
+from ...models.course import CourseParticipant
 from ...services.problem_scoring import (
     default_curve_p,
     extract_raw_metric,
@@ -70,6 +71,18 @@ def _extract_submission_score(submission: Submission):
         curve_p=nonlinear_curve,
     )
     return float(score_100)
+
+
+def _ensure_submitter_is_listed_in_contest(contest: Contest | None, user) -> None:
+    if contest is None or not getattr(user, "is_authenticated", False):
+        return
+    if contest.is_user_manager(user):
+        return
+    if CourseParticipant.objects.filter(course=contest.course, user=user).exists():
+        return
+    if contest.allowed_participants.filter(pk=user.pk).exists():
+        return
+    contest.allowed_participants.add(user)
 
 
 class SubmissionCreateSerializer(serializers.ModelSerializer):
@@ -160,7 +173,7 @@ class SubmissionCreateSerializer(serializers.ModelSerializer):
         user = request.user
         problem_id = validated_data.pop("problem_id")
         validated_data.pop("contest_id", None)
-        validated_data.pop("_contest", None)
+        contest = validated_data.pop("_contest", None)
         raw_text = validated_data.get("raw_text")
 
         try:
@@ -176,6 +189,7 @@ class SubmissionCreateSerializer(serializers.ModelSerializer):
             validated_data["source"] = Submission.SOURCE_FILE
 
         submission = Submission.objects.create(user=user, problem=problem, **validated_data)
+        _ensure_submitter_is_listed_in_contest(contest, user)
         return submission
 
 
