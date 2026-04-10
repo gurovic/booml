@@ -40,7 +40,7 @@ def _build_section_tree(sections, courses, favorite_positions=None, *, user=None
     is_admin = bool(
         user
         and getattr(user, "is_authenticated", False)
-        and (is_platform_admin(user) or user.is_staff or user.is_superuser)
+        and is_platform_admin(user)
     )
 
     def build(section):
@@ -68,17 +68,26 @@ def _build_section_tree(sections, courses, favorite_positions=None, *, user=None
         is_root = bool(is_root_section(section))
         can_manage = False
         can_manage_teachers = False
+        can_create_course = False
+        can_create_subsection = False
         if user and getattr(user, "is_authenticated", False):
             if is_admin:
                 can_manage = True
                 can_manage_teachers = True
+                can_create_course = True
+                can_create_subsection = True
             elif is_root and user.is_staff:
                 can_manage = True
+                can_create_course = True
+                can_create_subsection = True
             elif section.owner_id == user.id:
                 can_manage = True
                 can_manage_teachers = True
+                can_create_course = True
+                can_create_subsection = True
             elif section.id in section_teacher_ids:
                 can_manage = True
+                can_create_course = True
         return {
             "id": section.id,
             "title": section.title,
@@ -89,6 +98,8 @@ def _build_section_tree(sections, courses, favorite_positions=None, *, user=None
             "is_root": bool(is_root),
             "can_manage": bool(can_manage),
             "can_manage_teachers": bool(can_manage_teachers),
+            "can_create_course": bool(can_create_course),
+            "can_create_subsection": bool(can_create_subsection),
             "children": child_nodes,
             "type": "section",
         }
@@ -170,9 +181,7 @@ class CourseTreeView(APIView):
     def get(self, request):
         sections = list(Section.objects.select_related("parent", "owner").all())
         courses_qs = Course.objects.select_related("section", "owner").all()
-        is_admin = bool(
-            is_platform_admin(request.user) or request.user.is_staff or request.user.is_superuser
-        )
+        is_admin = bool(is_platform_admin(request.user))
 
         section_teacher_ids = set()
         if request.user.is_authenticated and not is_admin:

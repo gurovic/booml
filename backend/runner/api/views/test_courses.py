@@ -3,7 +3,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 from django.urls import reverse
 
-from ...models import Contest, ContestProblem, CourseParticipant, Problem, Section, Submission
+from ...models import Contest, ContestProblem, CourseParticipant, Problem, Section, SectionTeacher, Submission
 from ...services.course_service import CourseCreateInput, create_course
 from ...services.section_service import SectionCreateInput, create_section
 
@@ -170,6 +170,26 @@ class SectionCreateTests(TestCase):
         )
         self.assertEqual(resp.status_code, 201)
         self.assertEqual(resp.json()["title"], "Admin Nested")
+
+    def test_assigned_teacher_cannot_create_nested_section_in_foreign_section(self):
+        assigned_teacher = User.objects.create_user(
+            username="assigned_teacher",
+            password="pass",
+            is_staff=True,
+        )
+        SectionTeacher.objects.create(section=self.nested, user=assigned_teacher)
+
+        self.client.login(username="assigned_teacher", password="pass")
+        resp = self.client.post(
+            self.url,
+            {"title": "Forbidden Nested", "parent_id": self.nested.id},
+        )
+
+        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(
+            resp.json().get("parent_id"),
+            ["Only section owner can create nested sections"],
+        )
 
 
 class SectionDeleteTests(TestCase):
@@ -386,6 +406,34 @@ class CourseTreeTests(TestCase):
         # Owner should see both open and closed courses
         self.assertIn("Open Course", course_titles)
         self.assertIn("Closed Course", course_titles)
+
+    def test_assigned_teacher_sees_split_create_permissions_for_nested_section(self):
+        assigned_teacher = User.objects.create_user(
+            username="assigned_teacher_tree",
+            password="pass",
+            is_staff=True,
+        )
+        SectionTeacher.objects.create(section=self.section, user=assigned_teacher)
+
+        self.client.login(username="assigned_teacher_tree", password="pass")
+        resp = self.client.get(self.tree_url)
+        self.assertEqual(resp.status_code, 200)
+
+        def find_section(items, section_id):
+            for item in items:
+                if item.get("type") == "section" and item.get("id") == section_id:
+                    return item
+                children = item.get("children") or []
+                found = find_section(children, section_id)
+                if found is not None:
+                    return found
+            return None
+
+        payload = find_section(resp.json(), self.section.id)
+        self.assertIsNotNone(payload)
+        self.assertTrue(payload["can_manage"])
+        self.assertTrue(payload["can_create_course"])
+        self.assertFalse(payload["can_create_subsection"])
 
 
 class CourseBrowseTests(TestCase):
