@@ -22,9 +22,9 @@
                             Имя пользователя
                         </label>
                         <input
-                            type="text"
                             id="username"
                             v-model="formData.username"
+                            type="text"
                             :class="[
                                 'form-group__input',
                                 { 'form-group__input--error': formErrors.username }
@@ -46,9 +46,9 @@
                             Email
                         </label>
                         <input
-                            type="email"
                             id="email"
                             v-model="formData.email"
+                            type="email"
                             :class="[
                                 'form-group__input',
                                 { 'form-group__input--error': formErrors.email }
@@ -70,9 +70,9 @@
                             Пароль
                         </label>
                         <input
-                            type="password"
                             id="password"
                             v-model="formData.password"
+                            type="password"
                             :class="[
                                 'form-group__input',
                                 { 'form-group__input--error': formErrors.password }
@@ -97,9 +97,9 @@
                             Подтверждение пароля
                         </label>
                         <input
-                            type="password"
                             id="password2"
                             v-model="formData.password2"
+                            type="password"
                             :class="[
                                 'form-group__input',
                                 { 'form-group__input--error': formErrors.password2 }
@@ -126,9 +126,9 @@
                                 :class="{ 'option--selected': formData.role === role.value }"
                             >
                                 <input
+                                    v-model="formData.role"
                                     type="radio"
                                     :value="role.value"
-                                    v-model="formData.role"
                                     :disabled="loading"
                                     class="option__input"
                                 >
@@ -150,8 +150,8 @@
                     <div class="form-group form-group--checkbox">
                         <label class="checkbox-label">
                             <input
-                                type="checkbox"
                                 v-model="acceptTerms"
+                                type="checkbox"
                                 :disabled="loading"
                                 required
                             >
@@ -165,13 +165,31 @@
                         </label>
                     </div>
 
+                    <div v-if="captchaEnabled" class="form-group">
+                        <label class="form-group__label">
+                            Подтверждение
+                        </label>
+                        <TurnstileCaptcha
+                            ref="captchaRef"
+                            v-model="captchaToken"
+                            :site-key="captchaSiteKey"
+                            @load-error="handleCaptchaLoadError"
+                        />
+                        <div
+                            v-if="formErrors.captcha"
+                            class="form-group__error"
+                        >
+                            {{ formErrors.captcha }}
+                        </div>
+                    </div>
+
                     <button
                         type="submit"
                         :class="[
                             'card__submit button button--primary',
                             { 'card__submit--loading': loading }
                         ]"
-                        :disabled="loading || !acceptTerms"
+                        :disabled="loading || !acceptTerms || (captchaEnabled && !captchaToken)"
                     >
                         <span
                             v-if="loading"
@@ -197,15 +215,17 @@
 </template>
 
 <script setup>
-import { computed, ref, reactive } from 'vue'
+import { computed, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+
+import '@/assets/styles/form.css'
+import TurnstileCaptcha from '@/components/ui/TurnstileCaptcha.vue'
 import { useUserStore } from '@/stores/UserStore'
 import {
     buildAuthRedirect,
     resolveAuthReasonFromQuery,
     resolveRedirectFromQuery,
 } from '@/utils/redirect'
-import '@/assets/styles/form.css'
 
 const router = useRouter()
 const route = useRoute()
@@ -213,6 +233,8 @@ const userStore = useUserStore()
 
 const loading = ref(false)
 const acceptTerms = ref(false)
+const captchaRef = ref(null)
+const captchaToken = ref('')
 const formData = reactive({
     username: '',
     email: '',
@@ -243,6 +265,8 @@ const authLinkQuery = computed(() => (
         reason: authReason.value,
     })
 ))
+const captchaSiteKey = (process.env.VUE_APP_TURNSTILE_SITE_KEY || '').trim()
+const captchaEnabled = Boolean(captchaSiteKey)
 
 const resolveRedirect = () => redirectPath.value
 
@@ -257,7 +281,14 @@ const handleSubmit = async () => {
     clearErrors()
 
     try {
-        const result = await userStore.registerUser(formData.username, formData.email, formData.password, formData.password2, formData.role)
+        const result = await userStore.registerUser(
+            formData.username,
+            formData.email,
+            formData.password,
+            formData.password2,
+            formData.role,
+            captchaToken.value
+        )
 
         if (result.success) {
             const loginResult = await userStore.loginUser(formData.username, formData.password)
@@ -269,13 +300,19 @@ const handleSubmit = async () => {
             }
         } else {
             handleErrors(result.error)
+            captchaRef.value?.reset()
         }
     } catch (error) {
         console.error('Register error:', error)
         formErrors.general = 'Произошла ошибка. Попробуйте позже.'
+        captchaRef.value?.reset()
     } finally {
         loading.value = false
     }
+}
+
+const handleCaptchaLoadError = () => {
+    formErrors.captcha = 'Не удалось загрузить капчу. Обновите страницу и попробуйте снова.'
 }
 
 const handleErrors = (error) => {
@@ -289,8 +326,9 @@ const handleErrors = (error) => {
                 const cleanMessage = message.trim()
 
                 const fieldMap = {
-                    'password1': 'password',
-                    'password2': 'password2'
+                    password1: 'password',
+                    password2: 'password2',
+                    captcha_token: 'captcha',
                 }
 
                 const vueField = fieldMap[field] || field
@@ -304,7 +342,6 @@ const handleErrors = (error) => {
 </script>
 
 <style scoped>
-
 .auth-page {
     min-height: 100vh;
     display: flex;

@@ -10,18 +10,23 @@ from rest_framework import status
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework_simplejwt.exceptions import InvalidToken, AuthenticationFailed
+from runner.services.captcha import get_captcha_site_key, is_captcha_enabled
 
 
 def register_view(request):
     if request.method == 'POST':
-        form = RegisterForm(request.POST)
+        form = RegisterForm(request.POST, request=request)
         if form.is_valid():
             user = form.save()
             login(request, user)
             return redirect('runner:login')
     else:
-        form = RegisterForm()
-    return render(request, 'runner/authorization/register.html', {'form': form})
+        form = RegisterForm(request=request)
+    return render(request, 'runner/authorization/register.html', {
+        'form': form,
+        'captcha_enabled': is_captcha_enabled(),
+        'captcha_site_key': get_captcha_site_key(),
+    })
 
 
 def login_view(request):
@@ -56,7 +61,7 @@ def get_user_role(user):
 
 @api_view(['POST'])
 def backend_register(request):
-    form = RegisterForm(request.data)
+    form = RegisterForm(request.data, request=request)
 
     if form.is_valid():
         user = form.save()

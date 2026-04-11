@@ -4,6 +4,8 @@ from django.contrib.auth.models import User
 from rest_framework.test import APIClient
 from rest_framework import status
 from django.contrib.auth import get_user_model
+from django.test.utils import override_settings
+from unittest.mock import patch
 
 User = get_user_model()
 
@@ -191,6 +193,40 @@ class AuthorizationViewsTestCase(TestCase):
         self.assertFalse(response.data['success'])
         self.assertIn('errors', response.data)
         self.assertIn('username', response.data['errors'])
+
+    @override_settings(
+        CAPTCHA_PROVIDER="turnstile",
+        TURNSTILE_SITE_KEY="test-site-key",
+        TURNSTILE_SECRET_KEY="test-secret-key",
+    )
+    def test_backend_register_api_rejects_missing_captcha_when_enabled(self):
+        response = self.api_client.post(
+            self.api_register_url,
+            data=self.valid_register_data,
+            format='json'
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(response.data['success'])
+        self.assertIn('captcha_token', response.data['errors'])
+
+    @override_settings(
+        CAPTCHA_PROVIDER="turnstile",
+        TURNSTILE_SITE_KEY="test-site-key",
+        TURNSTILE_SECRET_KEY="test-secret-key",
+    )
+    @patch("runner.forms.authorization.verify_turnstile_token")
+    def test_backend_register_api_accepts_valid_captcha(self, verify_turnstile_token_mock):
+        verify_turnstile_token_mock.return_value = {"success": True}
+
+        response = self.api_client.post(
+            self.api_register_url,
+            data={**self.valid_register_data, "captcha_token": "valid-token"},
+            format='json'
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertTrue(response.data['success'])
 
     def test_backend_login_api_valid(self):
         response = self.api_client.post(
