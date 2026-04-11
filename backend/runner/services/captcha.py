@@ -19,6 +19,8 @@ class CaptchaConfigError(CaptchaError):
 
 
 def is_captcha_enabled() -> bool:
+    if settings.RUNNING_TESTS and settings.CAPTCHA_DISABLE_DURING_TESTS:
+        return False
     return settings.CAPTCHA_PROVIDER == "turnstile"
 
 

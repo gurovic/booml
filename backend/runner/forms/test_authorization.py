@@ -84,6 +84,7 @@ class RegisterFormTests(TestCase):
 
     @override_settings(
         CAPTCHA_PROVIDER="turnstile",
+        CAPTCHA_DISABLE_DURING_TESTS=False,
         TURNSTILE_SITE_KEY="test-site-key",
         TURNSTILE_SECRET_KEY="test-secret-key",
     )
@@ -101,6 +102,7 @@ class RegisterFormTests(TestCase):
 
     @override_settings(
         CAPTCHA_PROVIDER="turnstile",
+        CAPTCHA_DISABLE_DURING_TESTS=False,
         TURNSTILE_SITE_KEY="test-site-key",
         TURNSTILE_SECRET_KEY="test-secret-key",
     )
