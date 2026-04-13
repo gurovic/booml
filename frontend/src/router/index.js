@@ -12,6 +12,8 @@ import CoursesPage from '@/pages/CoursesPage.vue'
 import ContestLeaderboardPage from '@/pages/ContestLeaderboardPage.vue'
 import LoginPage from '@/pages/LoginPage.vue'
 import RegisterPage from '@/pages/RegisterPage.vue'
+import TermsPage from '@/pages/TermsPage.vue'
+import PrivacyPage from '@/pages/PrivacyPage.vue'
 import PolygonPage from '@/pages/PolygonPage.vue'
 import PolygonProblemEditPage from '@/pages/PolygonProblemEditPage.vue'
 import SubmissionListPage from '@/pages/SubmissionListPage.vue'
@@ -105,6 +107,14 @@ const router = createRouter({
       path: '/register',
       name: 'register',
       component: RegisterPage,
+    },{
+      path: '/terms',
+      name: 'terms',
+      component: TermsPage,
+    },{
+      path: '/privacy',
+      name: 'privacy',
+      component: PrivacyPage,
     },{
       path: '/polygon',
       name: 'polygon',

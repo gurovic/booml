@@ -158,9 +158,9 @@
                             <span class="checkbox-custom"></span>
                             <span class="checkbox-text">
                                 Я согласен с
-                                <a href="#" class="link">условиями использования</a>
+                                <router-link :to="{ name: 'terms' }" class="link">условиями использования</router-link>
                                 и
-                                <a href="#" class="link">политикой конфиденциальности</a>
+                                <router-link :to="{ name: 'privacy' }" class="link">политикой конфиденциальности</router-link>
                             </span>
                         </label>
                     </div>
