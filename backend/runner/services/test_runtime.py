@@ -93,7 +93,7 @@ class RuntimeServiceTests(SimpleTestCase):
         self.assertIsNot(first, second)
         self.assertEqual(second.created_at, later)
         self.assertEqual(second.updated_at, later)
-        self.assertIs(get_session("ns", touch=False), second)
+        self.assertIs(get_session("ns", touch=False, now=later), second)
         self.assertFalse(old_path.exists())
         if second.python_exec:
             self.assertTrue(second.python_exec.exists())
