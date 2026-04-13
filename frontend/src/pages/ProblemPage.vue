@@ -756,11 +756,12 @@ const handleCreateNotebook = async () => {
   width: 100%;
   height: 100%;
   display: flex;
+  align-items: flex-start;
   gap: 15px;
 }
 
 .problem__inner--no-contest-nav {
-  padding-left: 55px;
+  padding-left: 0;
 }
 
 .problem__selection-menu {
@@ -825,6 +826,7 @@ const handleCreateNotebook = async () => {
   position: relative;
   z-index: 1;
   flex-grow: 1;
+  min-width: 0;
 
   display: flex;
   flex-direction: column;
@@ -870,6 +872,9 @@ const handleCreateNotebook = async () => {
 }
 
 .problem__text {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: hidden;
   font-family: var(--font-default);
   font-size: 16px;
   line-height: 1.6;
@@ -1067,6 +1072,7 @@ const handleCreateNotebook = async () => {
   width: 420px;
   max-width: 420px;
   flex: 0 0 420px;
+  min-width: 0;
   display: flex;
   align-items: center;
   flex-direction: column;
@@ -1225,6 +1231,10 @@ const handleCreateNotebook = async () => {
 
 .problem__submission-col--status {
   white-space: normal;
+}
+
+.problem__submission-href .problem__submission-col--status {
+  white-space: normal;
   overflow: hidden;
   display: -webkit-box;
   -webkit-box-orient: vertical;
@@ -1275,7 +1285,7 @@ const handleCreateNotebook = async () => {
     padding: 9px 10px;
   }
 
-  .problem__submission-col--status {
+  .problem__submission-href .problem__submission-col--status {
     font-size: 12px;
   }
 }

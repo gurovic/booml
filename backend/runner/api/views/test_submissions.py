@@ -177,6 +177,33 @@ class SubmissionAPITests(TestCase):
 
     @override_settings(MEDIA_ROOT=tempfile.gettempdir())
     @patch("runner.api.views.submissions.enqueue_submission_for_evaluation")
+    def test_open_contest_submission_adds_external_user_to_allowed_participants(self, mock_enqueue):
+        outsider = User.objects.create_user(username="outsider_submitter", password="pass")
+        self.client.logout()
+        self.client.login(username="outsider_submitter", password="pass")
+
+        self.course.is_open = True
+        self.course.save(update_fields=["is_open"])
+        self.contest.start_time = timezone.now() - timedelta(minutes=30)
+        self.contest.duration_minutes = 120
+        self.contest.allow_upsolving = False
+        self.contest.save(update_fields=["start_time", "duration_minutes", "allow_upsolving"])
+
+        resp = self.client.post(
+            self.url,
+            {
+                "problem_id": self.problem.id,
+                "contest_id": self.contest.id,
+                "raw_text": "id,pred\n1,0.1\n",
+            },
+        )
+
+        self.assertEqual(resp.status_code, 201)
+        self.assertTrue(self.contest.allowed_participants.filter(pk=outsider.pk).exists())
+        self.assertTrue(mock_enqueue.called)
+
+    @override_settings(MEDIA_ROOT=tempfile.gettempdir())
+    @patch("runner.api.views.submissions.enqueue_submission_for_evaluation")
     @patch("runner.services.validation_service.run_pre_validation")
     def test_enqueue_only_if_valid(self, mock_validate, mock_enqueue):
         mock_preval = mock.Mock()

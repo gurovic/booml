@@ -665,6 +665,33 @@ const clearMessages = () => {
   errors.descriptor = {}
 }
 
+const validateRating = () => {
+  const rating = Number(formData.rating)
+
+  if (!Number.isFinite(rating)) {
+    errors.rating = 'Укажите рейтинг сложности'
+    return false
+  }
+
+  if (!Number.isInteger(rating)) {
+    errors.rating = 'Рейтинг должен быть целым числом'
+    return false
+  }
+
+  if (rating < 800 || rating > 3000) {
+    errors.rating = 'Рейтинг должен быть от 800 до 3000'
+    return false
+  }
+
+  if (rating % 100 !== 0) {
+    errors.rating = 'Рейтинг должен быть кратен 100'
+    return false
+  }
+
+  errors.rating = null
+  return true
+}
+
 const withStatementSelection = (transform) => {
   const input = statementInput.value
   if (!input || typeof transform !== 'function') return
@@ -1029,7 +1056,13 @@ const loadProblem = async () => {
     }
   } catch (err) {
     console.error('Failed to load problem', err)
-    error.value = 'Не удалось загрузить данные задачи. Попробуйте позже.'
+    if (err?.status === 403) {
+      error.value = 'У вас нет прав на редактирование этой задачи.'
+    } else if (err?.status === 404) {
+      error.value = 'Задача не найдена.'
+    } else {
+      error.value = 'Не удалось загрузить данные задачи. Попробуйте позже.'
+    }
   } finally {
     loading.value = false
   }
@@ -1092,6 +1125,10 @@ const persistProblem = async ({ showSuccessMessage = true } = {}) => {
 
 const saveProblem = async () => {
   clearMessages()
+  if (!validateRating()) {
+    errorMessage.value = 'Проверьте правильность заполнения полей'
+    return
+  }
   await persistProblem()
 }
 
@@ -1157,6 +1194,10 @@ const publishProblem = async () => {
   
   try {
     const problemId = route.params.id
+    if (!validateRating()) {
+      errorMessage.value = 'Проверьте правильность заполнения полей'
+      return
+    }
     await persistProblem({ showSuccessMessage: false })
     await persistFiles({ showSuccessMessage: false })
     const data = await publishPolygonProblem(problemId)
