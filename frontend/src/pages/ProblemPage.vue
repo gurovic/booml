@@ -537,31 +537,44 @@ const formattedSubmissions = computed(() => {
   }))
 })
 
+const toNumericScore = (value) => {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : null
+  }
+  if (typeof value === 'string') {
+    const normalized = value.replace(',', '.').trim()
+    if (!normalized) return null
+    const parsed = Number(normalized)
+    return Number.isFinite(parsed) ? parsed : null
+  }
+  return null
+}
+
 const roundMetric = (value) => {
-  if (value == null) return '-'
-  return value.toFixed(2)
+  const numeric = toNumericScore(value)
+  if (numeric == null) return '-'
+  return numeric.toFixed(2)
 }
 
 const extractMetricValue = (submission) => {
   if (!submission || typeof submission !== 'object') return null
-  if (typeof submission.score === 'number') return submission.score
+  const submissionScore = toNumericScore(submission.score)
+  if (submissionScore != null) return submissionScore
   const metrics = submission.metrics
-  if (typeof metrics === 'number') return metrics
+  const metricAsNumber = toNumericScore(metrics)
+  if (metricAsNumber != null) return metricAsNumber
   if (metrics && typeof metrics === 'object') {
     const keys = ['score_100', 'metric_score', 'metric', 'score', 'accuracy', 'f1', 'auc']
     for (const key of keys) {
-      if (typeof metrics[key] === 'number') {
-        return metrics[key]
-      }
+      const metricValue = toNumericScore(metrics[key])
+      if (metricValue != null) return metricValue
     }
     for (const value of Object.values(metrics)) {
-      if (typeof value === 'number') {
-        return value
-      }
+      const metricValue = toNumericScore(value)
+      if (metricValue != null) return metricValue
     }
   }
-  if (typeof submission.metric === 'number') return submission.metric
-  return null
+  return toNumericScore(submission.metric)
 }
 
 const formatSubmissionMetric = (submission) => {
