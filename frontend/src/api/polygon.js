@@ -22,5 +22,5 @@ export function uploadPolygonProblemFiles(problemId, formData) {
 }
 
 export function publishPolygonProblem(problemId) {
-    return apiPost(`backend/polygon/problems/${problemId}/publish`)
+    return apiPost(`backend/polygon/problems/${problemId}/publish`, {})
 }
