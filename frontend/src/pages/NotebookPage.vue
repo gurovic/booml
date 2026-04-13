@@ -121,7 +121,7 @@
                   class="toolbar-device-option"
                   :class="{ 'toolbar-device-option--active': currentComputeDevice === device.value }"
                   :aria-pressed="currentComputeDevice === device.value ? 'true' : 'false'"
-                  :disabled="settingsBusy"
+                  :disabled="!canChangeComputeDevice"
                   :title="deviceToggleTitle"
                   @click="saveNotebookDevice(device.value)"
                 >
@@ -673,18 +673,22 @@ const currentComputeDevice = computed(() => {
 })
 
 const deviceToggleTitle = computed(() => {
-  if (sessionStatus.value === 'running') {
+  if (sessionStatus.value === 'running' || sessionStatus.value === 'starting') {
     return 'Изменение применится после перезапуска сессии'
   }
   return 'Устройство применится при запуске сессии'
 })
 
+const canChangeComputeDevice = computed(() => {
+  return hasValidId.value && !settingsBusy.value && !sessionActionBusy.value && sessionStatus.value !== 'starting'
+})
+
 const canStartSession = computed(() => {
-  return hasValidId.value && !sessionActionBusy.value && sessionStatus.value !== 'running'
+  return hasValidId.value && !sessionActionBusy.value && !settingsBusy.value && sessionStatus.value !== 'running'
 })
 
 const canRestartSession = computed(() => {
-  return hasValidId.value && !sessionActionBusy.value && sessionStatus.value === 'running'
+  return hasValidId.value && !sessionActionBusy.value && !settingsBusy.value && sessionStatus.value === 'running'
 })
 
 const canStopSession = computed(() => {
@@ -1450,7 +1454,7 @@ const saveNotebookTitle = async () => {
 
 const saveNotebookDevice = async (device) => {
   const normalized = String(device || '').toLowerCase()
-  if (!hasValidId.value || settingsBusy.value || normalized === currentComputeDevice.value) return
+  if (!canChangeComputeDevice.value || normalized === currentComputeDevice.value) return
   if (normalized !== 'cpu' && normalized !== 'gpu') {
     deviceError.value = 'Недопустимое устройство вычислений.'
     return
