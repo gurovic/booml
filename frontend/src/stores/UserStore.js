@@ -1,20 +1,19 @@
+import { computed, ref, watch } from 'vue'
 import { defineStore } from 'pinia'
-import { ref, computed, watch } from 'vue'
+
 import * as user from '@/api/user'
 import { resetCourseTreeCache } from '@/utils/courseTreeCache'
 
 export const useUserStore = defineStore('user', () => {
     const currentUser = ref(null)
 
-    currentUser.value = JSON.parse(localStorage.getItem('currentUser')) || null;
-
+    currentUser.value = JSON.parse(localStorage.getItem('currentUser')) || null
 
     watch(
         currentUser,
         (newCurrentUser, oldCurrentUser) => {
-            localStorage.setItem('currentUser', JSON.stringify(newCurrentUser));
+            localStorage.setItem('currentUser', JSON.stringify(newCurrentUser))
 
-            // Prevent stale private titles in breadcrumbs when switching users without reload.
             const newId = newCurrentUser?.id ?? null
             const oldId = oldCurrentUser?.id ?? null
             if (newId !== oldId) {
@@ -22,8 +21,7 @@ export const useUserStore = defineStore('user', () => {
             }
         },
         { deep: true }
-    );
-
+    )
 
     const isAuthenticated = computed(() => {
         return !!(currentUser.value && currentUser.value.accessToken)
@@ -32,20 +30,20 @@ export const useUserStore = defineStore('user', () => {
     async function loginUser(username, password) {
         try {
             const res = await user.login({
-                username: username,
-                password: password,
+                username,
+                password,
             })
 
             if (res.success) {
                 const accessToken = res?.tokens?.access || res?.user?.access || null
                 const refreshToken = res?.tokens?.refresh || res?.user?.refresh || null
                 currentUser.value = {
-                    'id': res.user.id,
-                    'username': res.user.username,
-                    'email': res.user.email,
-                    'role': res.user.role,
-                    'accessToken': accessToken,
-                    'refreshToken': refreshToken,
+                    id: res.user.id,
+                    username: res.user.username,
+                    email: res.user.email,
+                    role: res.user.role,
+                    accessToken,
+                    refreshToken,
                 }
 
                 resetCourseTreeCache({ userCacheKey: res.user.id })
@@ -63,31 +61,32 @@ export const useUserStore = defineStore('user', () => {
             console.error('Failed to login user:', err)
             return {
                 success: false,
-                error: 'Ошибка при входе'
+                error: err?.message || 'Ошибка при входе'
             }
         }
     }
 
-    async function registerUser(username, email, password1, password2, role) {
+    async function registerUser(username, email, password1, password2, role, captchaToken = '') {
         try {
             const res = await user.register({
-                username: username,
-                email: email,
-                password1: password1,
-                password2: password2,
-                role: role,
+                username,
+                email,
+                password1,
+                password2,
+                role,
+                captcha_token: captchaToken,
             })
 
             if (res.success) {
                 const accessToken = res?.tokens?.access || null
                 const refreshToken = res?.tokens?.refresh || null
                 currentUser.value = {
-                    'id': res.user.id,
-                    'username': res.user.username,
-                    'email': res.user.email,
-                    'role': res.user.role,
-                    'accessToken': accessToken,
-                    'refreshToken': refreshToken,
+                    id: res.user.id,
+                    username: res.user.username,
+                    email: res.user.email,
+                    role: res.user.role,
+                    accessToken,
+                    refreshToken,
                 }
 
                 resetCourseTreeCache({ userCacheKey: res.user.id })
@@ -105,7 +104,7 @@ export const useUserStore = defineStore('user', () => {
             console.error('Failed to register user:', err)
             return {
                 success: false,
-                error: 'Ошибка при регистрации'
+                error: err?.message || 'Ошибка при регистрации'
             }
         }
     }
@@ -131,15 +130,14 @@ export const useUserStore = defineStore('user', () => {
             const res = await user.checkAuth()
             if (res?.is_authenticated) {
                 currentUser.value = {
-                    'id': res?.user?.id || null,
-                    'username': res?.user?.username || null,
-                    'email': res?.user?.email || null,
-                    'role': res?.user?.role || null,
-                    'accessToken': res?.tokens?.access || res?.user?.accessToken || null,
-                    'refreshToken': res?.tokens?.refresh || res?.user?.refreshToken || null,
+                    id: res?.user?.id || null,
+                    username: res?.user?.username || null,
+                    email: res?.user?.email || null,
+                    role: res?.user?.role || null,
+                    accessToken: res?.tokens?.access || res?.user?.accessToken || null,
+                    refreshToken: res?.tokens?.refresh || res?.user?.refreshToken || null,
                 }
             } else {
-                // Clear all fields when not authenticated
                 currentUser.value = null
                 resetCourseTreeCache({ userCacheKey: null })
             }
@@ -159,9 +157,7 @@ export const useUserStore = defineStore('user', () => {
 
     return {
         currentUser,
-
         isAuthenticated,
-
         loginUser,
         registerUser,
         logoutUser,

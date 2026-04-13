@@ -311,3 +311,12 @@ SIMPLE_JWT = {
     'USER_ID_FIELD': 'id',
     'USER_ID_CLAIM': 'user_id',
 }
+
+CAPTCHA_PROVIDER = os.getenv("CAPTCHA_PROVIDER", "").strip().lower()
+CAPTCHA_DISABLE_DURING_TESTS = os.getenv("CAPTCHA_DISABLE_DURING_TESTS", "1").lower() in {"1", "true", "yes"}
+TURNSTILE_SITE_KEY = os.getenv("TURNSTILE_SITE_KEY", "").strip()
+TURNSTILE_SECRET_KEY = os.getenv("TURNSTILE_SECRET_KEY", "").strip()
+TURNSTILE_VERIFY_URL = os.getenv(
+    "TURNSTILE_VERIFY_URL",
+    "https://challenges.cloudflare.com/turnstile/v0/siteverify",
+).strip()

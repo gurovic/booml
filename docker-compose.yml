@@ -72,6 +72,9 @@ services:
       SECRET_KEY: dev-secret-key
       DEBUG: "True"
       MODE: dev
+      CAPTCHA_PROVIDER: turnstile
+      TURNSTILE_SITE_KEY: 1x00000000000000000000AA
+      TURNSTILE_SECRET_KEY: 1x0000000000000000000000000000000AA
       DB_NAME: booml
       DB_USER: postgres
       DB_PASSWORD: postgres
@@ -115,6 +118,9 @@ services:
       SECRET_KEY: dev-secret-key
       DEBUG: "True"
       MODE: dev
+      CAPTCHA_PROVIDER: turnstile
+      TURNSTILE_SITE_KEY: 1x00000000000000000000AA
+      TURNSTILE_SECRET_KEY: 1x0000000000000000000000000000000AA
       DB_NAME: booml
       DB_USER: postgres
       DB_PASSWORD: postgres
@@ -144,6 +150,7 @@ services:
     environment:
       VUE_APP_API_BASE: /api
       VUE_APP_BACKEND_URL: http://backend:8100/
+      VUE_APP_TURNSTILE_SITE_KEY: 1x00000000000000000000AA
     ports:
       - "8101:8101"
     depends_on:

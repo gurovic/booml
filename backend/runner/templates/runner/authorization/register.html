@@ -43,9 +43,64 @@
         {% endif %}
     </div>
 
+    {{ form.captcha_token }}
+    {% if captcha_enabled %}
+        <div>
+            <div id="turnstile-widget"></div>
+            {% if form.captcha_token.errors %}
+                <div class="error">{{ form.captcha_token.errors.0 }}</div>
+            {% endif %}
+        </div>
+    {% endif %}
+
     {% if form.non_field_errors %}
         <div class="error">{{ form.non_field_errors.0 }}</div>
     {% endif %}
 
     <button type="submit">Зарегистрироваться</button>
 </form>
+
+{% if captcha_enabled %}
+    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async defer></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            var hiddenInput = document.getElementById('id_captcha_token');
+            var widgetContainer = document.getElementById('turnstile-widget');
+            var attempts = 0;
+            var maxAttempts = 100;
+
+            if (!hiddenInput || !widgetContainer) {
+                return;
+            }
+
+            var renderWidget = function () {
+                if (!window.turnstile || widgetContainer.dataset.rendered === 'true') {
+                    return;
+                }
+
+                window.turnstile.render(widgetContainer, {
+                    sitekey: '{{ captcha_site_key|escapejs }}',
+                    callback: function (token) {
+                        hiddenInput.value = token;
+                    },
+                    'expired-callback': function () {
+                        hiddenInput.value = '';
+                    },
+                    'error-callback': function () {
+                        hiddenInput.value = '';
+                    }
+                });
+                widgetContainer.dataset.rendered = 'true';
+            };
+
+            var intervalId = window.setInterval(function () {
+                renderWidget();
+                attempts += 1;
+
+                if (widgetContainer.dataset.rendered === 'true' || attempts >= maxAttempts) {
+                    window.clearInterval(intervalId);
+                }
+            }, 100);
+        });
+    </script>
+{% endif %}

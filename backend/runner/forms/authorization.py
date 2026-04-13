@@ -1,7 +1,15 @@
 from django import forms
+from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
-from django.contrib.auth import authenticate
+
+from runner.services.captcha import (
+    CaptchaConfigError,
+    CaptchaValidationError,
+    get_client_ip,
+    is_captcha_enabled,
+    verify_turnstile_token,
+)
 
 
 class RegisterForm(forms.ModelForm):
@@ -27,6 +35,7 @@ class RegisterForm(forms.ModelForm):
         initial=ROLE_STUDENT,
         widget=forms.RadioSelect,
     )
+    captcha_token = forms.CharField(required=False, widget=forms.HiddenInput())
 
     class Meta:
         model = User
@@ -35,6 +44,10 @@ class RegisterForm(forms.ModelForm):
             'username': forms.TextInput(attrs={'placeholder': 'Имя пользователя'}),
             'email': forms.EmailInput(attrs={'placeholder': 'Email'}),
         }
+
+    def __init__(self, *args, request=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.request = request
 
     def clean_password2(self):
         password1 = self.cleaned_data.get('password1')
@@ -49,12 +62,30 @@ class RegisterForm(forms.ModelForm):
             raise ValidationError('Пароль должен быть не менее 8 символов')
         return password1
 
+    def clean(self):
+        cleaned_data = super().clean()
+
+        if not is_captcha_enabled():
+            return cleaned_data
+
+        try:
+            verify_turnstile_token(
+                cleaned_data.get("captcha_token", ""),
+                remote_ip=get_client_ip(self.request),
+            )
+        except CaptchaValidationError as exc:
+            self.add_error("captcha_token", str(exc))
+        except CaptchaConfigError:
+            raise ValidationError("Капча временно недоступна. Попробуйте позже.")
+
+        return cleaned_data
+
     def save(self, commit=True):
         user = super().save(commit=False)
         user.set_password(self.cleaned_data['password1'])
         role_value = self.cleaned_data.get('role', self.ROLE_STUDENT)
         if role_value == self.ROLE_TEACHER:
-            user.is_staff = True  # ставим учителя в staff
+            user.is_staff = True
         if commit:
             user.save()
         return user

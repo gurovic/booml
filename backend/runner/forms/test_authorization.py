@@ -1,5 +1,7 @@
 from django.test import TestCase
 from django.contrib.auth import get_user_model
+from django.test.utils import override_settings
+from unittest.mock import patch
 from runner.forms.authorization import RegisterForm
 
 User = get_user_model()
@@ -79,3 +81,41 @@ class RegisterFormTests(TestCase):
         form = RegisterForm(data)
         self.assertFalse(form.is_valid())
         self.assertIn("password1", form.errors)
+
+    @override_settings(
+        CAPTCHA_PROVIDER="turnstile",
+        CAPTCHA_DISABLE_DURING_TESTS=False,
+        TURNSTILE_SITE_KEY="test-site-key",
+        TURNSTILE_SECRET_KEY="test-secret-key",
+    )
+    def test_captcha_token_is_required_when_enabled(self):
+        data = {
+            "username": "captcha_missing_user",
+            "email": "captcha_missing@example.com",
+            "password1": "strongpass123",
+            "password2": "strongpass123",
+            "role": "student",
+        }
+        form = RegisterForm(data)
+        self.assertFalse(form.is_valid())
+        self.assertIn("captcha_token", form.errors)
+
+    @override_settings(
+        CAPTCHA_PROVIDER="turnstile",
+        CAPTCHA_DISABLE_DURING_TESTS=False,
+        TURNSTILE_SITE_KEY="test-site-key",
+        TURNSTILE_SECRET_KEY="test-secret-key",
+    )
+    @patch("runner.forms.authorization.verify_turnstile_token")
+    def test_captcha_token_allows_registration_when_valid(self, verify_turnstile_token_mock):
+        verify_turnstile_token_mock.return_value = {"success": True}
+        data = {
+            "username": "captcha_user",
+            "email": "captcha@example.com",
+            "password1": "strongpass123",
+            "password2": "strongpass123",
+            "role": "student",
+            "captcha_token": "valid-token",
+        }
+        form = RegisterForm(data)
+        self.assertTrue(form.is_valid(), msg=form.errors)
