@@ -144,6 +144,7 @@ urlpatterns = [
     path('notebook/<int:notebook_id>/', notebook_detail, name='notebook_detail'),
     path('backend/notebook/<int:notebook_id>/', notebook_detail_api, name='backend_notebook_detail'),
     path('backend/notebook/<int:notebook_id>/rename/', rename_notebook, name='backend_rename_notebook'),
+    path('backend/notebook/<int:notebook_id>/device/', update_notebook_device, name='backend_update_notebook_device'),
     path('backend/notebook/<int:notebook_id>/delete/', delete_notebook, name='backend_delete_notebook'),
     path('backend/notebook/<int:notebook_id>/cell/<int:cell_id>/save_output/', save_cell_output, name='backend_save_cell_output'),
     path('backend/notebook/<int:notebook_id>/cell/<int:cell_id>/save_text/', save_text_cell, name='backend_save_text_cell'),

@@ -113,6 +113,21 @@
               </button>
             </div>
             <div class="toolbar-group toolbar-group--right">
+              <div class="toolbar-device-toggle" role="group" aria-label="Устройство выполнения блокнота">
+                <button
+                  v-for="device in computeDeviceOptions"
+                  :key="device.value"
+                  type="button"
+                  class="toolbar-device-option"
+                  :class="{ 'toolbar-device-option--active': currentComputeDevice === device.value }"
+                  :aria-pressed="currentComputeDevice === device.value ? 'true' : 'false'"
+                  :disabled="settingsBusy"
+                  :title="deviceToggleTitle"
+                  @click="saveNotebookDevice(device.value)"
+                >
+                  {{ device.label }}
+                </button>
+              </div>
               <div ref="sessionMenuRef" class="toolbar-session-wrap">
                 <button
                   type="button"
@@ -222,6 +237,7 @@
               </div>
             </div>
           </div>
+          <div v-if="deviceError" class="toolbar-error">{{ deviceError }}</div>
 
           <div class="cells-list">
             <div v-if="orderedCells.length === 0" class="cells-empty">
@@ -544,6 +560,7 @@ import {
   saveTextCell,
   startNotebookSession,
   stopNotebookSession,
+  updateNotebookDevice,
   uploadNotebookSessionFile,
 } from '@/api/notebook'
 
@@ -565,6 +582,7 @@ const sessionFiles = ref([])
 const fileInputRef = ref(null)
 const fileActionBusy = ref(false)
 const fileActionError = ref('')
+const deviceError = ref('')
 const runningCellIds = ref(new Set())
 const runAllInProgress = ref(false)
 const queuedCellRunIds = ref([])
@@ -649,6 +667,18 @@ const sessionStatusLabel = computed(() => {
   return 'не запущена'
 })
 
+const currentComputeDevice = computed(() => {
+  const device = String(notebook.value?.compute_device || '').toLowerCase()
+  return device === 'gpu' ? 'gpu' : 'cpu'
+})
+
+const deviceToggleTitle = computed(() => {
+  if (sessionStatus.value === 'running') {
+    return 'Изменение применится после перезапуска сессии'
+  }
+  return 'Устройство применится при запуске сессии'
+})
+
 const canStartSession = computed(() => {
   return hasValidId.value && !sessionActionBusy.value && sessionStatus.value !== 'running'
 })
@@ -693,6 +723,10 @@ const files = computed(() => {
 const toolbarActions = [
   { id: 'code', label: '+ Код', variant: 'primary' },
   { id: 'text', label: '+ Текст', variant: 'primary' },
+]
+const computeDeviceOptions = [
+  { value: 'cpu', label: 'CPU' },
+  { value: 'gpu', label: 'GPU' },
 ]
 const footerActions = [
   { id: 'code', label: '+ Код' },
@@ -1414,6 +1448,28 @@ const saveNotebookTitle = async () => {
   }
 }
 
+const saveNotebookDevice = async (device) => {
+  const normalized = String(device || '').toLowerCase()
+  if (!hasValidId.value || settingsBusy.value || normalized === currentComputeDevice.value) return
+  if (normalized !== 'cpu' && normalized !== 'gpu') {
+    deviceError.value = 'Недопустимое устройство вычислений.'
+    return
+  }
+
+  settingsBusy.value = true
+  deviceError.value = ''
+  try {
+    const result = await updateNotebookDevice(notebookId.value, normalized)
+    if (notebook.value) {
+      notebook.value.compute_device = result?.compute_device || normalized
+    }
+  } catch (error) {
+    deviceError.value = error?.message || 'Не удалось обновить устройство вычислений.'
+  } finally {
+    settingsBusy.value = false
+  }
+}
+
 const goToLinkedProblem = async () => {
   if (!linkedProblemId.value) return
   closeSettingsMenu()
@@ -1759,6 +1815,7 @@ const loadNotebook = async () => {
     sessionStatus.value = 'stopped'
     sessionFiles.value = []
     fileActionError.value = ''
+    deviceError.value = ''
     return
   }
 
@@ -1766,6 +1823,7 @@ const loadNotebook = async () => {
   stateMessage.value = ''
   selectedCellId.value = null
   editingTextCellId.value = null
+  deviceError.value = ''
   closeOutputMenu()
   try {
     notebook.value = await getNotebook(notebookId.value)
@@ -1793,6 +1851,7 @@ const loadNotebook = async () => {
     sessionStatus.value = 'stopped'
     sessionFiles.value = []
     fileActionError.value = ''
+    deviceError.value = ''
   }
 }
 
@@ -2103,6 +2162,48 @@ onBeforeUnmount(() => {
 
 .toolbar-session-dot--stopped {
   background: var(--color-session-stopped);
+}
+
+.toolbar-device-toggle {
+  display: inline-flex;
+  align-items: center;
+  height: 29px;
+  padding: 2px;
+  border-radius: 10px;
+  background: var(--color-button-secondary);
+  border: 1px solid var(--color-border-light);
+  gap: 2px;
+}
+
+.toolbar-device-option {
+  min-width: 42px;
+  height: 23px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--color-text-primary);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.toolbar-device-option--active {
+  background: var(--color-button-primary);
+  color: var(--color-button-text-primary);
+}
+
+.toolbar-device-option:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.toolbar-error {
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(255, 56, 60, 0.08);
+  color: var(--color-text-danger);
+  font-size: 13px;
+  line-height: 1.3;
 }
 
 
