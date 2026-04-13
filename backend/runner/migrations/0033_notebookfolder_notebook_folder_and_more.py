@@ -6,24 +6,26 @@ from django.db import migrations, models
 
 
 def move_problem_notebooks_to_tasks_folder(apps, schema_editor):
-    Notebook = apps.get_model("runner", "Notebook")
-    NotebookFolder = apps.get_model("runner", "NotebookFolder")
+    Notebook = apps.get_model('runner', 'Notebook')
+    NotebookFolder = apps.get_model('runner', 'NotebookFolder')
 
-    owner_ids = Notebook.objects.filter(
-        owner_id__isnull=False,
-        problem_id__isnull=False,
-    ).values_list("owner_id", flat=True).distinct()
-
+    owner_ids = (
+        Notebook.objects
+        .filter(owner_id__isnull=False, problem_id__isnull=False)
+        .values_list('owner_id', flat=True)
+        .distinct()
+    )
     for owner_id in owner_ids:
         folder, _ = NotebookFolder.objects.get_or_create(
             owner_id=owner_id,
-            kind="tasks",
-            defaults={"title": "Task notebooks"},
+            kind='tasks',
+            defaults={'title': 'Блокноты для задач'},
         )
-        Notebook.objects.filter(
-            owner_id=owner_id,
-            problem_id__isnull=False,
-        ).update(folder_id=folder.id)
+        (
+            Notebook.objects
+            .filter(owner_id=owner_id, problem_id__isnull=False)
+            .update(folder_id=folder.id)
+        )
 
 
 def noop_reverse(apps, schema_editor):
@@ -33,44 +35,34 @@ def noop_reverse(apps, schema_editor):
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("runner", "0032_contest_allow_notifications"),
+        ('runner', '0032_contest_allow_notifications'),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
     operations = [
         migrations.CreateModel(
-            name="NotebookFolder",
+            name='NotebookFolder',
             fields=[
-                ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
-                ("title", models.CharField(max_length=200)),
-                ("kind", models.CharField(choices=[("custom", "Custom"), ("tasks", "Tasks")], default="custom", max_length=12)),
-                ("created_at", models.DateTimeField(auto_now_add=True)),
-                ("updated_at", models.DateTimeField(auto_now=True)),
-                ("owner", models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name="notebook_folders", to=settings.AUTH_USER_MODEL)),
+                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                ('title', models.CharField(max_length=200)),
+                ('kind', models.CharField(choices=[('custom', 'Custom'), ('tasks', 'Tasks')], default='custom', max_length=12)),
+                ('created_at', models.DateTimeField(auto_now_add=True)),
+                ('updated_at', models.DateTimeField(auto_now=True)),
+                ('owner', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='notebook_folders', to=settings.AUTH_USER_MODEL)),
             ],
         ),
         migrations.AddField(
-            model_name="notebook",
-            name="folder",
-            field=models.ForeignKey(
-                blank=True,
-                null=True,
-                on_delete=django.db.models.deletion.SET_NULL,
-                related_name="notebooks",
-                to="runner.notebookfolder",
-            ),
+            model_name='notebook',
+            name='folder',
+            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='notebooks', to='runner.notebookfolder'),
         ),
         migrations.RunPython(move_problem_notebooks_to_tasks_folder, noop_reverse),
         migrations.AddIndex(
-            model_name="notebookfolder",
-            index=models.Index(fields=["owner", "kind"], name="notebook_folder_owner_kind_idx"),
+            model_name='notebookfolder',
+            index=models.Index(fields=['owner', 'kind'], name='notebook_folder_owner_kind_idx'),
         ),
         migrations.AddConstraint(
-            model_name="notebookfolder",
-            constraint=models.UniqueConstraint(
-                condition=models.Q(kind="tasks"),
-                fields=("owner", "kind"),
-                name="unique_owner_tasks_notebook_folder",
-            ),
+            model_name='notebookfolder',
+            constraint=models.UniqueConstraint(condition=models.Q(('kind', 'tasks')), fields=('owner', 'kind'), name='unique_owner_tasks_notebook_folder'),
         ),
     ]
