@@ -94,7 +94,7 @@
 
 @media (max-width: 640px) {
   .legal-page__main {
-    width: min(100% - 20px, 960px);
+    width: min(960px, calc(100% - 20px));
     padding: 24px 0 40px;
   }
 
