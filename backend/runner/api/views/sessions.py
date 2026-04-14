@@ -28,6 +28,7 @@ from ...services.runtime import (
     reset_session,
     stop_session,
 )
+from ...services.permissions import user_has_gpu_access
 from ...services.streaming_runs import cancel_streaming_runs
 from ..serializers import (
     NotebookCreateSerializer,
@@ -251,6 +252,11 @@ class CreateNotebookSessionView(APIView):
         ensure_notebook_access(request.user, notebook)
 
         session_id = build_notebook_session_id(notebook.id)
+        if notebook.compute_device == Notebook.ComputeDevice.GPU and not user_has_gpu_access(request.user):
+            return Response(
+                {"detail": "Нет прав на GPU"},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         overrides = {
             "gpu": notebook.compute_device == Notebook.ComputeDevice.GPU,
         }
@@ -289,6 +295,11 @@ class ResetSessionView(APIView):
             overrides = {
                 "gpu": notebook.compute_device == Notebook.ComputeDevice.GPU,
             }
+            if notebook.compute_device == Notebook.ComputeDevice.GPU and not user_has_gpu_access(request.user):
+                return Response(
+                    {"detail": "Нет прав на GPU"},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
         try:
             session = reset_session(session_id, overrides=overrides)
         except SessionNotFoundError:

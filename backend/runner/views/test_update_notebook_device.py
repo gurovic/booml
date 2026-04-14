@@ -15,6 +15,9 @@ class UpdateNotebookDeviceViewTests(TestCase):
         self.client.force_login(self.user)
 
     def test_backend_alias_updates_compute_device(self):
+        profile = self.user.profile
+        profile.gpu_access = True
+        profile.save(update_fields=["gpu_access"])
         response = self.client.patch(
             reverse("runner:backend_update_notebook_device", args=[self.notebook.id]),
             data=json.dumps({"compute_device": "gpu"}),
@@ -28,6 +31,21 @@ class UpdateNotebookDeviceViewTests(TestCase):
 
         self.notebook.refresh_from_db()
         self.assertEqual(self.notebook.compute_device, Notebook.ComputeDevice.GPU)
+
+    def test_rejects_gpu_without_access(self):
+        response = self.client.patch(
+            reverse("runner:backend_update_notebook_device", args=[self.notebook.id]),
+            data=json.dumps({"compute_device": "gpu"}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 403)
+        payload = response.json()
+        self.assertEqual(payload["status"], "error")
+        self.assertEqual(payload["message"], "Нет прав на GPU")
+
+        self.notebook.refresh_from_db()
+        self.assertEqual(self.notebook.compute_device, Notebook.ComputeDevice.CPU)
 
     def test_rejects_invalid_compute_device(self):
         response = self.client.patch(

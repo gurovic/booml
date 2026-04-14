@@ -18,6 +18,7 @@ from .models import (
     Tag,
     ContestProblem,
     SiteUpdate,
+    Profile,
 )
 
 @admin.register(Report)  # Регистрируем модель в админке
@@ -200,3 +201,10 @@ class SiteUpdateAdmin(admin.ModelAdmin):
 class TagAdmin(admin.ModelAdmin):
     list_display = ("id", "name")
     search_fields = ("name",)
+
+
+@admin.register(Profile)
+class ProfileAdmin(admin.ModelAdmin):
+    list_display = ("user", "role", "gpu_access")
+    list_filter = ("role", "gpu_access")
+    search_fields = ("user__username", "user__email")

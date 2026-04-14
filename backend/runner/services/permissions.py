@@ -1,6 +1,8 @@
 from django.core.exceptions import PermissionDenied
 from django.http import Http404
+
 from ..models import Notebook
+from ..models.profile import Profile
 
 
 def get_user_notebook_or_404(user, notebook_id):
@@ -32,3 +34,13 @@ def get_user_writable_notebook_or_404(user, notebook_id):
     if notebook.owner is not None and notebook.owner != user:
         raise PermissionDenied("Недостаточно прав для работы с этим блокнотом")
     return notebook
+
+
+def user_has_gpu_access(user) -> bool:
+    if user is None or not getattr(user, "is_authenticated", False):
+        return False
+    try:
+        profile = user.profile
+    except Profile.DoesNotExist:
+        return False
+    return bool(getattr(profile, "gpu_access", False))

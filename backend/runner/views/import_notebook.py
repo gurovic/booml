@@ -6,6 +6,7 @@ from django.views.decorators.http import require_http_methods
 from django.contrib.auth import get_user_model
 
 from ..models import Notebook, Cell
+from ..services.permissions import user_has_gpu_access
 
 
 @csrf_exempt
@@ -53,6 +54,8 @@ def import_notebook(request):
         # Определяем устройство вычислений
         raw_device = booml_metadata.get('compute_device', '').strip().lower()
         if raw_device not in (Notebook.ComputeDevice.CPU, Notebook.ComputeDevice.GPU):
+            raw_device = Notebook.ComputeDevice.CPU
+        if raw_device == Notebook.ComputeDevice.GPU and not user_has_gpu_access(user):
             raw_device = Notebook.ComputeDevice.CPU
         
         # Проверяем на дубликаты
