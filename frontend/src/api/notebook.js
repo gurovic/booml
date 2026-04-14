@@ -159,6 +159,10 @@ export function renameNotebook(notebookId, title) {
     return apiPost(`/backend/notebook/${notebookId}/rename/`, { title })
 }
 
+export function updateNotebookDevice(notebookId, computeDevice) {
+    return apiPatch(`/backend/notebook/${notebookId}/device/`, { compute_device: computeDevice })
+}
+
 export function deleteNotebook(notebookId) {
     return apiPost(
         `/backend/notebook/${notebookId}/delete/`,
