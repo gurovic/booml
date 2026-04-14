@@ -39,7 +39,8 @@ def get_user_writable_notebook_or_404(user, notebook_id):
 def user_has_gpu_access(user) -> bool:
     if user is None or not getattr(user, "is_authenticated", False):
         return False
-    profile = getattr(user, "profile", None)
-    if profile is None:
-        profile, _ = Profile.objects.get_or_create(user=user)
+    try:
+        profile = user.profile
+    except Profile.DoesNotExist:
+        return False
     return bool(getattr(profile, "gpu_access", False))
