@@ -32,7 +32,6 @@ class Profile(models.Model):
     )
 
     gpu_access = models.BooleanField(
-        "Доступ к GPU",
         default=False,
     )
 
