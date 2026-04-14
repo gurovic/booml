@@ -148,21 +148,24 @@
                     </div>
 
                     <div class="form-group form-group--checkbox">
-                        <label class="checkbox-label">
-                            <input
-                                v-model="acceptTerms"
-                                type="checkbox"
-                                :disabled="loading"
-                                required
-                            >
-                            <span class="checkbox-custom"></span>
+                        <div class="checkbox-row">
+                            <label class="checkbox-label" for="accept-terms">
+                                <input
+                                    id="accept-terms"
+                                    v-model="acceptTerms"
+                                    type="checkbox"
+                                    :disabled="loading"
+                                    required
+                                >
+                                <span class="checkbox-custom"></span>
+                            </label>
                             <span class="checkbox-text">
                                 Я согласен с
-                                <a href="#" class="link">условиями использования</a>
+                                <router-link :to="{ name: 'terms' }" class="link">условиями использования</router-link>
                                 и
-                                <a href="#" class="link">политикой конфиденциальности</a>
+                                <router-link :to="{ name: 'privacy' }" class="link">политикой конфиденциальности</router-link>
                             </span>
-                        </label>
+                        </div>
                     </div>
 
                     <div v-if="captchaEnabled" class="form-group">
