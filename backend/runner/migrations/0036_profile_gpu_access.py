@@ -10,6 +10,6 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name="profile",
             name="gpu_access",
-            field=models.BooleanField(default=False, verbose_name="Доступ к GPU"),
+            field=models.BooleanField(default=False),
         ),
     ]
