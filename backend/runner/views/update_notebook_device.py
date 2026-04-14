@@ -4,7 +4,7 @@ from django.http import JsonResponse
 from django.views.decorators.http import require_http_methods
 
 from ..models import Notebook
-from ..services.permissions import get_user_notebook_or_404
+from ..services.permissions import get_user_notebook_or_404, user_has_gpu_access
 
 
 def _parse_json_body(request):
@@ -26,6 +26,15 @@ def update_notebook_device(request, notebook_id):
                 "message": "Недопустимое устройство вычислений",
             },
             status=400,
+        )
+
+    if raw_device == Notebook.ComputeDevice.GPU and not user_has_gpu_access(request.user):
+        return JsonResponse(
+            {
+                "status": "error",
+                "message": "Нет прав на GPU",
+            },
+            status=403,
         )
 
     notebook.compute_device = raw_device

@@ -31,6 +31,11 @@ class Profile(models.Model):
         null=True
     )
 
+    gpu_access = models.BooleanField(
+        "Доступ к GPU",
+        default=False,
+    )
+
     def __str__(self):
         return f"{self.user.username} - {self.role}"
 
