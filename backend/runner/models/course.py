@@ -9,6 +9,10 @@ class Course(models.Model):
         default=False,
         help_text="Visible to any authenticated user when True",
     )
+    is_published = models.BooleanField(
+        default=True,
+        help_text="Visible to students when True; drafts are visible only to teachers.",
+    )
     section = models.ForeignKey(
         "Section",
         on_delete=models.PROTECT,

@@ -11,6 +11,17 @@
           <div class="course-header">
             <div class="course-title-row">
               <h1 class="course-title">Курс "{{ courseTitle }}"</h1>
+              <div v-if="canManageCourse" class="publication-badges">
+                <span
+                  class="publication-badge"
+                  :class="courseIsPublished ? 'publication-badge--published' : 'publication-badge--draft'"
+                >
+                  {{ courseIsPublished ? 'Опубликован' : 'Черновик' }}
+                </span>
+                <span v-if="courseIsEmpty" class="publication-badge publication-badge--empty">
+                  Пустой
+                </span>
+              </div>
               <button
                 v-if="isAuthorized"
                 type="button"
@@ -81,6 +92,19 @@
             @reorder="onReorderContest"
           >
             <template #action="{ item }">
+              <span
+                v-if="canCreateContest"
+                class="publication-badge contest-status"
+                :class="item.is_published ? 'publication-badge--published' : 'publication-badge--draft'"
+              >
+                {{ item.is_published ? 'Опубликован' : 'Черновик' }}
+              </span>
+              <span
+                v-if="canCreateContest && item.is_empty"
+                class="publication-badge publication-badge--empty contest-status"
+              >
+                Пустой
+              </span>
               <button
                 v-if="canDeleteContestItem(item)"
                 class="contest-delete-btn"
@@ -108,6 +132,13 @@
         <div class="dialog__body">
           <div class="settings-modal">
               <h3 class="settings-section__title">Доступ</h3>
+              <label class="form-checkbox settings-checkbox">
+                <input type="checkbox" v-model="courseIsPublished" @change="saveCourseSettings" />
+                <span class="settings-checkbox__label">Курс опубликован</span>
+              </label>
+              <p class="settings-hint">
+                Черновик видят только учителя. Пустой курс без опубликованных контестов с задачами ученикам не показывается.
+              </p>
               <label class="form-checkbox settings-checkbox">
                 <input type="checkbox" v-model="courseIsOpen" @change="saveCourseSettings" />
                 <span class="settings-checkbox__label">Курс открыт для всех</span>
@@ -261,6 +292,9 @@
                 <input type="checkbox" v-model="newContest.is_published" />
                 <span>Опубликовать контест</span>
               </label>
+              <p class="settings-hint settings-hint--inline">
+                Ученики увидят контест только после публикации и добавления опубликованных задач.
+              </p>
             </div>
             <div class="form-group">
               <label class="form-checkbox">
@@ -321,6 +355,7 @@ const createError = ref('')
 const showSettingsDialog = ref(false)
 const settingsError = ref('')
 const courseIsOpen = ref(false)
+const courseIsPublished = ref(true)
 const newParticipantUsername = ref('')
 const newParticipantRole = ref('student')
 const favorites = ref([])
@@ -346,6 +381,7 @@ const renderedCourseDescription = computed(() => {
   return renderProblemStatement(desc)
 })
 const isAuthorized = computed(() => !!userStore.currentUser)
+const courseIsEmpty = computed(() => !!course.value?.is_empty)
 
 const isFavoriteCourse = computed(() => {
   const cid = Number(courseId.value)
@@ -426,6 +462,8 @@ const contestItems = computed(() => {
       text: contest.title || `Контест ${contest.id}`,
       route: { name: 'contest', params: { id: contest.id }},
       created_by_id: contest.created_by_id,
+      is_published: contest.is_published !== false,
+      is_empty: Number(contest.problems_count || 0) === 0,
     }))
 })
 
@@ -447,6 +485,7 @@ const loadContests = async () => {
     ])
     course.value = courseData
     courseIsOpen.value = !!courseData?.is_open
+    courseIsPublished.value = courseData?.is_published !== false
     contests.value = contestData
     await loadFavorites()
   } catch (err) {
@@ -618,7 +657,10 @@ const goToAuth = (mode = 'register', reason = 'generic') => {
 const saveCourseSettings = async () => {
   settingsError.value = ''
   try {
-    await courseApi.updateCourse(courseId.value, { is_open: courseIsOpen.value })
+    await courseApi.updateCourse(courseId.value, {
+      is_open: courseIsOpen.value,
+      is_published: courseIsPublished.value,
+    })
     await loadContests()
   } catch (err) {
     console.error('Failed to update course:', err)
@@ -742,6 +784,50 @@ watch(
   font-weight: 600;
   margin: 0;
   color: var(--color-text-primary);
+}
+
+.publication-badges {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.publication-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 3px 8px;
+  border-radius: 8px;
+  border: 1px solid rgba(100, 116, 139, 0.24);
+  background: rgba(100, 116, 139, 0.08);
+  color: rgba(51, 65, 85, 0.95);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.publication-badge--published {
+  border-color: rgba(16, 185, 129, 0.3);
+  background: rgba(16, 185, 129, 0.1);
+  color: rgba(5, 150, 105, 0.98);
+}
+
+.publication-badge--draft {
+  border-color: rgba(245, 158, 11, 0.34);
+  background: rgba(245, 158, 11, 0.12);
+  color: rgba(146, 64, 14, 0.98);
+}
+
+.publication-badge--empty {
+  border-color: rgba(99, 102, 241, 0.28);
+  background: rgba(99, 102, 241, 0.1);
+  color: rgba(67, 56, 202, 0.96);
+}
+
+.contest-status {
+  flex: 0 0 auto;
 }
 
 .star-btn {
@@ -960,6 +1046,10 @@ watch(
   font-size: 13px;
   line-height: 1.45;
   color: rgba(15, 23, 42, 0.62);
+}
+
+.settings-hint--inline {
+  margin-top: 6px;
 }
 
 .settings-divider {

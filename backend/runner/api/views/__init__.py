@@ -21,6 +21,7 @@ from .courses import (
     CourseBrowseView,
     SectionCreateView,
     SectionDeleteView,
+    SectionUpdateView,
 )
 from .home import (
     HomeSidebarView,

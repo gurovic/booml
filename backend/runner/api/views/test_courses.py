@@ -95,6 +95,15 @@ class CourseCreateTests(TestCase):
         )
         self.assertEqual(resp.status_code, 201)
         self.assertEqual(resp.json()["title"], "Physics")
+        self.assertTrue(resp.json()["is_published"])
+
+    def test_course_create_accepts_draft(self):
+        resp = self.client.post(
+            self.url,
+            {"title": "Draft Physics", "section_id": self.section.id, "is_published": False},
+        )
+        self.assertEqual(resp.status_code, 201)
+        self.assertFalse(resp.json()["is_published"])
 
     def test_course_create_invalid_section(self):
         resp = self.client.post(self.url, {"title": "Physics", "section_id": 999999})
@@ -154,6 +163,17 @@ class SectionCreateTests(TestCase):
         resp = self.client.post(self.url, {"title": "T-Section", "parent_id": self.root_section.id})
         self.assertEqual(resp.status_code, 201)
         self.assertEqual(resp.json()["title"], "T-Section")
+        self.assertTrue(resp.json()["is_published"])
+
+    def test_teacher_can_create_draft_section_in_root(self):
+        User.objects.create_user(username="teacher_root_draft", password="pass", is_staff=True)
+        self.client.login(username="teacher_root_draft", password="pass")
+        resp = self.client.post(
+            self.url,
+            {"title": "T-Draft", "parent_id": self.root_section.id, "is_published": False},
+        )
+        self.assertEqual(resp.status_code, 201)
+        self.assertFalse(resp.json()["is_published"])
 
     def test_student_cannot_create_section_in_root(self):
         User.objects.create_user(username="student_sec", password="pass", is_staff=False)
@@ -334,6 +354,23 @@ class CourseTreeTests(TestCase):
                 section=self.section,
             )
         )
+        self.empty_open_course = create_course(
+            CourseCreateInput(
+                title="Empty Open Course",
+                owner=self.teacher,
+                is_open=True,
+                section=self.section,
+            )
+        )
+        self.unpublished_course = create_course(
+            CourseCreateInput(
+                title="Draft Course",
+                owner=self.teacher,
+                is_open=True,
+                is_published=False,
+                section=self.section,
+            )
+        )
         self.closed_course = create_course(
             CourseCreateInput(
                 title="Closed Course",
@@ -342,6 +379,25 @@ class CourseTreeTests(TestCase):
                 section=self.section,
             )
         )
+        self.problem = Problem.objects.create(title="Visible Problem", statement="", author=self.teacher, is_published=True)
+        self.open_contest = Contest.objects.create(
+            course=self.open_course,
+            title="Visible Contest",
+            created_by=self.teacher,
+            is_published=True,
+            approval_status=Contest.ApprovalStatus.APPROVED,
+            access_type=Contest.AccessType.PUBLIC,
+        )
+        ContestProblem.objects.create(contest=self.open_contest, problem=self.problem, position=0)
+        self.draft_contest = Contest.objects.create(
+            course=self.unpublished_course,
+            title="Draft Course Contest",
+            created_by=self.teacher,
+            is_published=True,
+            approval_status=Contest.ApprovalStatus.APPROVED,
+            access_type=Contest.AccessType.PUBLIC,
+        )
+        ContestProblem.objects.create(contest=self.draft_contest, problem=self.problem, position=0)
         self.tree_url = reverse("course-tree")
 
     def test_unauthenticated_user_sees_public_open_courses(self):
@@ -361,6 +417,8 @@ class CourseTreeTests(TestCase):
                         course_titles.append(grandchild.get("title"))
 
         self.assertIn("Open Course", course_titles)
+        self.assertNotIn("Empty Open Course", course_titles)
+        self.assertNotIn("Draft Course", course_titles)
         self.assertNotIn("Closed Course", course_titles)
 
     def test_authenticated_user_sees_open_courses(self):
@@ -383,6 +441,8 @@ class CourseTreeTests(TestCase):
 
         # Student should see open course but not closed course
         self.assertIn("Open Course", course_titles)
+        self.assertNotIn("Empty Open Course", course_titles)
+        self.assertNotIn("Draft Course", course_titles)
         self.assertNotIn("Closed Course", course_titles)
 
     def test_course_owner_sees_own_courses(self):
@@ -405,6 +465,8 @@ class CourseTreeTests(TestCase):
 
         # Owner should see both open and closed courses
         self.assertIn("Open Course", course_titles)
+        self.assertIn("Empty Open Course", course_titles)
+        self.assertIn("Draft Course", course_titles)
         self.assertIn("Closed Course", course_titles)
 
     def test_assigned_teacher_sees_split_create_permissions_for_nested_section(self):
@@ -472,6 +534,16 @@ class CourseBrowseTests(TestCase):
             access_type=Contest.AccessType.PUBLIC,
         )
         ContestProblem.objects.create(contest=self.contest, problem=self.problem, position=0)
+        self.private_contest = Contest.objects.create(
+            course=self.private_course_invited,
+            title="Private Contest",
+            description="",
+            created_by=self.teacher,
+            is_published=True,
+            approval_status=Contest.ApprovalStatus.APPROVED,
+            access_type=Contest.AccessType.PUBLIC,
+        )
+        ContestProblem.objects.create(contest=self.private_contest, problem=self.problem, position=0)
         Submission.objects.create(
             user=self.student,
             problem=self.problem,
@@ -489,7 +561,7 @@ class CourseBrowseTests(TestCase):
         items = resp.json().get("items") or []
         titles = {x["title"] for x in items}
         self.assertIn(self.open_course.title, titles)
-        self.assertIn(self.open_course_no_activity.title, titles)
+        self.assertNotIn(self.open_course_no_activity.title, titles)
         self.assertNotIn(self.private_course_invited.title, titles)
 
     def test_student_mine_includes_open_with_submissions_and_private_invites(self):

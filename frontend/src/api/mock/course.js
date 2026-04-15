@@ -151,6 +151,8 @@ export function browseCourses({ tab = 'mine', q = '', page = 1, page_size = 10 }
     title: c.title,
     description: c.description || '',
     is_open: true,
+    is_published: c.is_published !== false,
+    is_empty: !!c.is_empty,
     section_title: null,
     is_favorite: false,
     role: tab === 'admin' ? 'teacher' : null,
@@ -193,6 +195,8 @@ export function getCourse(courseId) {
     title: found.title,
     description: found.description || '',
     is_open: true,
+    is_published: found.is_published !== false,
+    is_empty: !!found.is_empty,
     owner_id: 1,
     owner_username: 'owner',
     can_create_contest: true,
@@ -213,6 +217,10 @@ export function createCourse(payload) {
 export function createSection(payload) {
   const id = Date.now()
   return Promise.resolve({ id, ...payload })
+}
+
+export function updateSection(sectionId, data) {
+  return Promise.resolve({ id: Number(sectionId), ...data })
 }
 
 export function deleteSection(sectionId) {

@@ -337,7 +337,7 @@ def list_contests(request):
     # Avoid N+1 queries for course/creator fields in the response.
     contests = (
         Contest.objects.select_related("created_by", "course__section", "course__owner")
-        .annotate(problems_count=Count("problems"))
+        .annotate(problems_count=Count("problems", filter=Q(problems__is_published=True), distinct=True))
         .order_by("position", "-created_at")
     )
     if course_filter is not None:
@@ -361,6 +361,8 @@ def list_contests(request):
         if contest.course is None or not contest.is_visible_to(request.user):
             continue
         is_teacher = is_admin or contest.course_id in teacher_course_ids
+        if not is_teacher and contest.problems_count == 0:
+            continue
         visible.append(
             {
                 "id": contest.id,
@@ -530,7 +532,7 @@ def contest_detail(request, contest_id):
 
     contest = get_object_or_404(
         Contest.objects.select_related("course__section", "course__owner")
-        .annotate(problems_count=Count("problems"))
+        .annotate(problems_count=Count("problems", filter=Q(problems__is_published=True), distinct=True))
         .prefetch_related("problems", "allowed_participants"),
         pk=contest_id,
     )
@@ -539,6 +541,8 @@ def contest_detail(request, contest_id):
 
     is_admin = request.user.is_staff or request.user.is_superuser
     can_manage = bool(_course_is_teacher(contest.course, request.user) or is_admin)
+    if not can_manage and contest.problems_count == 0:
+        return JsonResponse({"detail": "Forbidden"}, status=403)
     can_edit = bool(_contest_can_edit(contest, request.user))
     allowed_participants = []
     if can_manage:

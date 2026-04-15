@@ -1,5 +1,5 @@
 from django.core.paginator import Paginator
-from django.db.models import Exists, OuterRef, Q
+from django.db.models import Count, Exists, OuterRef, Q
 from django.shortcuts import get_object_or_404
 from collections import deque
 from rest_framework import generics, permissions
@@ -7,7 +7,7 @@ from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from ...models import Course, CourseParticipant, FavoriteCourse, Section
+from ...models import Contest, Course, CourseParticipant, FavoriteCourse, Section, SectionTeacher
 from ...services import add_users_to_course
 from ...services.section_service import ROOT_SECTION_TITLES, is_root_section, root_section_order_key
 from ...services.user_access import is_platform_admin
@@ -21,7 +21,67 @@ from ..serializers import (
 )
 
 
-def _build_section_tree(sections, courses, favorite_positions=None, *, user=None, section_teacher_ids=None):
+def _published_problem_contest_count():
+    return Count(
+        "contests",
+        filter=Q(contests__is_published=True, contests__problems__is_published=True),
+        distinct=True,
+    )
+
+
+def _course_can_be_managed_by(course: Course, user, *, is_admin=False, section_teacher_ids=None, course_teacher_ids=None) -> bool:
+    if not user or not getattr(user, "is_authenticated", False):
+        return False
+    if is_admin:
+        return True
+    section_teacher_ids = section_teacher_ids or set()
+    course_teacher_ids = course_teacher_ids or set()
+    if course.owner_id == user.id:
+        return True
+    if getattr(course, "section", None) is not None and course.section.owner_id == user.id:
+        return True
+    if course.section_id in section_teacher_ids:
+        return True
+    return course.id in course_teacher_ids
+
+
+def _course_has_visible_student_content(course: Course, user) -> bool:
+    if not course.is_published:
+        return False
+
+    contests = Contest.objects.filter(
+        course_id=course.id,
+        is_published=True,
+        problems__is_published=True,
+    ).distinct()
+
+    if not getattr(user, "is_authenticated", False):
+        return contests.filter(
+            access_type=Contest.AccessType.PUBLIC,
+            course__is_open=True,
+            course__is_published=True,
+        ).exists()
+
+    allowed = Q(allowed_participants=user)
+    if course.is_open:
+        return contests.filter(Q(access_type=Contest.AccessType.PUBLIC) | allowed).exists()
+
+    is_member = CourseParticipant.objects.filter(course_id=course.id, user=user).exists()
+    if is_member:
+        return contests.filter(Q(access_type=Contest.AccessType.PUBLIC) | allowed).exists()
+
+    return contests.filter(allowed).exists()
+
+
+def _build_section_tree(
+    sections,
+    courses,
+    favorite_positions=None,
+    *,
+    user=None,
+    section_teacher_ids=None,
+    course_teacher_ids=None,
+):
     sections_by_parent = {}
     for section in sections:
         sections_by_parent.setdefault(section.parent_id, []).append(section)
@@ -37,6 +97,7 @@ def _build_section_tree(sections, courses, favorite_positions=None, *, user=None
         return sorted(items, key=lambda item: item.title.lower())
 
     section_teacher_ids = section_teacher_ids or set()
+    course_teacher_ids = course_teacher_ids or set()
     is_admin = bool(
         user
         and getattr(user, "is_authenticated", False)
@@ -46,17 +107,30 @@ def _build_section_tree(sections, courses, favorite_positions=None, *, user=None
     def build(section):
         child_nodes = []
         for child in sort_sections(sections_by_parent.get(section.id, [])):
-            child_nodes.append(build(child))
+            child_node = build(child)
+            if child_node is not None:
+                child_nodes.append(child_node)
         for course in sort_courses(courses_by_section.get(section.id, [])):
             fav_pos = None
             if favorite_positions is not None:
                 fav_pos = favorite_positions.get(course.id)
+            can_manage_course = _course_can_be_managed_by(
+                course,
+                user,
+                is_admin=is_admin,
+                section_teacher_ids=section_teacher_ids,
+                course_teacher_ids=course_teacher_ids,
+            )
+            published_contests_count = int(getattr(course, "published_problem_contests_count", 0) or 0)
             child_nodes.append(
                 {
                     "id": course.id,
                     "title": course.title,
                     "description": course.description,
                     "is_open": course.is_open,
+                    "is_published": course.is_published,
+                    "is_empty": published_contests_count == 0,
+                    "can_manage": bool(can_manage_course),
                     "owner_id": course.owner_id,
                     "owner_username": course.owner.username if course.owner_id else None,
                     "is_favorite": fav_pos is not None,
@@ -88,10 +162,17 @@ def _build_section_tree(sections, courses, favorite_positions=None, *, user=None
             elif section.id in section_teacher_ids:
                 can_manage = True
                 can_create_course = True
+        if not can_manage:
+            if not section.is_published:
+                return None
+            if not child_nodes:
+                return None
         return {
             "id": section.id,
             "title": section.title,
             "description": section.description,
+            "is_published": section.is_published,
+            "is_empty": not child_nodes,
             "parent_id": section.parent_id,
             "owner_id": section.owner_id,
             "owner_username": section.owner.username if section.owner_id else None,
@@ -106,7 +187,7 @@ def _build_section_tree(sections, courses, favorite_positions=None, *, user=None
 
     root_sections = sections_by_parent.get(None, [])
     ordered_roots = sorted(root_sections, key=root_section_order_key)
-    return [build(section) for section in ordered_roots]
+    return [node for section in ordered_roots if (node := build(section)) is not None]
 
 
 class CourseCreateView(generics.CreateAPIView):
@@ -180,14 +261,24 @@ class CourseTreeView(APIView):
 
     def get(self, request):
         sections = list(Section.objects.select_related("parent", "owner").all())
-        courses_qs = Course.objects.select_related("section", "owner").all()
+        courses_qs = (
+            Course.objects.select_related("section", "owner")
+            .annotate(published_problem_contests_count=_published_problem_contest_count())
+            .all()
+        )
         is_admin = bool(is_platform_admin(request.user))
 
         section_teacher_ids = set()
+        course_teacher_ids = set()
         if request.user.is_authenticated and not is_admin:
-            from ...models import SectionTeacher
             section_teacher_ids = set(
                 SectionTeacher.objects.filter(user=request.user).values_list("section_id", flat=True)
+            )
+            course_teacher_ids = set(
+                CourseParticipant.objects.filter(
+                    user=request.user,
+                    role=CourseParticipant.Role.TEACHER,
+                ).values_list("course_id", flat=True)
             )
 
         if not is_admin:
@@ -200,8 +291,21 @@ class CourseTreeView(APIView):
                     | Q(participants__user=request.user)
                 ).distinct()
             else:
-                courses_qs = courses_qs.filter(is_open=True)
+                courses_qs = courses_qs.filter(is_open=True, is_published=True)
         courses = list(courses_qs)
+        if not is_admin:
+            courses = [
+                course
+                for course in courses
+                if _course_can_be_managed_by(
+                    course,
+                    request.user,
+                    is_admin=is_admin,
+                    section_teacher_ids=section_teacher_ids,
+                    course_teacher_ids=course_teacher_ids,
+                )
+                or _course_has_visible_student_content(course, request.user)
+            ]
 
         favorite_positions = {}
         if request.user.is_authenticated:
@@ -239,6 +343,7 @@ class CourseTreeView(APIView):
             favorite_positions=favorite_positions,
             user=request.user,
             section_teacher_ids=section_teacher_ids,
+            course_teacher_ids=course_teacher_ids,
         )
         return Response(tree)
 
@@ -275,7 +380,9 @@ class CourseBrowseView(APIView):
         is_authenticated = bool(getattr(user, "is_authenticated", False))
         is_admin = bool(is_platform_admin(user) or user.is_staff or user.is_superuser)
 
-        qs = Course.objects.select_related("section", "owner")
+        qs = Course.objects.select_related("section", "owner").annotate(
+            published_problem_contests_count=_published_problem_contest_count()
+        )
         if is_authenticated:
             # Favorite flag for star UI.
             fav_exists = Exists(
@@ -284,7 +391,11 @@ class CourseBrowseView(APIView):
             qs = qs.annotate(is_favorite=fav_exists)
 
         if not is_authenticated:
-            qs = qs.filter(is_open=True)
+            qs = qs.filter(
+                is_open=True,
+                is_published=True,
+                published_problem_contests_count__gt=0,
+            )
         elif tab == "admin":
             if not is_admin:
                 qs = qs.filter(
@@ -304,7 +415,14 @@ class CourseBrowseView(APIView):
                 is_open=False,
                 participants__user=user,
             )
-            qs = qs.filter(open_participated | private_invited | Q(owner=user)).distinct()
+            visible_student_content = Q(
+                is_published=True,
+                published_problem_contests_count__gt=0,
+            )
+            qs = qs.filter(
+                Q(owner=user)
+                | (visible_student_content & (open_participated | private_invited))
+            ).distinct()
 
         if q:
             qs = qs.filter(title__icontains=q)
@@ -382,6 +500,8 @@ class CourseBrowseView(APIView):
             "title": course.title,
             "description": course.description,
             "is_open": course.is_open,
+            "is_published": course.is_published,
+            "is_empty": int(getattr(course, "published_problem_contests_count", 0) or 0) == 0,
             "section_id": course.section_id,
             "section_title": course.section.title if course.section_id else None,
             "owner_id": course.owner_id,
@@ -402,6 +522,47 @@ class SectionCreateView(generics.CreateAPIView):
         section = serializer.save()
         data = SectionReadSerializer(section, context={"request": request}).data
         return Response(data, status=201)
+
+
+class SectionUpdateView(generics.GenericAPIView):
+    permission_classes = [permissions.IsAuthenticated]
+    lookup_url_kwarg = "section_id"
+
+    def post(self, request, *args, **kwargs):
+        section = get_object_or_404(
+            Section.objects.select_related("parent", "owner"),
+            pk=self.kwargs.get(self.lookup_url_kwarg),
+        )
+        if not self._can_update_section(request.user, section):
+            raise PermissionDenied("Only section teachers can update this section")
+
+        update_fields = []
+        if "title" in request.data:
+            section.title = str(request.data.get("title") or "").strip()
+            update_fields.append("title")
+        if "description" in request.data:
+            section.description = str(request.data.get("description") or "")
+            update_fields.append("description")
+        if "is_published" in request.data:
+            section.is_published = bool(request.data.get("is_published"))
+            update_fields.append("is_published")
+
+        if not update_fields:
+            return Response({"detail": "No fields to update"}, status=400)
+
+        section.full_clean()
+        section.save(update_fields=update_fields)
+        data = SectionReadSerializer(section, context={"request": request}).data
+        return Response(data, status=200)
+
+    def _can_update_section(self, user, section: Section) -> bool:
+        if is_platform_admin(user):
+            return True
+        if section.parent_id is None:
+            return bool(user.is_staff or user.is_superuser)
+        if section.owner_id == user.id:
+            return True
+        return SectionTeacher.objects.filter(section=section, user=user).exists()
 
 
 class SectionDeleteView(generics.GenericAPIView):

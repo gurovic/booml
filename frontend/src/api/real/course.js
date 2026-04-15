@@ -14,23 +14,29 @@ export async function getCourse(courseId) {
   return await apiGet(`backend/course/${courseId}/`)
 }
 
-export async function createCourse({ title, section_id, description = '', is_open = false } = {}) {
+export async function createCourse({ title, section_id, description = '', is_open = false, is_published = true } = {}) {
   return await apiPost('api/courses/', {
     title,
     description,
     is_open,
+    is_published,
     section_id,
     teacher_ids: [],
     student_ids: [],
   })
 }
 
-export async function createSection({ title, parent_id = null, description = '' } = {}) {
+export async function createSection({ title, parent_id = null, description = '', is_published = true } = {}) {
   return await apiPost('api/sections/', {
     title,
     description,
+    is_published,
     parent_id,
   })
+}
+
+export async function updateSection(sectionId, data) {
+  return await apiPost(`api/sections/${sectionId}/update/`, data)
 }
 
 export async function deleteSection(sectionId) {

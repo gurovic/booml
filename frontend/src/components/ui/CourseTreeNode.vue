@@ -70,6 +70,17 @@
           </svg>
         </span>
         <span class="tree-node__text">{{ node.title }}</span>
+        <span v-if="showPublicationBadges" class="tree-node__badges">
+          <span
+            class="tree-node__badge"
+            :class="node.is_published !== false ? 'tree-node__badge--published' : 'tree-node__badge--draft'"
+          >
+            {{ node.is_published !== false ? 'Опубликован' : 'Черновик' }}
+          </span>
+          <span v-if="node.is_empty" class="tree-node__badge tree-node__badge--empty">
+            Пустой
+          </span>
+        </span>
       </button>
 
       <button
@@ -145,6 +156,7 @@ const favoriteOn = computed(() => {
   if (!props.showFavorite || !isCourse.value) return false
   return !!props.isFavorite(props.node)
 })
+const showPublicationBadges = computed(() => !!props.node?.can_manage)
 
 const orderedChildren = computed(() => {
   return [...children.value].sort((a, b) => {
@@ -326,6 +338,45 @@ const orderedChildren = computed(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.tree-node__badges {
+  display: inline-flex;
+  gap: 5px;
+  flex: 0 0 auto;
+  align-items: center;
+}
+
+.tree-node__badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 3px 7px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.1;
+  border: 1px solid rgba(100, 116, 139, 0.24);
+  background: rgba(100, 116, 139, 0.08);
+  color: rgba(51, 65, 85, 0.95);
+}
+
+.tree-node__badge--published {
+  border-color: rgba(16, 185, 129, 0.3);
+  background: rgba(16, 185, 129, 0.1);
+  color: rgba(5, 150, 105, 0.98);
+}
+
+.tree-node__badge--draft {
+  border-color: rgba(245, 158, 11, 0.34);
+  background: rgba(245, 158, 11, 0.12);
+  color: rgba(146, 64, 14, 0.98);
+}
+
+.tree-node__badge--empty {
+  border-color: rgba(99, 102, 241, 0.28);
+  background: rgba(99, 102, 241, 0.1);
+  color: rgba(67, 56, 202, 0.96);
 }
 
 .tree-node__main:hover {

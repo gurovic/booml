@@ -96,6 +96,16 @@
                     <span v-if="c.role" class="pill pill--muted">
                       {{ roleLabel(c.role) }}
                     </span>
+                    <span
+                      v-if="c.can_admin"
+                      class="pill"
+                      :class="c.is_published !== false ? 'pill--published' : 'pill--draft'"
+                    >
+                      {{ c.is_published !== false ? 'опубликован' : 'черновик' }}
+                    </span>
+                    <span v-if="c.can_admin && c.is_empty" class="pill pill--empty">
+                      пустой
+                    </span>
                   </div>
                 </div>
 
@@ -422,6 +432,24 @@ onMounted(() => {
 
 .pill--muted {
   background: rgba(22, 33, 89, 0.06);
+}
+
+.pill--published {
+  background: rgba(16, 185, 129, 0.10);
+  border-color: rgba(16, 185, 129, 0.25);
+  color: rgba(5, 150, 105, 0.95);
+}
+
+.pill--draft {
+  background: rgba(245, 158, 11, 0.12);
+  border-color: rgba(245, 158, 11, 0.32);
+  color: rgba(146, 64, 14, 0.96);
+}
+
+.pill--empty {
+  background: rgba(99, 102, 241, 0.10);
+  border-color: rgba(99, 102, 241, 0.26);
+  color: rgba(67, 56, 202, 0.96);
 }
 
 .course-card__actions {

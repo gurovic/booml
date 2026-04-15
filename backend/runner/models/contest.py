@@ -213,12 +213,15 @@ class Contest(models.Model):
                 self.is_published
                 and self.access_type == self.AccessType.PUBLIC
                 and self.course.is_open
+                and self.course.is_published
             )
 
         if self.is_user_manager(user):
             return True
 
         if not self.is_published:
+            return False
+        if not self.course.is_published:
             return False
 
         if self.access_type == self.AccessType.PRIVATE:
