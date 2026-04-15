@@ -945,6 +945,12 @@ const buildStructuredOutput = (result, options = {}) => {
   })
 }
 
+const didCellRunFail = (model) => {
+  if (!model) return false
+  const status = String(model.status || '').toLowerCase()
+  return status === 'error' || status === 'failed' || Boolean(model.error)
+}
+
 const serializeOutputModel = (model) => {
   return `${OUTPUT_STORAGE_PREFIX}${JSON.stringify(model)}`
 }
@@ -1265,8 +1271,8 @@ const structuredOutputToText = (model) => {
 
 const runCodeCell = async (cell, options = {}) => {
   const { refreshFiles = true } = options
-  if (runAllInProgress.value && !options.fromRunAll) return
-  if (!cell?.id || cell.cell_type !== 'code' || !canRunCells.value || isCellRunning(cell.id)) return
+  if (runAllInProgress.value && !options.fromRunAll) return null
+  if (!cell?.id || cell.cell_type !== 'code' || !canRunCells.value || isCellRunning(cell.id)) return null
   setCellRunning(cell.id, true)
   const startedAt = typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now()
   try {
@@ -1284,6 +1290,12 @@ const runCodeCell = async (cell, options = {}) => {
     await saveCodeCell(notebookId.value, cell.id, content, outputPayload)
     if (refreshFiles) {
       await refreshSessionFiles({ silent: true })
+    }
+    return {
+      cellId: cell.id,
+      ok: !didCellRunFail(outputModel),
+      status: outputModel.status,
+      outputModel,
     }
   } catch (error) {
     const message = error?.message || 'Не удалось выполнить ячейку.'
@@ -1304,6 +1316,12 @@ const runCodeCell = async (cell, options = {}) => {
     } catch (_) {
       // No-op: local output is still shown.
     }
+    return {
+      cellId: cell.id,
+      ok: false,
+      status: outputModel.status,
+      outputModel,
+    }
   } finally {
     setCellRunning(cell.id, false)
   }
@@ -1318,7 +1336,10 @@ const runAllCodeCells = async () => {
     const codeCells = orderedCells.value.filter((cell) => cell.cell_type === 'code')
     for (const cell of codeCells) {
       await waitForCellIdle(cell.id)
-      await runCodeCell(cell, { refreshFiles: false, fromRunAll: true })
+      const result = await runCodeCell(cell, { refreshFiles: false, fromRunAll: true })
+      if (result?.ok === false) {
+        break
+      }
     }
     await refreshSessionFiles({ silent: true })
   } finally {
@@ -1805,7 +1826,7 @@ const isErrorOutput = (cell) => {
   if (!cell?.output || typeof cell.output !== 'string') return false
   const model = getCellOutputModel(cell)
   if (model?.kind === 'structured') {
-    return model.status === 'error' || Boolean(model.error)
+    return didCellRunFail(model)
   }
   const text = cell.output.toLowerCase()
   return text.includes('error') || text.includes('exception') || text.includes('traceback')
