@@ -3,7 +3,7 @@ import json
 from django.contrib.auth import get_user_model
 from django.test import RequestFactory, TestCase
 
-from runner.models import Contest, Course, CourseParticipant, Section
+from runner.models import Contest, ContestProblem, Course, CourseParticipant, Problem, Section
 from runner.services.section_service import SectionCreateInput, create_section
 from runner.views.course import course_contests
 from runner.views.contest_draft import list_pending_contests, moderate_contest
@@ -46,6 +46,12 @@ class ContestModerationViewTests(TestCase):
             course=self.course,
             created_by=self.teacher,
             is_published=False,
+        )
+        self.problem = Problem.objects.create(
+            title="Visible Problem",
+            statement="",
+            author=self.teacher,
+            is_published=True,
         )
 
     def test_admin_sees_pending_list(self):
@@ -105,6 +111,7 @@ class ContestModerationViewTests(TestCase):
         self.pending_contest.approval_status = Contest.ApprovalStatus.APPROVED
         self.pending_contest.is_published = True
         self.pending_contest.save(update_fields=["approval_status", "is_published"])
+        ContestProblem.objects.create(contest=self.pending_contest, problem=self.problem, position=0)
 
         request = self.factory.get("/")
         request.user = self.student
