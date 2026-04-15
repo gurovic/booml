@@ -534,8 +534,12 @@ const notebookDetail = {
         });
     },
 
-    enqueueCellRun(cellId) {
-        this.cellQueue.push({ cellId, enqueuedAt: Date.now() });
+    enqueueCellRun(cellId, options = {}) {
+        this.cellQueue.push({
+            cellId,
+            enqueuedAt: Date.now(),
+            stopQueueOnError: Boolean(options.stopQueueOnError),
+        });
         this.updateQueueStatuses();
         this.processQueue();
     },
@@ -557,7 +561,11 @@ const notebookDetail = {
         job.controller = controller;
         job.cancelled = false;
         this.currentRun = job;
-        this.executeQueueJob(job).finally(() => {
+        this.executeQueueJob(job).then((status) => {
+            if (job.stopQueueOnError && status === 'error') {
+                this.cellQueue = this.cellQueue.filter((queuedJob) => !queuedJob.stopQueueOnError);
+            }
+        }).finally(() => {
             const cellId = job.cellId;
             if (this.currentRun && this.currentRun.cellId === cellId) {
                 this.currentRun = null;
@@ -593,7 +601,7 @@ const notebookDetail = {
         const cellId = job.cellId;
         const cellElement = document.querySelector(`[data-cell-id="${cellId}"]`);
         if (!cellElement) {
-            return;
+            return 'skipped';
         }
         const textarea = cellElement.querySelector('textarea');
         const outputElement = document.getElementById(`output-${cellId}`);
@@ -604,7 +612,7 @@ const notebookDetail = {
 
         if (!textarea || !outputElement || (!runCellUrl && !(runCellStreamStartUrl && runCellStreamStatusUrl))) {
             this.setCellStatus(cellId, 'error');
-            return;
+            return 'error';
         }
 
         const cellNumericId = Number(cellId);
@@ -645,7 +653,7 @@ const notebookDetail = {
             }
 
             if (useStreaming) {
-                await this.executeQueueJobStreaming({
+                return await this.executeQueueJobStreaming({
                     job,
                     cellId,
                     sessionId,
@@ -716,9 +724,9 @@ const notebookDetail = {
                 const formattedOutput = NotebookUtils.formatCellRunResult(data);
                 outputElement.innerHTML = formattedOutput;
                 this.enhanceOutputElement(outputElement);
-                outputElement.className = data.error ? 'output error' : 'output success';
+                const finalStatus = (data.error || data.status === 'error') ? 'error' : 'success';
+                outputElement.className = finalStatus === 'error' ? 'output error' : 'output success';
                 this.renderArtifacts(cellId, data.artifacts || []);
-                const finalStatus = data.error ? 'error' : 'success';
                 const durationMs = Math.max(
                     0,
                     (typeof performance !== 'undefined' ? performance.now() : Date.now()) - startedAt,
@@ -727,6 +735,7 @@ const notebookDetail = {
                 this.setCellStatus(cellId, finalStatus, meta);
                 this.rememberOutputSnapshot(cellId, formattedOutput);
                 await this.saveCellState(cellId, code, formattedOutput, saveOutputUrl);
+                return finalStatus;
             }
         } catch (error) {
             if (error?.status === 400 && /Сессия не создана/i.test(error.message || '')) {
@@ -751,7 +760,7 @@ const notebookDetail = {
                     this.rememberOutputSnapshot(cellId, note);
                     await this.saveCellState(cellId, code, note, saveOutputUrl);
                 }
-                return;
+                return 'cancelled';
             }
             console.error('Ошибка выполнения ячейки:', error);
             const message = error?.message || 'Не удалось выполнить ячейку';
@@ -762,6 +771,7 @@ const notebookDetail = {
             this.setCellStatus(cellId, 'error');
             this.rememberOutputSnapshot(cellId, errorHtml);
             await this.saveCellState(cellId, code, errorHtml, saveOutputUrl);
+            return 'error';
         }
     },
 
@@ -922,7 +932,7 @@ const notebookDetail = {
                 this.setCellStatus(cellId, finalStatus, meta);
                 this.rememberOutputSnapshot(cellId, formattedOutput);
                 await this.saveCellState(cellId, code, formattedOutput, saveOutputUrl);
-                return;
+                return finalStatus;
             }
 
             await new Promise((resolve) => setTimeout(resolve, 300));
@@ -3568,7 +3578,6 @@ const runAll = function() {
         const id = cell.getAttribute('data-cell-id');
         if (!id) continue;
 
-        // запускаем так же, как запускается одиночная ячейка
-        notebookDetail.runCell(id);
+        notebookDetail.enqueueCellRun(id, { stopQueueOnError: true });
     }
 };
