@@ -1273,8 +1273,8 @@ const runCodeCell = async (cell, options = {}) => {
     // Avoid duplicate save request from pending autosave timer when user runs immediately after typing.
     clearCellTimer(cell.id)
     const content = typeof cell.content === 'string' ? cell.content : ''
-    const previousOutput = typeof cell.output === 'string' ? cell.output : ''
-    await saveCodeCell(notebookId.value, cell.id, content, previousOutput)
+    setCellOutput(cell, '')
+    await saveCodeCell(notebookId.value, cell.id, content, '')
     lastSavedContent.set(cell.id, content)
     const result = await runNotebookCell(sessionId.value, cell.id)
     const finishedAt = typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now()
