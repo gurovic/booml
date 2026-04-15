@@ -46,6 +46,7 @@ class CourseReadSerializer(serializers.ModelSerializer):
             "title",
             "description",
             "is_open",
+            "is_published",
             "section_id",
             "section_title",
             "owner",
@@ -60,6 +61,7 @@ class CourseCreateSerializer(serializers.Serializer):
     title = serializers.CharField(max_length=255)
     description = serializers.CharField(required=False, allow_blank=True, default="")
     is_open = serializers.BooleanField(default=False)
+    is_published = serializers.BooleanField(default=True)
     section_id = serializers.IntegerField(required=True)
     teacher_ids = serializers.ListField(
         child=serializers.IntegerField(min_value=1),
@@ -109,6 +111,7 @@ class CourseCreateSerializer(serializers.Serializer):
             title=validated_data["title"],
             description=validated_data.get("description", ""),
             is_open=validated_data.get("is_open", False),
+            is_published=validated_data.get("is_published", True),
             owner=owner,
             section=validated_data.get("section"),
             teachers=validated_data.get("teacher_objs"),
@@ -157,6 +160,7 @@ class SectionReadSerializer(serializers.ModelSerializer):
             "id",
             "title",
             "description",
+            "is_published",
             "parent_id",
             "owner",
             "owner_username",
@@ -169,6 +173,7 @@ class SectionReadSerializer(serializers.ModelSerializer):
 class SectionCreateSerializer(serializers.Serializer):
     title = serializers.CharField(max_length=255)
     description = serializers.CharField(required=False, allow_blank=True, default="")
+    is_published = serializers.BooleanField(default=True)
     parent_id = serializers.IntegerField(required=False, allow_null=True)
 
     def validate_parent_id(self, value: int | None) -> Section | None:
@@ -209,6 +214,7 @@ class SectionCreateSerializer(serializers.Serializer):
         payload = SectionCreateInput(
             title=validated_data["title"],
             description=validated_data.get("description", ""),
+            is_published=validated_data.get("is_published", True),
             owner=owner,
             parent=validated_data.get("parent"),
         )

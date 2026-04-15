@@ -6,6 +6,10 @@ from django.db import models
 class Section(models.Model):
     title = models.CharField(max_length=255)
     description = models.TextField(blank=True, default="")
+    is_published = models.BooleanField(
+        default=True,
+        help_text="Visible to students when True; drafts are visible only to teachers.",
+    )
     parent = models.ForeignKey(
         "self",
         on_delete=models.PROTECT,

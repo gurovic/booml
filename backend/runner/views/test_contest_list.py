@@ -6,7 +6,7 @@ from django.contrib.auth.models import AnonymousUser
 from django.test import RequestFactory, TestCase
 from django.utils import timezone
 
-from runner.models import Contest, Course, CourseParticipant, Section
+from runner.models import Contest, ContestProblem, Course, CourseParticipant, Problem, Section
 from runner.services.section_service import SectionCreateInput, create_section
 from runner.views.contest_draft import list_contests
 
@@ -65,6 +65,12 @@ class ContestListViewTests(TestCase):
             role=CourseParticipant.Role.TEACHER,
             is_owner=True,
         )
+        self.problem = Problem.objects.create(
+            title="Visible Problem",
+            statement="",
+            author=self.teacher,
+            is_published=True,
+        )
 
         self.published = Contest.objects.create(
             title="Published",
@@ -73,6 +79,7 @@ class ContestListViewTests(TestCase):
             is_published=True,
             approval_status=Contest.ApprovalStatus.APPROVED,
         )
+        ContestProblem.objects.create(contest=self.published, problem=self.problem, position=0)
         self.draft = Contest.objects.create(
             title="Draft",
             course=self.course,
@@ -133,7 +140,7 @@ class ContestListViewTests(TestCase):
         self.course.is_open = True
         self.course.save(update_fields=["is_open"])
 
-        Contest.objects.create(
+        private_for_guest = Contest.objects.create(
             title="Private For Guest",
             course=self.course,
             created_by=self.teacher,
@@ -141,6 +148,7 @@ class ContestListViewTests(TestCase):
             access_type=Contest.AccessType.PRIVATE,
             approval_status=Contest.ApprovalStatus.APPROVED,
         )
+        ContestProblem.objects.create(contest=private_for_guest, problem=self.problem, position=0)
 
         request = self.factory.get("/")
         request.user = AnonymousUser()
@@ -164,6 +172,7 @@ class ContestListViewTests(TestCase):
             approval_status=Contest.ApprovalStatus.APPROVED,
         )
         private_contest.allowed_participants.add(self.student)
+        ContestProblem.objects.create(contest=private_contest, problem=self.problem, position=0)
 
         request_student = self.factory.get("/")
         request_student.user = self.student
@@ -187,6 +196,7 @@ class ContestListViewTests(TestCase):
             start_time=timezone.now() + timedelta(hours=2),
             duration_minutes=90,
         )
+        ContestProblem.objects.create(contest=scheduled, problem=self.problem, position=0)
 
         request = self.factory.get("/")
         request.user = self.student

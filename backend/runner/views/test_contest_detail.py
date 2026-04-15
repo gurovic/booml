@@ -73,6 +73,9 @@ class ContestDetailViewTests(TestCase):
             approval_status=Contest.ApprovalStatus.APPROVED,
         )
         self.private_contest.allowed_participants.add(self.student)
+        self.problem = Problem.objects.create(title="Visible Problem", statement="...", is_published=True)
+        ContestProblem.objects.create(contest=self.contest, problem=self.problem, position=0)
+        ContestProblem.objects.create(contest=self.private_contest, problem=self.problem, position=0)
 
     def test_teacher_sees_allowed_participants_and_token(self):
         self.contest.access_type = Contest.AccessType.LINK
@@ -168,6 +171,7 @@ class ContestDetailViewTests(TestCase):
         self.assertFalse(payload["can_view_problems"])
 
     def test_problems_include_stable_letter_labels_by_contest_order(self):
+        ContestProblem.objects.filter(contest=self.contest).delete()
         p1 = Problem.objects.create(title="P1", statement="...")
         p2 = Problem.objects.create(title="P2", statement="...")
         p3 = Problem.objects.create(title="P3", statement="...")
@@ -188,6 +192,7 @@ class ContestDetailViewTests(TestCase):
         self.assertEqual([row["label"] for row in problems], ["A", "B", "C"])
 
     def test_unpublished_problems_are_hidden_in_contest_detail(self):
+        ContestProblem.objects.filter(contest=self.contest).delete()
         p_public = Problem.objects.create(title="Visible", statement="...", is_published=True)
         p_hidden = Problem.objects.create(title="Hidden", statement="...", is_published=False)
         ContestProblem.objects.create(contest=self.contest, problem=p_public, position=0)
@@ -246,6 +251,15 @@ class CourseDetailViewTests(TestCase):
             role=CourseParticipant.Role.TEACHER,
             is_owner=False,
         )
+        self.problem = Problem.objects.create(title="Visible Problem", statement="...", is_published=True)
+        self.contest = Contest.objects.create(
+            title="Visible Contest",
+            course=self.course,
+            created_by=self.teacher,
+            is_published=True,
+            approval_status=Contest.ApprovalStatus.APPROVED,
+        )
+        ContestProblem.objects.create(contest=self.contest, problem=self.problem, position=0)
 
     def test_teacher_gets_course_with_participants(self):
         request = self.factory.get("/")

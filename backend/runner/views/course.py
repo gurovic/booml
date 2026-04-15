@@ -1,4 +1,4 @@
-from django.db.models import Count, Max
+from django.db.models import Count, Max, Q
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
 
@@ -49,6 +49,41 @@ def _course_is_member(course: Course, user) -> bool:
     return course.participants.filter(user=user).exists()
 
 
+def _course_has_visible_student_content(course: Course, user) -> bool:
+    if not course.is_published:
+        return False
+
+    contests = Contest.objects.filter(
+        course_id=course.id,
+        is_published=True,
+        problems__is_published=True,
+    ).distinct()
+
+    if not getattr(user, "is_authenticated", False):
+        return contests.filter(
+            access_type=Contest.AccessType.PUBLIC,
+            course__is_open=True,
+            course__is_published=True,
+        ).exists()
+
+    allowed = Q(allowed_participants=user)
+    if course.is_open:
+        return contests.filter(Q(access_type=Contest.AccessType.PUBLIC) | allowed).exists()
+
+    if course.participants.filter(user=user).exists():
+        return contests.filter(Q(access_type=Contest.AccessType.PUBLIC) | allowed).exists()
+
+    return contests.filter(allowed).exists()
+
+
+def _course_has_published_content(course: Course) -> bool:
+    return Contest.objects.filter(
+        course_id=course.id,
+        is_published=True,
+        problems__is_published=True,
+    ).exists()
+
+
 def course_detail(request, course_id):
     if request.method != "GET":
         return JsonResponse({"detail": "Method not allowed"}, status=405)
@@ -61,7 +96,8 @@ def course_detail(request, course_id):
     is_owner = course.owner_id == request.user.id
     is_teacher = _course_is_teacher(course, request.user)
     is_member = _course_is_member(course, request.user)
-    if not (is_admin or is_member or course.is_open):
+    can_access_as_student = bool(_course_has_visible_student_content(course, request.user))
+    if not (is_admin or is_teacher or can_access_as_student):
         return JsonResponse({"detail": "Forbidden"}, status=403)
 
     participants = []
@@ -84,6 +120,8 @@ def course_detail(request, course_id):
             "title": course.title,
             "description": course.description,
             "is_open": course.is_open,
+            "is_published": course.is_published,
+            "is_empty": not _course_has_published_content(course),
             "section": course.section_id,
             "section_title": course.section.title,
             "owner_id": course.owner_id,
@@ -106,19 +144,22 @@ def course_contests(request, course_id):
     )
     is_admin = bool(is_platform_admin(request.user) or request.user.is_staff or request.user.is_superuser)
     is_member = _course_is_member(course, request.user)
-    if not (is_admin or is_member or course.is_open):
+    is_teacher = _course_is_teacher(course, request.user)
+    can_access_as_student = bool(_course_has_visible_student_content(course, request.user))
+    if not (is_admin or is_teacher or can_access_as_student):
         return JsonResponse({"detail": "Forbidden"}, status=403)
 
     contests = (
         Contest.objects.filter(course=course)
         .select_related("course__section", "course__owner", "created_by")
-        .annotate(problems_count=Count("problems"))
+        .annotate(problems_count=Count("problems", filter=Q(problems__is_published=True), distinct=True))
         .order_by("position", "-created_at")
     )
-    is_teacher = _course_is_teacher(course, request.user)
     items = []
     for contest in contests:
         if not contest.is_visible_to(request.user):
+            continue
+        if not (is_teacher or is_admin) and contest.problems_count == 0:
             continue
         items.append(
             {
@@ -217,6 +258,9 @@ def update_course(request, course_id):
     if "is_open" in payload:
         course.is_open = bool(payload.get("is_open"))
         update_fields.append("is_open")
+    if "is_published" in payload:
+        course.is_published = bool(payload.get("is_published"))
+        update_fields.append("is_published")
 
     if not update_fields:
         return JsonResponse({"detail": "No fields to update"}, status=400)
@@ -228,6 +272,7 @@ def update_course(request, course_id):
             "title": course.title,
             "description": course.description,
             "is_open": course.is_open,
+            "is_published": course.is_published,
         },
         status=200,
     )

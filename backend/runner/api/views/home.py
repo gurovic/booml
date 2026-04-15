@@ -82,6 +82,8 @@ def _course_is_visible_to_user(course: Course, user) -> bool:
         return False
     if user.is_staff or user.is_superuser:
         return True
+    if not course.is_published:
+        return False
     if course.is_open:
         return True
     if course.owner_id == user.id:

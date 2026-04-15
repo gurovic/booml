@@ -28,6 +28,7 @@ class SectionCreateInput:
     title: str
     owner: User
     description: str = ""
+    is_published: bool = True
     parent: Section | None = None
 
 
@@ -84,6 +85,7 @@ def create_section(payload: SectionCreateInput) -> Section:
         section = Section(
             title=payload.title,
             description=payload.description or "",
+            is_published=payload.is_published,
             owner=payload.owner,
             parent=payload.parent,
         )

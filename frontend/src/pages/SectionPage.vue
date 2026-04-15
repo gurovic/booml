@@ -13,9 +13,28 @@
           <div class="course-header">
             <div class="course-title-row">
               <h1 class="course-title">Раздел "{{ sectionTitle }}"</h1>
+              <div v-if="canManageSection" class="publication-badges">
+                <span
+                  class="publication-badge"
+                  :class="sectionIsPublished ? 'publication-badge--published' : 'publication-badge--draft'"
+                >
+                  {{ sectionIsPublished ? 'Опубликован' : 'Черновик' }}
+                </span>
+                <span v-if="sectionIsEmpty" class="publication-badge publication-badge--empty">
+                  Пустой
+                </span>
+              </div>
             </div>
 
-            <div v-if="canCreateCourse || canCreateSubsection || canDeleteSection" class="course-header__actions">
+            <div v-if="canManageSection || canCreateCourse || canCreateSubsection || canDeleteSection" class="course-header__actions">
+              <button
+                v-if="canManageSection"
+                class="button button--secondary"
+                type="button"
+                @click="showSettingsDialog = true"
+              >
+                Настройки раздела
+              </button>
               <button
                 v-if="canCreateCourse"
                 class="button button--primary"
@@ -103,6 +122,15 @@
                 <span>Открытый курс (виден всем)</span>
               </label>
             </div>
+            <div class="form-group">
+              <label class="form-checkbox">
+                <input type="checkbox" v-model="newCourse.is_published" />
+                <span>Опубликовать курс</span>
+              </label>
+              <p class="settings-hint">
+                Пустой курс останется виден только учителям, пока в нем нет опубликованных контестов с задачами.
+              </p>
+            </div>
             <div v-if="createError" class="form-error">{{ createError }}</div>
           </div>
           <div class="dialog__footer">
@@ -141,6 +169,15 @@
                 rows="4"
               ></textarea>
             </div>
+            <div class="form-group">
+              <label class="form-checkbox">
+                <input type="checkbox" v-model="newSection.is_published" />
+                <span>Опубликовать раздел</span>
+              </label>
+              <p class="settings-hint">
+                Ученики увидят раздел только если внутри есть опубликованные непустые курсы.
+              </p>
+            </div>
             <div v-if="createError" class="form-error">{{ createError }}</div>
           </div>
           <div class="dialog__footer">
@@ -148,6 +185,31 @@
             <button class="button button--primary" @click="createSubsection" :disabled="isCreating || !newSection.title.trim()">
               {{ isCreating ? 'Создание...' : 'Создать' }}
             </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Section Settings Dialog -->
+      <div v-if="showSettingsDialog && canManageSection" class="dialog-overlay" @click="closeDialogs">
+        <div class="dialog" @click.stop>
+          <div class="dialog__header">
+            <h2 class="dialog__title">Настройки раздела</h2>
+            <button class="dialog__close" @click="closeDialogs">×</button>
+          </div>
+          <div class="dialog__body">
+            <div class="form-group">
+              <label class="form-checkbox">
+                <input type="checkbox" v-model="sectionIsPublished" @change="saveSectionSettings" />
+                <span>Раздел опубликован</span>
+              </label>
+              <p class="settings-hint">
+                Черновик видят только учителя. Пустой раздел без опубликованного содержимого ученикам не показывается.
+              </p>
+            </div>
+            <div v-if="actionError" class="form-error">{{ actionError }}</div>
+          </div>
+          <div class="dialog__footer">
+            <button class="button button--primary" @click="closeDialogs">Закрыть</button>
           </div>
         </div>
       </div>
@@ -177,6 +239,7 @@ const openNested = ref({})
 
 const showCreateCourseDialog = ref(false)
 const showCreateSectionDialog = ref(false)
+const showSettingsDialog = ref(false)
 const isCreating = ref(false)
 const createError = ref('')
 const actionError = ref('')
@@ -185,11 +248,13 @@ const newCourse = ref({
   title: '',
   description: '',
   is_open: false,
+  is_published: true,
 })
 
 const newSection = ref({
   title: '',
   description: '',
+  is_published: true,
 })
 
 const hasChildrenItems = item => Array.isArray(item?.children) && item.children.length > 0
@@ -216,6 +281,17 @@ const sectionTitle = computed(() => {
 
 const isAuthorized = computed(() => !!userStore.currentUser)
 const isTeacher = computed(() => String(userStore.currentUser?.role || '') === 'teacher')
+const canManageSection = computed(() => {
+  if (!isAuthorized.value || !section.value) return false
+  return !!section.value.can_manage
+})
+const sectionIsPublished = computed({
+  get: () => section.value?.is_published !== false,
+  set: (value) => {
+    if (section.value) section.value.is_published = !!value
+  },
+})
+const sectionIsEmpty = computed(() => !!section.value?.is_empty)
 const canDeleteSection = computed(() => {
   if (!isAuthorized.value || !section.value) return false
   if (section.value.is_root) return false
@@ -302,11 +378,12 @@ const load = async () => {
 const closeDialogs = () => {
   showCreateCourseDialog.value = false
   showCreateSectionDialog.value = false
+  showSettingsDialog.value = false
   createError.value = ''
   actionError.value = ''
   isCreating.value = false
-  newCourse.value = { title: '', description: '', is_open: false }
-  newSection.value = { title: '', description: '' }
+  newCourse.value = { title: '', description: '', is_open: false, is_published: true }
+  newSection.value = { title: '', description: '', is_published: true }
 }
 
 const deleteThisSection = async () => {
@@ -336,6 +413,7 @@ const createCourse = async () => {
       title,
       description: newCourse.value.description || '',
       is_open: !!newCourse.value.is_open,
+      is_published: !!newCourse.value.is_published,
       section_id: Number(section.value.id),
     })
     closeDialogs()
@@ -366,6 +444,7 @@ const createSubsection = async () => {
     await courseApi.createSection({
       title,
       description: newSection.value.description || '',
+      is_published: !!newSection.value.is_published,
       parent_id: Number(section.value.id),
     })
     closeDialogs()
@@ -375,6 +454,22 @@ const createSubsection = async () => {
     createError.value = err?.message || 'Не удалось создать раздел'
   } finally {
     isCreating.value = false
+  }
+}
+
+const saveSectionSettings = async () => {
+  if (!canManageSection.value || !section.value?.id) return
+  actionError.value = ''
+  try {
+    const updated = await courseApi.updateSection(Number(section.value.id), {
+      is_published: sectionIsPublished.value,
+    })
+    section.value = { ...section.value, ...updated }
+    await load()
+  } catch (err) {
+    console.error('Не удалось обновить раздел', err)
+    actionError.value = err?.message || 'Не удалось обновить раздел'
+    await load()
   }
 }
 
@@ -468,6 +563,53 @@ onMounted(load)
   font-weight: 600;
   margin: 0;
   color: var(--color-text-primary);
+}
+
+.publication-badges {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.publication-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 3px 8px;
+  border-radius: 8px;
+  border: 1px solid rgba(100, 116, 139, 0.24);
+  background: rgba(100, 116, 139, 0.08);
+  color: rgba(51, 65, 85, 0.95);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.publication-badge--published {
+  border-color: rgba(16, 185, 129, 0.3);
+  background: rgba(16, 185, 129, 0.1);
+  color: rgba(5, 150, 105, 0.98);
+}
+
+.publication-badge--draft {
+  border-color: rgba(245, 158, 11, 0.34);
+  background: rgba(245, 158, 11, 0.12);
+  color: rgba(146, 64, 14, 0.98);
+}
+
+.publication-badge--empty {
+  border-color: rgba(99, 102, 241, 0.28);
+  background: rgba(99, 102, 241, 0.1);
+  color: rgba(67, 56, 202, 0.96);
+}
+
+.settings-hint {
+  margin: 6px 0 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: rgba(15, 23, 42, 0.62);
 }
 
 .course-header__actions {

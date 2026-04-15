@@ -18,6 +18,7 @@ class CourseCreateInput:
     title: str
     owner: User
     is_open: bool = False
+    is_published: bool = True
     description: str = ""
     section: Section | None = None
     teachers: Iterable[User] | None = None
@@ -74,6 +75,7 @@ def create_course(payload: CourseCreateInput) -> Course:
             title=payload.title,
             description=payload.description or "",
             is_open=payload.is_open,
+            is_published=payload.is_published,
             owner=payload.owner,
             section=payload.section,
         )
