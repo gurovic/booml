@@ -562,7 +562,7 @@ const notebookDetail = {
         job.cancelled = false;
         this.currentRun = job;
         this.executeQueueJob(job).then((status) => {
-            if (job.stopQueueOnError && status === 'error') {
+            if (job.stopQueueOnError && status !== 'success') {
                 this.cellQueue = this.cellQueue.filter((queuedJob) => !queuedJob.stopQueueOnError);
             }
         }).finally(() => {
@@ -619,7 +619,7 @@ const notebookDetail = {
         if (Number.isNaN(cellNumericId)) {
             alert('Некорректный идентификатор ячейки');
             this.setCellStatus(cellId, 'error');
-            return;
+            return 'error';
         }
 
         const sessionId = await this.ensureSession();
@@ -628,7 +628,7 @@ const notebookDetail = {
             alert('Сначала создайте сессию.');
             this.updateSessionStatus('idle', 'Сессия не создана. Создайте новую.');
             this.setCellStatus(cellId, 'error');
-            return;
+            return 'error';
         }
 
         const code = textarea.value;
@@ -3573,10 +3573,11 @@ async handleImportFile(file) {
 
 };
 const runAll = function() {
-    const cells = document.querySelectorAll('.cell')
+    const cells = document.querySelectorAll('.cell[data-cell-type="code"]')
     for (const cell of cells) {
         const id = cell.getAttribute('data-cell-id');
         if (!id) continue;
+        if (!cell.querySelector('[data-action="run-cell"]')) continue;
 
         notebookDetail.enqueueCellRun(id, { stopQueueOnError: true });
     }
