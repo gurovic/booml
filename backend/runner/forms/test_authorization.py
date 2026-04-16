@@ -1,7 +1,10 @@
 from django.test import TestCase
 from django.contrib.auth import get_user_model
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test.utils import override_settings
+import tempfile
 from unittest.mock import patch
+from runner.models import TeacherAccessRequest
 from runner.forms.authorization import RegisterForm
 
 User = get_user_model()
@@ -22,17 +25,41 @@ class RegisterFormTests(TestCase):
         self.assertEqual(user.username, "student_user")
         self.assertFalse(user.is_staff)
 
-    def test_register_form_teacher_role_creates_staff_user(self):
+    @override_settings(MEDIA_ROOT=tempfile.gettempdir())
+    def test_register_form_teacher_role_creates_pending_request_without_staff(self):
+        proof = SimpleUploadedFile(
+            "mesh-proof.png",
+            b"proof",
+            content_type="image/png",
+        )
         data = {
             "username": "teacher_user",
             "email": "teacher@example.com",
             "password1": "strongpass123",
             "password2": "strongpass123",
             "role": "teacher",
+            "teacher_comment": "Скриншот из МЭШ",
         }
-        form = RegisterForm(data)
+        form = RegisterForm(data, {"teacher_proof": proof})
         self.assertTrue(form.is_valid(), msg=form.errors)
         user = form.save()
+        self.assertFalse(user.is_staff)
+        teacher_request = TeacherAccessRequest.objects.get(user=user)
+        self.assertEqual(teacher_request.status, TeacherAccessRequest.STATUS_PENDING)
+        self.assertEqual(teacher_request.comment, "Скриншот из МЭШ")
+        teacher_request.proof.delete()
+
+    def test_register_form_teacher_role_requires_proof(self):
+        data = {
+            "username": "teacher_no_proof",
+            "email": "teacher_no_proof@example.com",
+            "password1": "strongpass123",
+            "password2": "strongpass123",
+            "role": "teacher",
+        }
+        form = RegisterForm(data)
+        self.assertFalse(form.is_valid())
+        self.assertIn("teacher_proof", form.errors)
 
     def test_role_field_is_required(self):
         data = {

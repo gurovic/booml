@@ -15,7 +15,7 @@ from runner.services.captcha import get_captcha_site_key, is_captcha_enabled
 
 def register_view(request):
     if request.method == 'POST':
-        form = RegisterForm(request.POST, request=request)
+        form = RegisterForm(request.POST, request.FILES, request=request)
         if form.is_valid():
             user = form.save()
             login(request, user)
@@ -61,7 +61,7 @@ def get_user_role(user):
 
 @api_view(['POST'])
 def backend_register(request):
-    form = RegisterForm(request.data, request=request)
+    form = RegisterForm(request.data, request.FILES, request=request)
 
     if form.is_valid():
         user = form.save()

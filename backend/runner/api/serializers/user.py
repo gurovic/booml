@@ -6,7 +6,7 @@ from django.db.models.functions import TruncDate
 from django.utils import timezone
 from rest_framework import serializers
 
-from ...models.profile import Profile
+from ...models.profile import Profile, TeacherAccessRequest
 from .submissions import SubmissionReadSerializer
 
 
@@ -207,3 +207,32 @@ class ProfileDetailSerializer(serializers.ModelSerializer):
             'best_streak': best_streak,
             'days': days,
         }
+
+
+class TeacherAccessRequestSerializer(serializers.ModelSerializer):
+    proof_url = serializers.SerializerMethodField()
+    reviewed_by_username = serializers.CharField(source='reviewed_by.username', read_only=True)
+
+    class Meta:
+        model = TeacherAccessRequest
+        fields = (
+            'id',
+            'status',
+            'comment',
+            'review_comment',
+            'proof_url',
+            'reviewed_by_username',
+            'reviewed_at',
+            'created_at',
+            'updated_at',
+        )
+        read_only_fields = fields
+
+    def get_proof_url(self, obj):
+        if not obj.proof:
+            return None
+        request = self.context.get('request')
+        url = obj.proof.url
+        if request is not None:
+            return request.build_absolute_uri(url)
+        return url

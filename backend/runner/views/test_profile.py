@@ -1,4 +1,4 @@
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.utils import timezone
@@ -7,13 +7,14 @@ from rest_framework import status
 from unittest.mock import patch, MagicMock
 import tempfile
 
-from ..models import Profile, Problem, Submission
+from ..models import Profile, Problem, Submission, TeacherAccessRequest
 from ..views.profile import (
     get_my_profile,
     get_profile_by_id,
     update_avatar,
     delete_avatar,
-    update_profile_info
+    update_profile_info,
+    teacher_access_request
 )
 
 User = get_user_model()
@@ -515,6 +516,92 @@ class UpdateProfileInfoTests(ProfileViewsTests):
         # Должен быть 404, но view создает профиль автоматически
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIsNotNone(Profile.objects.get(user=self.user))
+
+
+class TeacherAccessRequestTests(ProfileViewsTests):
+    """Тесты заявки на права учителя"""
+
+    def test_get_teacher_access_request_empty(self):
+        request = self.factory.get('/api/profiles/teacher-request/')
+        force_authenticate(request, user=self.user)
+        response = teacher_access_request(request)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['role'], 'student')
+        self.assertIsNone(response.data['teacher_request'])
+
+    def test_teacher_access_request_cannot_be_submitted_from_profile(self):
+        proof = SimpleUploadedFile(
+            'mesh-proof.png',
+            b'fake_png_content',
+            content_type='image/png'
+        )
+        request = self.factory.post(
+            '/api/profiles/teacher-request/',
+            {'proof': proof, 'comment': 'Скриншот из МЭШ'},
+            format='multipart'
+        )
+        force_authenticate(request, user=self.user)
+        response = teacher_access_request(request)
+
+        self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
+        self.assertEqual(TeacherAccessRequest.objects.filter(user=self.user).count(), 0)
+
+    @override_settings(MEDIA_ROOT=tempfile.gettempdir())
+    def test_get_teacher_access_request_returns_existing_registration_request(self):
+        proof = SimpleUploadedFile('mesh-proof.png', b'proof', content_type='image/png')
+        teacher_request = TeacherAccessRequest.objects.create(
+            user=self.user,
+            proof=proof,
+            comment='Скриншот из МЭШ'
+        )
+        request = self.factory.get('/api/profiles/teacher-request/')
+        force_authenticate(request, user=self.user)
+        response = teacher_access_request(request)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['teacher_request']['id'], teacher_request.id)
+        self.assertEqual(response.data['teacher_request']['status'], TeacherAccessRequest.STATUS_PENDING)
+        teacher_request.proof.delete()
+
+    def test_teacher_access_request_approve_grants_teacher_role(self):
+        with tempfile.TemporaryDirectory() as media_root:
+            with override_settings(MEDIA_ROOT=media_root):
+                proof = SimpleUploadedFile('mesh.png', b'proof', content_type='image/png')
+                teacher_request = TeacherAccessRequest.objects.create(
+                    user=self.user,
+                    proof=proof,
+                    comment='МЭШ'
+                )
+                moderator = User.objects.create_user(username='moderator', password='testpass123')
+
+                teacher_request.approve(reviewer=moderator, comment='Подтверждено')
+
+                self.user.refresh_from_db()
+                self.user.profile.refresh_from_db()
+                teacher_request.refresh_from_db()
+                self.assertTrue(self.user.is_staff)
+                self.assertEqual(self.user.profile.role, Profile.ROLE_TEACHER)
+                self.assertEqual(teacher_request.status, TeacherAccessRequest.STATUS_APPROVED)
+                self.assertEqual(teacher_request.reviewed_by, moderator)
+                teacher_request.proof.delete()
+
+    def test_teacher_access_request_moderation_preserves_existing_review_comment(self):
+        with tempfile.TemporaryDirectory() as media_root:
+            with override_settings(MEDIA_ROOT=media_root):
+                proof = SimpleUploadedFile('mesh.png', b'proof', content_type='image/png')
+                teacher_request = TeacherAccessRequest.objects.create(
+                    user=self.user,
+                    proof=proof,
+                    comment='МЭШ',
+                    review_comment='Комментарий модератора'
+                )
+
+                teacher_request.reject()
+                teacher_request.refresh_from_db()
+
+                self.assertEqual(teacher_request.review_comment, 'Комментарий модератора')
+                teacher_request.proof.delete()
 
 
 class ProfileViewsEdgeCasesTests(TestCase):

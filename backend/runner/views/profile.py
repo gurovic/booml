@@ -1,16 +1,24 @@
-from ..api.serializers import ProfileSerializer, ProfileDetailSerializer, SubmissionReadSerializer
+from ..api.serializers import (
+    ProfileSerializer,
+    ProfileDetailSerializer,
+    SubmissionReadSerializer,
+    TeacherAccessRequestSerializer,
+)
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
 from django.contrib.auth import get_user_model
-from ..models import Profile
+from ..models import Profile, TeacherAccessRequest
 
 User = get_user_model()
 
-
 def _get_activity_year(request):
     raw_value = request.query_params.get('year')
+    if raw_value in (None, ''):
+        raw_value = getattr(request, 'GET', {}).get('year')
+    if raw_value in (None, '') and hasattr(request, '_request'):
+        raw_value = getattr(request._request, 'GET', {}).get('year')
     if raw_value in (None, ''):
         return None
     try:
@@ -18,6 +26,25 @@ def _get_activity_year(request):
     except (TypeError, ValueError):
         return None
 
+
+def _serialize_teacher_request(request, teacher_request=None):
+    if teacher_request is None:
+        teacher_request = (
+            TeacherAccessRequest.objects
+            .filter(user=request.user)
+            .select_related("reviewed_by")
+            .order_by("-created_at")
+            .first()
+        )
+
+    return {
+        "role": "teacher" if request.user.is_staff else "student",
+        "teacher_request": (
+            TeacherAccessRequestSerializer(teacher_request, context={"request": request}).data
+            if teacher_request
+            else None
+        )
+    }
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -133,3 +160,9 @@ def update_profile_info(request):
 
     serializer = ProfileSerializer(profile, context={'request': request})
     return Response(serializer.data)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def teacher_access_request(request):
+    return Response(_serialize_teacher_request(request))

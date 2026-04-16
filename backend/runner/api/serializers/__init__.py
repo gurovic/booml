@@ -18,4 +18,9 @@ from .courses import (
     SectionCreateSerializer,
     SectionReadSerializer,
 )
-from .user import UserSerializer, ProfileSerializer, ProfileDetailSerializer
+from .user import (
+    UserSerializer,
+    ProfileSerializer,
+    ProfileDetailSerializer,
+    TeacherAccessRequestSerializer,
+)

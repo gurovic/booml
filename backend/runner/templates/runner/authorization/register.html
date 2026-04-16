@@ -1,6 +1,6 @@
 <h2>Регистрация</h2>
 
-<form method="post" novalidate>
+<form method="post" enctype="multipart/form-data" novalidate>
     {% csrf_token %}
 
     <div>
@@ -40,6 +40,25 @@
         {{ form.role }}
         {% if form.role.errors %}
             <div class="error">{{ form.role.errors.0 }}</div>
+        {% endif %}
+    </div>
+
+    <div>
+        {{ form.teacher_proof.label_tag }}
+        {{ form.teacher_proof }}
+        {% if form.teacher_proof.help_text %}
+            <small>{{ form.teacher_proof.help_text }}</small>
+        {% endif %}
+        {% if form.teacher_proof.errors %}
+            <div class="error">{{ form.teacher_proof.errors.0 }}</div>
+        {% endif %}
+    </div>
+
+    <div>
+        {{ form.teacher_comment.label_tag }}
+        {{ form.teacher_comment }}
+        {% if form.teacher_comment.errors %}
+            <div class="error">{{ form.teacher_comment.errors.0 }}</div>
         {% endif %}
     </div>
 

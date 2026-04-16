@@ -88,6 +88,37 @@
               </div>
             </div>
 
+            <section v-if="isTeacher || teacherRequest" class="profile__teacher-request teacher-request">
+              <div class="teacher-request__content">
+                <p class="teacher-request__eyebrow">Учительский доступ</p>
+                <h3 class="teacher-request__title">
+                  {{ teacherRequestTitle }}
+                </h3>
+                <p class="teacher-request__text">
+                  {{ teacherRequestText }}
+                </p>
+
+                <div v-if="teacherRequest?.review_comment" class="teacher-request__review">
+                  {{ teacherRequest.review_comment }}
+                </div>
+
+                <a
+                  v-if="teacherRequest?.proof_url"
+                  :href="teacherRequest.proof_url"
+                  class="teacher-request__proof-link"
+                  target="_blank"
+                  rel="noopener"
+                >
+                  Открыть отправленное подтверждение
+                </a>
+
+              </div>
+
+              <div class="teacher-request__status" :class="teacherRequestStatusClass">
+                {{ teacherRequestStatusLabel }}
+              </div>
+            </section>
+
             <section class="profile__activity activity-section">
               <div class="activity-section__header">
                 <h3 class="activity-section__title">Календарь активности</h3>
@@ -257,7 +288,12 @@
 </template>
 
 <script>
-import { getCurrentProfile, updateProfileInfo, uploadProfileAvatar } from '@/api/profile'
+import {
+  getCurrentProfile,
+  getTeacherAccessRequest,
+  updateProfileInfo,
+  uploadProfileAvatar
+} from '@/api/profile'
 import { useUserStore } from '@/stores/UserStore'
 import UiHeader from '@/components/ui/UiHeader.vue'
 import UiBreadcrumbs from '@/components/ui/UiBreadcrumbs.vue'
@@ -278,6 +314,7 @@ export default {
       isEditingName: false,
       editFirstName: '',
       editLastName: '',
+      teacherRequest: null,
       activityYearLoading: false,
       userStore: null
     }
@@ -313,6 +350,51 @@ export default {
         'teacher': 'Учитель'
       }
       return roles[this.profile?.role] || 'Ученик'
+    },
+
+    isTeacher() {
+      return this.profile?.role === 'teacher'
+    },
+
+    teacherRequestStatus() {
+      if (this.isTeacher) {
+        return 'approved'
+      }
+      return this.teacherRequest?.status || 'none'
+    },
+
+    teacherRequestTitle() {
+      const titles = {
+        approved: 'Права учителя подтверждены',
+        pending: 'Заявка на проверке',
+        rejected: 'Заявка отклонена',
+        none: 'Подайте заявку на права учителя'
+      }
+      return titles[this.teacherRequestStatus] || titles.none
+    },
+
+    teacherRequestText() {
+      const texts = {
+        approved: 'Вы можете создавать курсы и контесты для учеников.',
+        pending: 'Администратор проверит подтверждение и откроет доступ, если всё в порядке.',
+        rejected: 'Администратор оставил комментарий к проверке учительского доступа.',
+        none: 'Учительский доступ оформляется при регистрации аккаунта.'
+      }
+      return texts[this.teacherRequestStatus] || texts.none
+    },
+
+    teacherRequestStatusLabel() {
+      const labels = {
+        approved: 'Одобрено',
+        pending: 'На проверке',
+        rejected: 'Отклонено',
+        none: 'Нет заявки'
+      }
+      return labels[this.teacherRequestStatus] || labels.none
+    },
+
+    teacherRequestStatusClass() {
+      return `teacher-request__status--${this.teacherRequestStatus}`
     },
 
     isAuthenticated() {
@@ -622,6 +704,16 @@ export default {
       }
     },
 
+    async loadTeacherAccessRequest() {
+      try {
+        const data = await getTeacherAccessRequest()
+        this.teacherRequest = data.teacher_request || null
+      } catch (error) {
+        console.error('Failed to load teacher request:', error)
+        this.teacherRequest = null
+      }
+    },
+
     startEditName() {
       this.editFirstName = this.profile?.first_name || ''
       this.editLastName = this.profile?.last_name || ''
@@ -675,6 +767,9 @@ export default {
         }
 
         this.submissions = this.profile.recent_submissions || []
+        if (!silent) {
+          await this.loadTeacherAccessRequest()
+        }
       } catch (err) {
         console.error('Failed to load profile:', err)
         if (silent) {
@@ -891,6 +986,98 @@ export default {
   border-radius: 20px;
   font-size: 14px;
   font-weight: 500;
+}
+
+.teacher-request {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 28px 40px;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border-light);
+  border-radius: 20px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+}
+
+.teacher-request__content {
+  flex: 1;
+  min-width: 0;
+}
+
+.teacher-request__eyebrow {
+  margin: 0 0 6px;
+  color: var(--color-text-muted);
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.teacher-request__title {
+  margin: 0;
+  color: var(--color-title-text);
+  font-size: 24px;
+  font-weight: 500;
+}
+
+.teacher-request__text {
+  max-width: 680px;
+  margin: 8px 0 0;
+  color: var(--color-text-secondary);
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.teacher-request__review {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: var(--color-bg-light);
+  color: var(--color-text-primary);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.teacher-request__proof-link {
+  display: inline-flex;
+  margin-top: 12px;
+  color: var(--color-primary);
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.teacher-request__proof-link:hover {
+  text-decoration: underline;
+}
+
+.teacher-request__status {
+  align-self: flex-start;
+  flex-shrink: 0;
+  min-width: 124px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.teacher-request__status--none {
+  background: #edf1fb;
+  color: #334155;
+}
+
+.teacher-request__status--pending {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.teacher-request__status--approved {
+  background: #d1fae5;
+  color: #047857;
+}
+
+.teacher-request__status--rejected {
+  background: #fee2e2;
+  color: #b91c1c;
 }
 
 .activity-section {
@@ -1286,6 +1473,7 @@ export default {
 @media (max-width: 960px) {
   .profile__header,
   .user-card,
+  .teacher-request,
   .activity-section,
   .submissions-section {
     padding: 24px 20px;
@@ -1295,6 +1483,14 @@ export default {
     flex-direction: column;
     align-items: flex-start;
     gap: 20px;
+  }
+
+  .teacher-request {
+    flex-direction: column;
+  }
+
+  .teacher-request__status {
+    align-self: flex-start;
   }
 
   .activity-section__stats {

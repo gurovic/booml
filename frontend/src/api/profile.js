@@ -45,6 +45,10 @@ export async function uploadProfileAvatar(file) {
     return response.json()
 }
 
+export function getTeacherAccessRequest() {
+    return apiGet('/backend/profiles/teacher-request/')
+}
+
 export async function deleteProfileAvatar() {
     const { ensureCsrfToken } = await import('./http')
     const csrftoken = await ensureCsrfToken()
