@@ -601,7 +601,8 @@ def contest_problem_leaderboard(request, contest_id: int):
 def build_course_leaderboard(course) -> Dict[str, Any]:
     from ..models import Course
 
-    contests = list(course.contests.filter(is_published=True, approval_status=Contest.ApprovalStatus.APPROVED))
+    # contests = list(course.contests.filter(is_published=True, approval_status=Contest.ApprovalStatus.APPROVED))
+    contests = list(course.contests.all())
 
     participants = {
         participant.user_id: {
@@ -714,8 +715,7 @@ def build_course_leaderboard(course) -> Dict[str, Any]:
             current = contest_best.get(key)
             if current is None or _is_better(
                 score_value, row["submitted_at"],
-                current.get("score_value", 0), current.get("submitted_at"),
-                False
+                current.get("score_value", 0), current.get("submitted_at")
             ):
                 contest_best[key] = {
                     "score_value": score_value,
