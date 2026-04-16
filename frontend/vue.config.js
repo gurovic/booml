@@ -20,6 +20,12 @@ const backendTarget = resolveBackendTarget()
 
 module.exports = defineConfig({
   transpileDependencies: true,
+  pages: {
+    index: {
+      entry: 'src/main.js',
+      title: 'BOOML',
+    },
+  },
   devServer: {
     allowedHosts: "all",
     port: 8101,
