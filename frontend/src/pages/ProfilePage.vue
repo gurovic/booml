@@ -258,9 +258,12 @@
 
 <script>
 import { getCurrentProfile, updateProfileInfo, uploadProfileAvatar } from '@/api/profile'
+import { getMySubmissions } from '@/api/submission'
 import { useUserStore } from '@/stores/UserStore'
 import UiHeader from '@/components/ui/UiHeader.vue'
 import UiBreadcrumbs from '@/components/ui/UiBreadcrumbs.vue'
+
+const RECENT_SUBMISSIONS_REFRESH_MS = 5000
 
 export default {
   name: 'ProfilePage',
@@ -279,6 +282,8 @@ export default {
       editFirstName: '',
       editLastName: '',
       activityYearLoading: false,
+      submissionsRefreshTimer: null,
+      submissionsRefreshInFlight: false,
       userStore: null
     }
   },
@@ -594,6 +599,41 @@ export default {
       this.$router.push(`/submission/${submissionId}/`)
     },
 
+    normalizeSubmissionList(payload) {
+      if (Array.isArray(payload)) return payload
+      if (Array.isArray(payload?.results)) return payload.results
+      if (Array.isArray(payload?.submissions)) return payload.submissions
+      return []
+    },
+
+    async refreshRecentSubmissions() {
+      if (!this.isAuthenticated || this.submissionsRefreshInFlight) return
+      if (typeof document !== 'undefined' && document.hidden) return
+
+      this.submissionsRefreshInFlight = true
+      try {
+        const data = await getMySubmissions()
+        this.submissions = this.normalizeSubmissionList(data).slice(0, 4)
+      } catch (_) {
+        // Keep the current list on transient refresh errors.
+      } finally {
+        this.submissionsRefreshInFlight = false
+      }
+    },
+
+    startSubmissionsPolling() {
+      if (this.submissionsRefreshTimer != null) return
+      this.submissionsRefreshTimer = window.setInterval(() => {
+        this.refreshRecentSubmissions()
+      }, RECENT_SUBMISSIONS_REFRESH_MS)
+    },
+
+    stopSubmissionsPolling() {
+      if (this.submissionsRefreshTimer == null) return
+      window.clearInterval(this.submissionsRefreshTimer)
+      this.submissionsRefreshTimer = null
+    },
+
     triggerFileUpload() {
       this.$refs.fileInput.click()
     },
@@ -696,6 +736,10 @@ export default {
   },
   mounted() {
     this.loadProfileData()
+    this.startSubmissionsPolling()
+  },
+  beforeUnmount() {
+    this.stopSubmissionsPolling()
   }
 }
 </script>

@@ -64,3 +64,10 @@ export async function getProblemSubmissions(problemId, page = 1) {
     credentials: 'include'
   })
 }
+
+export async function getMySubmissions() {
+  return await fetchJsonWithFriendlyErrors('/api/submissions/mine/', {
+    method: 'GET',
+    credentials: 'include'
+  })
+}

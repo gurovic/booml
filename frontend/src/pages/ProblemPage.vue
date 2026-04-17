@@ -257,7 +257,10 @@ const nowTs = ref(Date.now())
 let clockTimer = null
 let contestSyncTimer = null
 const contestSyncInFlight = ref(false)
+let latestSubmissionsTimer = null
+const latestSubmissionsInFlight = ref(false)
 let problemLoadRequestId = 0
+const LATEST_SUBMISSIONS_REFRESH_MS = 5000
 
 const renderStatement = (statement) => renderProblemStatement(statement)
 
@@ -427,11 +430,42 @@ const syncContestContextSilently = async () => {
   }
 }
 
+const refreshLatestSubmissions = async () => {
+  if (!isAuthorized.value || !problem.value?.id) return
+  if (latestSubmissionsInFlight.value) return
+  if (typeof document !== 'undefined' && document.hidden) return
+
+  const problemId = Number(route.params.id)
+  const currentId = Number(problem.value.id)
+  if (!Number.isInteger(problemId) || problemId !== currentId) return
+
+  latestSubmissionsInFlight.value = true
+  try {
+    const data = await getProblem(problemId, { contestId: contestIdFromQuery.value })
+    if (Number(route.params.id) !== problemId || !problem.value) return
+    problem.value = {
+      ...problem.value,
+      submissions: Array.isArray(data?.submissions) ? data.submissions : [],
+    }
+  } catch (_) {
+    // Keep the current list on transient refresh errors.
+  } finally {
+    latestSubmissionsInFlight.value = false
+  }
+}
+
 onMounted(() => {
   if (contestSyncTimer != null) return
   contestSyncTimer = window.setInterval(() => {
     void syncContestContextSilently()
   }, 5000)
+})
+
+onMounted(() => {
+  if (latestSubmissionsTimer != null) return
+  latestSubmissionsTimer = window.setInterval(() => {
+    void refreshLatestSubmissions()
+  }, LATEST_SUBMISSIONS_REFRESH_MS)
 })
 
 onBeforeUnmount(() => {
@@ -442,6 +476,10 @@ onBeforeUnmount(() => {
   if (contestSyncTimer != null) {
     window.clearInterval(contestSyncTimer)
     contestSyncTimer = null
+  }
+  if (latestSubmissionsTimer != null) {
+    window.clearInterval(latestSubmissionsTimer)
+    latestSubmissionsTimer = null
   }
 })
 
@@ -686,13 +724,8 @@ const handleSubmit = async () => {
     await submitSolution(problem.value.id, payload)
     submitMessage.value = { type: 'success', text: 'Решение успешно отправлено на проверку!' }
     
-    // Refresh problem data to show new submission
     try {
-      const res = await getProblem(route.params.id, { contestId: contestIdFromQuery.value })
-      problem.value = res
-      if (problem.value != null) {
-        problem.value.rendered_statement = renderStatement(problem.value.statement)
-      }
+      await refreshLatestSubmissions()
     } catch (refreshError) {
       console.warn('Failed to refresh submissions after upload:', refreshError)
       submitMessage.value = {
