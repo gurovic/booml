@@ -76,6 +76,7 @@ from .views.profile import (get_my_profile,
                             update_avatar,
                             delete_avatar,
                             update_profile_info,
+                            teacher_access_request,
                             )
 from .views.search import search
 
@@ -255,5 +256,6 @@ urlpatterns = [
     path('backend/profiles/update-avatar/', update_avatar, name='profile-update-avatar'),
     path('backend/profiles/delete-avatar/', delete_avatar, name='profile-delete-avatar'),
     path('backend/profiles/update-info/', update_profile_info, name='profile-update-info'),
+    path('backend/profiles/teacher-request/', teacher_access_request, name='profile-teacher-request'),
     path('backend/search/', search, name='search')
 ]

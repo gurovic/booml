@@ -27,6 +27,24 @@ export const useUserStore = defineStore('user', () => {
         return !!(currentUser.value && currentUser.value.accessToken)
     })
 
+    function formatFieldErrors(errors) {
+        if (!errors || typeof errors !== 'object') {
+            return ''
+        }
+
+        return Object.entries(errors)
+            .map(([field, messages]) => {
+                const list = Array.isArray(messages) ? messages : [messages]
+                const message = list
+                    .map(item => (typeof item === 'string' ? item : String(item)))
+                    .filter(Boolean)
+                    .join(', ')
+                return message ? `${field}: ${message}` : ''
+            })
+            .filter(Boolean)
+            .join('; ')
+    }
+
     async function loginUser(username, password) {
         try {
             const res = await user.login({
@@ -66,7 +84,7 @@ export const useUserStore = defineStore('user', () => {
         }
     }
 
-    async function registerUser(username, email, password1, password2, role, captchaToken = '') {
+    async function registerUser(username, email, password1, password2, role, captchaToken = '', teacherProof = null, teacherComment = '') {
         try {
             const res = await user.register({
                 username,
@@ -75,6 +93,8 @@ export const useUserStore = defineStore('user', () => {
                 password2,
                 role,
                 captcha_token: captchaToken,
+                teacher_proof: teacherProof,
+                teacher_comment: teacherComment,
             })
 
             if (res.success) {
@@ -98,13 +118,13 @@ export const useUserStore = defineStore('user', () => {
 
             return {
                 success: false,
-                error: res.message || 'Ошибка регистрации'
+                error: formatFieldErrors(res.errors) || res.message || 'Ошибка регистрации'
             }
         } catch (err) {
             console.error('Failed to register user:', err)
             return {
                 success: false,
-                error: err?.message || 'Ошибка при регистрации'
+                error: formatFieldErrors(err?.data?.errors) || err?.message || 'Ошибка при регистрации'
             }
         }
     }

@@ -1,4 +1,5 @@
 from django.contrib import admin
+from django.utils.html import format_html
 
 from .models import (
     Report,
@@ -19,6 +20,7 @@ from .models import (
     ContestProblem,
     SiteUpdate,
     Profile,
+    TeacherAccessRequest,
 )
 
 @admin.register(Report)  # Регистрируем модель в админке
@@ -208,3 +210,60 @@ class ProfileAdmin(admin.ModelAdmin):
     list_display = ("user", "role", "gpu_access")
     list_filter = ("role", "gpu_access")
     search_fields = ("user__username", "user__email")
+
+
+@admin.register(TeacherAccessRequest)
+class TeacherAccessRequestAdmin(admin.ModelAdmin):
+    list_display = ("id", "user", "status", "created_at", "reviewed_by", "reviewed_at")
+    list_filter = ("status", "created_at", "reviewed_at")
+    search_fields = ("user__username", "user__email", "comment", "review_comment")
+    readonly_fields = ("created_at", "updated_at", "reviewed_at", "proof_link")
+    actions = ("approve_requests", "reject_requests")
+
+    fieldsets = (
+        ("Заявка", {
+            "fields": ("user", "status", "proof", "proof_link", "comment")
+        }),
+        ("Модерация", {
+            "fields": ("review_comment", "reviewed_by", "reviewed_at")
+        }),
+        ("Служебное", {
+            "fields": ("created_at", "updated_at"),
+            "classes": ("collapse",)
+        }),
+    )
+
+    def proof_link(self, obj):
+        if not obj or not obj.proof:
+            return "Нет файла"
+        return format_html('<a href="{}" target="_blank" rel="noopener">Открыть подтверждение</a>', obj.proof.url)
+
+    proof_link.short_description = "Файл подтверждения"
+
+    def save_model(self, request, obj, form, change):
+        old_status = None
+        if change:
+            old_status = TeacherAccessRequest.objects.filter(pk=obj.pk).values_list("status", flat=True).first()
+
+        super().save_model(request, obj, form, change)
+
+        if obj.status == TeacherAccessRequest.STATUS_APPROVED and old_status != TeacherAccessRequest.STATUS_APPROVED:
+            obj.approve(reviewer=request.user, comment=obj.review_comment)
+        elif obj.status == TeacherAccessRequest.STATUS_REJECTED and old_status != TeacherAccessRequest.STATUS_REJECTED:
+            obj.reject(reviewer=request.user, comment=obj.review_comment)
+
+    @admin.action(description="Одобрить выбранные заявки")
+    def approve_requests(self, request, queryset):
+        for teacher_request in queryset.exclude(status=TeacherAccessRequest.STATUS_APPROVED):
+            teacher_request.approve(
+                reviewer=request.user,
+                comment=teacher_request.review_comment,
+            )
+
+    @admin.action(description="Отклонить выбранные заявки")
+    def reject_requests(self, request, queryset):
+        for teacher_request in queryset.exclude(status=TeacherAccessRequest.STATUS_REJECTED):
+            teacher_request.reject(
+                reviewer=request.user,
+                comment=teacher_request.review_comment,
+            )

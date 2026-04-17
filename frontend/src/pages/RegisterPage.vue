@@ -147,6 +147,76 @@
                         </div>
                     </div>
 
+                    <div v-if="formData.role === 'teacher'" class="form-group">
+                        <label for="teacher-proof" class="form-group__label">
+                            Подтверждение статуса учителя
+                        </label>
+                        <div
+                            class="teacher-proof-picker"
+                            :class="{
+                                'teacher-proof-picker--error': formErrors.teacher_proof,
+                                'teacher-proof-picker--disabled': loading,
+                                'teacher-proof-picker--selected': teacherProof
+                            }"
+                        >
+                            <input
+                                id="teacher-proof"
+                                :key="teacherProofInputKey"
+                                type="file"
+                                accept="image/jpeg,image/png,image/webp"
+                                class="teacher-proof-picker__input"
+                                :disabled="loading"
+                                required
+                                @change="handleTeacherProofChange"
+                            >
+                            <label class="teacher-proof-picker__button" for="teacher-proof">
+                                <span class="teacher-proof-picker__icon" aria-hidden="true">+</span>
+                                <span>{{ teacherProof ? 'Заменить файл' : 'Выбрать файл' }}</span>
+                            </label>
+                            <div class="teacher-proof-picker__info">
+                                <span class="teacher-proof-picker__name">
+                                    {{ teacherProofName }}
+                                </span>
+                                <span class="teacher-proof-picker__meta">
+                                    JPEG, PNG или WEBP до 10MB
+                                </span>
+                            </div>
+                        </div>
+                        <small class="form-group__hint">
+                            Подойдёт скриншот из МЭШ. Форматы: JPEG, PNG или WEBP, до 10MB.
+                        </small>
+                        <div
+                            v-if="formErrors.teacher_proof"
+                            class="form-group__error"
+                        >
+                            {{ formErrors.teacher_proof }}
+                        </div>
+                    </div>
+
+                    <div v-if="formData.role === 'teacher'" class="form-group">
+                        <label for="teacher-comment" class="form-group__label">
+                            Комментарий для модератора
+                        </label>
+                        <textarea
+                            id="teacher-comment"
+                            v-model="teacherComment"
+                            :class="[
+                                'form-group__input',
+                                'form-group__textarea',
+                                { 'form-group__input--error': formErrors.teacher_comment }
+                            ]"
+                            rows="3"
+                            placeholder="Например: школа, предмет, ссылка на профиль МЭШ"
+                            :disabled="loading"
+                        ></textarea>
+                        <div
+                            v-if="formErrors.teacher_comment"
+                            class="form-group__error"
+                        >
+                            {{ formErrors.teacher_comment }}
+                        </div>
+                    </div>
+
                     <div class="form-group form-group--checkbox">
                         <div class="checkbox-row">
                             <label class="checkbox-label" for="accept-terms">
@@ -192,7 +262,7 @@
                             'card__submit button button--primary',
                             { 'card__submit--loading': loading }
                         ]"
-                        :disabled="loading || !acceptTerms || (captchaEnabled && !captchaToken)"
+                        :disabled="loading || !acceptTerms || isTeacherProofMissing || (captchaEnabled && !captchaToken)"
                     >
                         <span
                             v-if="loading"
@@ -218,7 +288,7 @@
 </template>
 
 <script setup>
-import { computed, reactive, ref } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import '@/assets/styles/form.css'
@@ -238,6 +308,9 @@ const loading = ref(false)
 const acceptTerms = ref(false)
 const captchaRef = ref(null)
 const captchaToken = ref('')
+const teacherProof = ref(null)
+const teacherProofInputKey = ref(0)
+const teacherComment = ref('')
 const formData = reactive({
     username: '',
     email: '',
@@ -270,13 +343,62 @@ const authLinkQuery = computed(() => (
 ))
 const captchaSiteKey = (process.env.VUE_APP_TURNSTILE_SITE_KEY || '').trim()
 const captchaEnabled = Boolean(captchaSiteKey)
+const isTeacherProofMissing = computed(() => formData.role === 'teacher' && !teacherProof.value)
+const teacherProofName = computed(() => teacherProof.value?.name || 'Файл не выбран')
 
 const resolveRedirect = () => redirectPath.value
+
+watch(
+    () => formData.role,
+    (role) => {
+        if (role === 'teacher') {
+            return
+        }
+
+        teacherProof.value = null
+        teacherComment.value = ''
+        teacherProofInputKey.value += 1
+        delete formErrors.teacher_proof
+        delete formErrors.teacher_comment
+    }
+)
 
 const clearErrors = () => {
     Object.keys(formErrors).forEach(key => {
         delete formErrors[key]
     })
+}
+
+const handleTeacherProofChange = (event) => {
+    const file = event.target.files?.[0]
+    delete formErrors.teacher_proof
+
+    if (!file) {
+        teacherProof.value = null
+        return
+    }
+
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp']
+    const allowedExtensions = ['.jpg', '.jpeg', '.png', '.webp']
+    const fileName = file.name.toLowerCase()
+    const hasAllowedType = allowedTypes.includes(file.type)
+    const hasAllowedExtension = allowedExtensions.some(ext => fileName.endsWith(ext))
+
+    if (file.size > 10 * 1024 * 1024) {
+        teacherProof.value = null
+        teacherProofInputKey.value += 1
+        formErrors.teacher_proof = 'Файл слишком большой. Максимальный размер 10MB.'
+        return
+    }
+
+    if (!hasAllowedType && !hasAllowedExtension) {
+        teacherProof.value = null
+        teacherProofInputKey.value += 1
+        formErrors.teacher_proof = 'Загрузите скриншот в формате JPEG, PNG или WEBP.'
+        return
+    }
+
+    teacherProof.value = file
 }
 
 const handleSubmit = async () => {
@@ -290,7 +412,9 @@ const handleSubmit = async () => {
             formData.password,
             formData.password2,
             formData.role,
-            captchaToken.value
+            captchaToken.value,
+            teacherProof.value,
+            teacherComment.value
         )
 
         if (result.success) {
@@ -362,6 +486,131 @@ const handleErrors = (error) => {
 @keyframes spin {
     to {
         transform: translate(-50%, -50%) rotate(360deg);
+    }
+}
+
+.form-group__textarea {
+    min-height: 88px;
+    resize: vertical;
+}
+
+.teacher-proof-picker {
+    display: flex;
+    align-items: stretch;
+    gap: 10px;
+    width: 100%;
+    min-height: 52px;
+}
+
+.teacher-proof-picker__input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    border: 0;
+}
+
+.teacher-proof-picker__button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-width: 150px;
+    padding: 0 16px;
+    border: 1px solid var(--color-button-primary);
+    border-radius: 8px;
+    background: var(--color-button-primary);
+    color: var(--color-button-text-primary);
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1;
+    cursor: pointer;
+    transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+}
+
+.teacher-proof-picker__button:hover {
+    transform: translateY(-1px);
+}
+
+.teacher-proof-picker__input:focus-visible + .teacher-proof-picker__button {
+    outline: 2px solid rgba(20, 78, 236, 0.25);
+    outline-offset: 2px;
+}
+
+.teacher-proof-picker__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.18);
+    font-size: 16px;
+    line-height: 1;
+}
+
+.teacher-proof-picker__info {
+    display: flex;
+    flex: 1;
+    min-width: 0;
+    flex-direction: column;
+    justify-content: center;
+    gap: 3px;
+    padding: 8px 12px;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    background: #ffffff;
+}
+
+.teacher-proof-picker__name {
+    overflow: hidden;
+    color: var(--color-text-primary);
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1.25;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.teacher-proof-picker__meta {
+    overflow: hidden;
+    color: var(--color-text-secondary);
+    font-size: 12px;
+    line-height: 1.25;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.teacher-proof-picker--selected .teacher-proof-picker__info {
+    border-color: rgba(20, 78, 236, 0.35);
+    background: rgba(20, 78, 236, 0.04);
+}
+
+.teacher-proof-picker--error .teacher-proof-picker__info,
+.teacher-proof-picker--error .teacher-proof-picker__button {
+    border-color: #ef4444;
+}
+
+.teacher-proof-picker--disabled {
+    opacity: 0.7;
+}
+
+.teacher-proof-picker--disabled .teacher-proof-picker__button {
+    cursor: not-allowed;
+    transform: none;
+}
+
+@media (max-width: 520px) {
+    .teacher-proof-picker {
+        flex-direction: column;
+    }
+
+    .teacher-proof-picker__button {
+        min-height: 46px;
+        width: 100%;
     }
 }
 </style>

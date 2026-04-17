@@ -1,11 +1,14 @@
 from django.test import TestCase, Client
 from django.urls import reverse
 from django.contrib.auth.models import User
+from django.core.files.uploadedfile import SimpleUploadedFile
 from rest_framework.test import APIClient
 from rest_framework import status
 from django.contrib.auth import get_user_model
 from django.test.utils import override_settings
+import tempfile
 from unittest.mock import patch
+from runner.models import TeacherAccessRequest
 
 User = get_user_model()
 
@@ -151,6 +154,56 @@ class AuthorizationViewsTestCase(TestCase):
 
         user_exists = User.objects.filter(username='newuser').exists()
         self.assertTrue(user_exists)
+
+    @override_settings(MEDIA_ROOT=tempfile.gettempdir())
+    def test_backend_register_api_teacher_creates_pending_request_without_staff(self):
+        proof = SimpleUploadedFile(
+            'mesh-proof.png',
+            b'proof',
+            content_type='image/png'
+        )
+        data = {
+            **self.valid_register_data,
+            'username': 'newteacher',
+            'email': 'newteacher@example.com',
+            'role': 'teacher',
+            'teacher_proof': proof,
+            'teacher_comment': 'Скриншот из МЭШ',
+        }
+
+        response = self.api_client.post(
+            self.api_register_url,
+            data=data,
+            format='multipart'
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertTrue(response.data['success'])
+        user = User.objects.get(username='newteacher')
+        self.assertFalse(user.is_staff)
+        self.assertEqual(response.data['user']['role'], 'student')
+        teacher_request = TeacherAccessRequest.objects.get(user=user)
+        self.assertEqual(teacher_request.status, TeacherAccessRequest.STATUS_PENDING)
+        self.assertEqual(teacher_request.comment, 'Скриншот из МЭШ')
+        teacher_request.proof.delete()
+
+    def test_backend_register_api_teacher_requires_proof(self):
+        data = {
+            **self.valid_register_data,
+            'username': 'teacher_without_proof',
+            'email': 'teacher_without_proof@example.com',
+            'role': 'teacher',
+        }
+
+        response = self.api_client.post(
+            self.api_register_url,
+            data=data,
+            format='json'
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(response.data['success'])
+        self.assertIn('teacher_proof', response.data['errors'])
 
     def test_backend_register_api_invalid(self):
         invalid_data = {
@@ -477,19 +530,31 @@ class RegisterViewTests(TestCase):
         user = User.objects.filter(username="view_student").first()
         self.assertIsNotNone(user)
 
-    def test_register_view_post_teacher_creates_staff_user(self):
+    @override_settings(MEDIA_ROOT=tempfile.gettempdir())
+    def test_register_view_post_teacher_creates_pending_request_without_staff(self):
         url = reverse("runner:register")
+        proof = SimpleUploadedFile(
+            "mesh-proof.png",
+            b"proof",
+            content_type="image/png",
+        )
         data = {
             "username": "view_teacher",
             "email": "view_teacher@example.com",
             "password1": "strongpass123",
             "password2": "strongpass123",
             "role": "teacher",
+            "teacher_proof": proof,
+            "teacher_comment": "МЭШ",
         }
         resp = self.client.post(url, data)
         self.assertEqual(resp.status_code, 302)
         user = User.objects.filter(username="view_teacher").first()
         self.assertIsNotNone(user)
+        self.assertFalse(user.is_staff)
+        teacher_request = TeacherAccessRequest.objects.get(user=user)
+        self.assertEqual(teacher_request.status, TeacherAccessRequest.STATUS_PENDING)
+        teacher_request.proof.delete()
 
     def test_register_view_missing_role_shows_error(self):
         url = reverse("runner:register")
