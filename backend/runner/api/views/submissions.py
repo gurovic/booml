@@ -148,7 +148,7 @@ class MySubmissionsListView(generics.ListAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        return Submission.objects.filter(user=self.request.user).order_by("-submitted_at")
+        return Submission.objects.select_related("problem").filter(user=self.request.user).order_by("-submitted_at")
 
 
 class SubmissionDetailView(generics.RetrieveAPIView):
@@ -210,7 +210,7 @@ class ProblemSubmissionsListView(generics.ListAPIView):
         except Problem.DoesNotExist:
             return Submission.objects.none()
 
-        return Submission.objects.filter(
+        return Submission.objects.select_related("problem").filter(
             user=self.request.user,
             problem=problem
         ).order_by("-submitted_at")
