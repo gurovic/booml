@@ -31,6 +31,14 @@
             Полигон
           </button>
           <button
+            v-if="isAdmin"
+            type="button"
+            class="header__nav-link"
+            @click="handleDashboardClick"
+          >
+            Dashboard
+          </button>
+          <button
             type="button"
             class="header__nav-link"
             @click="handleProfileClick"
@@ -78,6 +86,7 @@ const userStore = useUserStore()
 let user = userStore.getCurrentUser()
 
 let isAuthorized = computed(() => user.value != null)
+const isAdmin = computed(() => userStore.currentUser?.username?.toLowerCase() === 'admin')
 
 const handleButton = async () => {
   await userStore.logoutUser()
@@ -125,6 +134,12 @@ const handleProfileClick = () => {
 const handleNotebooksClick = () => {
   if (router.currentRoute.value.path !== '/notebooks') {
     router.push('/notebooks')
+  }
+}
+
+const handleDashboardClick = () => {
+  if (router.currentRoute.value.path !== '/dashboard') {
+    router.push('/dashboard')
   }
 }
 </script>

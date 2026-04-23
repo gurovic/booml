@@ -21,6 +21,16 @@
             </div>
           </div>
 
+          <div v-if="isAdmin" class="section-card dashboard-card">
+            <div class="dashboard-card__inner">
+              <div>
+                <h2 class="dashboard-card__title">Dashboard</h2>
+                <p class="dashboard-card__description">Панель управления платформой</p>
+              </div>
+              <button class="button button--primary" @click="router.push('/dashboard')">Перейти</button>
+            </div>
+          </div>
+
           <div v-for="section in visibleSections" :key="section.id" class="section-card">
             <div class="section-header-row">
               <button
@@ -231,6 +241,7 @@ const userStore = useUserStore()
 
 let user = userStore.getCurrentUser()
 let isAuthorized = computed(() => user.value != null)
+const isAdmin = computed(() => userStore.currentUser?.username?.toLowerCase() === 'admin')
 const isTeacher = computed(() => String(userStore.currentUser?.role || '') === 'teacher')
 
 const canEditSection = (s) => {
@@ -1098,5 +1109,25 @@ onMounted(loadSidebar)
 @media (max-width: 960px) {
   .home__layout { flex-direction: column; }
   .home__sidebar { width: 100%; flex: 0 0 auto; position: static; top: auto; }
+}
+
+.dashboard-card__inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.dashboard-card__title {
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0 0 4px;
+}
+
+.dashboard-card__description {
+  font-size: 14px;
+  color: var(--color-text-secondary, #555);
+  margin: 0;
 }
 </style>
