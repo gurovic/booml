@@ -4,7 +4,9 @@ from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
 
+from ...models.cell_run import CellRun
 from ...models.notebook import Notebook
 from ...services.runtime import SessionNotFoundError
 from ...services.streaming_runs import (
@@ -14,7 +16,7 @@ from ...services.streaming_runs import (
     start_streaming_run,
 )
 from ..serializers import CellRunSerializer, CellRunStreamStatusSerializer
-from .run_cell import _attach_output_urls, _build_artifacts
+from .run_cell import _attach_output_urls, _build_artifacts, _cell_run_final_status
 from .sessions import ensure_notebook_access
 
 
@@ -48,6 +50,14 @@ class RunCellStreamStartView(APIView):
                 {"detail": "Сессия не создана. Сначала создайте новую сессию."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+
+        CellRun.objects.create(
+            cell=cell,
+            notebook=cell.notebook,
+            user=request.user if request.user.is_authenticated else None,
+            status=CellRun.STATUS_RUNNING,
+            run_id=run.run_id,
+        )
 
         return Response(
             {
@@ -92,6 +102,19 @@ class RunCellStreamStatusView(APIView):
             "stdout_offset": stdout_next,
             "stderr_offset": stderr_next,
         }
+
+        if run.status in ("finished", "error"):
+            streaming_result = run.result
+            if streaming_result is not None:
+                final_status = _cell_run_final_status(streaming_result)
+            else:
+                final_status = CellRun.STATUS_ERROR if run.status == "error" else CellRun.STATUS_FINISHED
+            CellRun.objects.filter(
+                run_id=run_id, status=CellRun.STATUS_RUNNING
+            ).update(
+                status=final_status,
+                finished_at=timezone.now(),
+            )
 
         if run.status == "error":
             payload["detail"] = run.error or "Ошибка выполнения"

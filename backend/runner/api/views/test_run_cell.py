@@ -9,6 +9,7 @@ from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from runner.models import Notebook, Cell
+from runner.models.cell_run import CellRun
 from runner.services import vm_agent, vm_manager
 from runner.services.runtime import _sessions, create_session, reset_execution_backend
 
@@ -319,3 +320,64 @@ class RunCellViewTests(TestCase):
         data = resp.json()
         self.assertIn("sys.stdin.read()", data.get("stdout", ""))
         self.assertIn("fileinput.input()", data.get("stdout", ""))
+
+    def test_run_cell_records_cell_run(self):
+        session_id = f"notebook:{self.notebook.id}"
+        create_session(session_id)
+        resp = self.client.post(
+            self.url,
+            {"session_id": session_id, "cell_id": self.cell.id},
+        )
+        self.assertEqual(resp.status_code, HTTPStatus.OK)
+        cell_run = CellRun.objects.filter(cell=self.cell).order_by("-started_at").first()
+        self.assertIsNotNone(cell_run)
+        self.assertEqual(cell_run.status, CellRun.STATUS_FINISHED)
+        self.assertIsNotNone(cell_run.finished_at)
+        self.assertEqual(cell_run.notebook, self.notebook)
+        self.assertEqual(cell_run.user, self.user)
+
+    def test_run_cell_no_session_records_error_run(self):
+        resp = self.client.post(
+            self.url,
+            {"session_id": f"notebook:{self.notebook.id}", "cell_id": self.cell.id},
+        )
+        self.assertEqual(resp.status_code, HTTPStatus.BAD_REQUEST)
+        cell_run = CellRun.objects.filter(cell=self.cell).order_by("-started_at").first()
+        self.assertIsNotNone(cell_run)
+        self.assertEqual(cell_run.status, CellRun.STATUS_ERROR)
+        self.assertIsNotNone(cell_run.finished_at)
+
+    def test_run_cell_stream_records_cell_run(self):
+        session_id = f"notebook:{self.notebook.id}"
+        create_session(session_id)
+
+        start_resp = self.client.post(
+            self.stream_start_url,
+            {"session_id": session_id, "cell_id": self.cell.id},
+        )
+        self.assertEqual(start_resp.status_code, HTTPStatus.OK)
+        run_id = start_resp.json().get("run_id")
+
+        cell_run = CellRun.objects.filter(cell=self.cell, run_id=run_id).first()
+        self.assertIsNotNone(cell_run)
+        self.assertEqual(cell_run.status, CellRun.STATUS_RUNNING)
+        self.assertIsNone(cell_run.finished_at)
+
+        stdout_offset = 0
+        stderr_offset = 0
+        for _ in range(40):
+            status_resp = self.client.get(
+                f"{self.stream_status_url}?run_id={run_id}"
+                f"&stdout_offset={stdout_offset}&stderr_offset={stderr_offset}"
+            )
+            self.assertEqual(status_resp.status_code, HTTPStatus.OK)
+            payload = status_resp.json()
+            stdout_offset = payload.get("stdout_offset", stdout_offset)
+            stderr_offset = payload.get("stderr_offset", stderr_offset)
+            if payload.get("status") == "finished":
+                break
+            time.sleep(0.05)
+
+        cell_run.refresh_from_db()
+        self.assertEqual(cell_run.status, CellRun.STATUS_FINISHED)
+        self.assertIsNotNone(cell_run.finished_at)

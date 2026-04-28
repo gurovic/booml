@@ -1,6 +1,7 @@
 from .notebook import Notebook
 from .notebook_folder import NotebookFolder
 from .cell import Cell
+from .cell_run import CellRun
 from .report import Report
 from .submission import Submission
 from .contest import Contest, ContestProblem

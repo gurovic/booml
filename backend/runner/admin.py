@@ -8,6 +8,7 @@ from .models import (
     ProblemData,
     Notebook,
     Cell,
+    CellRun,
     Contest,
     Section,
     Course,
@@ -75,6 +76,75 @@ class CellAdmin(admin.ModelAdmin):
     list_display = ("id", "notebook", "cell_type", "execution_order", "created_at")
     list_filter = ("cell_type",)
     search_fields = ("notebook__title",)
+
+
+@admin.register(CellRun)
+class CellRunAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "cell_link",
+        "notebook_link",
+        "user",
+        "status_badge",
+        "started_at",
+        "duration_display",
+    )
+    list_filter = ("status", "started_at", "notebook")
+    search_fields = ("cell__id", "notebook__title", "user__username", "run_id")
+    readonly_fields = ("cell", "notebook", "user", "status", "run_id", "started_at", "finished_at", "duration_display")
+    ordering = ("-started_at",)
+    date_hierarchy = "started_at"
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def cell_link(self, obj):
+        url = f"/admin/runner/cell/{obj.cell_id}/change/"
+        return format_html('<a href="{}">Ячейка #{}</a>', url, obj.cell_id)
+
+    cell_link.short_description = "Ячейка"
+
+    def notebook_link(self, obj):
+        url = f"/admin/runner/notebook/{obj.notebook_id}/change/"
+        return format_html('<a href="{}">{}</a>', url, obj.notebook)
+
+    notebook_link.short_description = "Блокнот"
+
+    def status_badge(self, obj):
+        colors = {
+            CellRun.STATUS_RUNNING: "#f0ad4e",
+            CellRun.STATUS_FINISHED: "#5cb85c",
+            CellRun.STATUS_ERROR: "#d9534f",
+        }
+        labels = {
+            CellRun.STATUS_RUNNING: "Выполняется",
+            CellRun.STATUS_FINISHED: "Завершено",
+            CellRun.STATUS_ERROR: "Ошибка",
+        }
+        color = colors.get(obj.status, "#999")
+        label = labels.get(obj.status, obj.status)
+        return format_html(
+            '<span style="background:{};color:#fff;padding:2px 8px;border-radius:4px">{}</span>',
+            color,
+            label,
+        )
+
+    status_badge.short_description = "Статус"
+
+    def duration_display(self, obj):
+        seconds = obj.duration_seconds
+        if seconds is None:
+            return "—"
+        if seconds < 60:
+            return f"{seconds:.1f} с"
+        minutes = int(seconds // 60)
+        secs = seconds % 60
+        return f"{minutes} мин {secs:.0f} с"
+
+    duration_display.short_description = "Длительность"
 
 
 class ContestProblemInline(admin.TabularInline):
