@@ -1,13 +1,22 @@
 from urllib.parse import urlencode
 
+from django.utils import timezone
 from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.urls import reverse
 
-from ...services.runtime import SessionNotFoundError, run_code, provide_input
+from ...models.cell_run import CellRun
+from ...services.runtime import RuntimeExecutionResult, SessionNotFoundError, run_code, provide_input
 from ..serializers import CellRunInputSerializer, CellRunSerializer
 from .sessions import build_notebook_session_id, ensure_notebook_access
+
+
+def _cell_run_final_status(result: RuntimeExecutionResult) -> str:
+    """Return the CellRun status string for a completed (non-input_required) result."""
+    if result.error or result.status == "error":
+        return CellRun.STATUS_ERROR
+    return CellRun.STATUS_FINISHED
 
 
 class RunCellView(APIView):
@@ -23,13 +32,33 @@ class RunCellView(APIView):
         ensure_notebook_access(request.user, cell.notebook)
 
         session_id = build_notebook_session_id(cell.notebook_id)
+
+        cell_run = CellRun.objects.create(
+            cell=cell,
+            notebook=cell.notebook,
+            user=request.user if request.user.is_authenticated else None,
+            status=CellRun.STATUS_RUNNING,
+        )
+
         try:
             result = run_code(session_id, cell.content or "")
         except SessionNotFoundError:
+            cell_run.status = CellRun.STATUS_ERROR
+            cell_run.finished_at = timezone.now()
+            cell_run.save(update_fields=["status", "finished_at"])
             return Response(
                 {"detail": "Сессия не создана. Сначала создайте новую сессию."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+
+        if result.status == "input_required":
+            if result.run_id:
+                cell_run.run_id = result.run_id
+                cell_run.save(update_fields=["run_id"])
+        else:
+            cell_run.status = _cell_run_final_status(result)
+            cell_run.finished_at = timezone.now()
+            cell_run.save(update_fields=["status", "finished_at"])
 
         outputs = _attach_output_urls(request, session_id, result.outputs or [])
         artifacts = _build_artifacts(outputs, result.artifacts or [])
@@ -82,6 +111,14 @@ class RunCellInputView(APIView):
             return Response(
                 {"detail": str(exc)},
                 status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if result.status != "input_required":
+            CellRun.objects.filter(
+                run_id=run_id, status=CellRun.STATUS_RUNNING
+            ).update(
+                status=_cell_run_final_status(result),
+                finished_at=timezone.now(),
             )
 
         outputs = _attach_output_urls(request, session_id, result.outputs or [])
