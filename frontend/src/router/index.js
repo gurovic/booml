@@ -17,7 +17,6 @@ import PrivacyPage from '@/pages/PrivacyPage.vue'
 import PolygonPage from '@/pages/PolygonPage.vue'
 import PolygonProblemEditPage from '@/pages/PolygonProblemEditPage.vue'
 import SubmissionListPage from '@/pages/SubmissionListPage.vue'
-import DashboardPage from '@/pages/DashboardPage.vue'
 import NotebookPage from '@/pages/NotebookPage.vue'
 import NotebookListPage from '@/pages/NotebookListPage.vue'
 import ProfilePage from '@/pages/ProfilePage.vue'
@@ -151,12 +150,6 @@ const router = createRouter({
       path: '/auth-required',
       name: 'auth-required',
       component: AuthRequiredPage,
-    },
-    {
-      path: '/dashboard',
-      name: 'dashboard',
-      component: DashboardPage,
-      meta: { requiresAuth: true, requiresAdmin: true, authReason: 'generic' },
     }
   ],
 })
@@ -175,7 +168,6 @@ router.beforeEach((to) => {
   const userStore = useUserStore()
   const isAuthorized = !!userStore.currentUser
   const requiresAuth = to.matched.some(record => record.meta?.requiresAuth)
-  const requiresAdmin = to.matched.some(record => record.meta?.requiresAdmin)
 
   if (!isAuthorized && requiresAuth) {
     return {
@@ -184,13 +176,6 @@ router.beforeEach((to) => {
         redirect: to.fullPath,
         reason: resolveAuthReason(to),
       }),
-    }
-  }
-
-  if (requiresAdmin) {
-    const username = userStore.currentUser?.username?.toLowerCase()
-    if (username !== 'admin') {
-      return { name: 'home' }
     }
   }
 

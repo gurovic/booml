@@ -138,9 +138,8 @@ const handleNotebooksClick = () => {
 }
 
 const handleDashboardClick = () => {
-  if (router.currentRoute.value.path !== '/dashboard') {
-    router.push('/dashboard')
-  }
+  const dashboardUrl = process.env.VUE_APP_DASHBOARD_URL || 'http://localhost:8102'
+  window.location.href = dashboardUrl
 }
 </script>
 

@@ -27,7 +27,7 @@
                 <h2 class="dashboard-card__title">Dashboard</h2>
                 <p class="dashboard-card__description">Панель управления платформой</p>
               </div>
-              <button class="button button--primary" @click="router.push('/dashboard')">Перейти</button>
+              <button class="button button--primary" @click="openDashboard">Перейти</button>
             </div>
           </div>
 
@@ -243,6 +243,11 @@ let user = userStore.getCurrentUser()
 let isAuthorized = computed(() => user.value != null)
 const isAdmin = computed(() => userStore.currentUser?.username?.toLowerCase() === 'admin')
 const isTeacher = computed(() => String(userStore.currentUser?.role || '') === 'teacher')
+
+const openDashboard = () => {
+  const dashboardUrl = process.env.VUE_APP_DASHBOARD_URL || 'http://localhost:8102'
+  window.location.href = dashboardUrl
+}
 
 const canEditSection = (s) => {
   if (!isAuthorized.value) return false
