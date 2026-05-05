@@ -38,8 +38,7 @@ onMounted(async () => {
       window.location.href = `${mainAppUrl}/login`
       return
     }
-    const username = res?.user?.username?.toLowerCase()
-    if (username !== 'admin') {
+    if (res?.is_platform_admin !== true) {
       window.location.href = mainAppUrl
       return
     }
