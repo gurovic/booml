@@ -2,12 +2,13 @@ import json
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
 from django.views.decorators.http import require_http_methods
-from ..models import Notebook, Cell
+from ..models import Cell
+from ..services.permissions import get_user_writable_notebook_or_404
 
 
 @require_http_methods(["POST"])
 def save_text_cell(request, notebook_id, cell_id):
-    notebook = get_object_or_404(Notebook, id=notebook_id)
+    notebook = get_user_writable_notebook_or_404(request.user, notebook_id)
     cell = get_object_or_404(Cell, id=cell_id, notebook=notebook)
     
     try:

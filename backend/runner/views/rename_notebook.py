@@ -2,10 +2,10 @@ import json
 
 from django.contrib import messages
 from django.http import JsonResponse
-from django.shortcuts import get_object_or_404, redirect
+from django.shortcuts import redirect
 from django.views.decorators.http import require_http_methods
 
-from ..models import Notebook
+from ..services.permissions import get_user_writable_notebook_or_404
 
 
 def _parse_json_body(request):
@@ -17,7 +17,7 @@ def _parse_json_body(request):
 
 @require_http_methods(["POST", "PATCH"])
 def rename_notebook(request, notebook_id):
-    notebook = get_object_or_404(Notebook, id=notebook_id)
+    notebook = get_user_writable_notebook_or_404(request.user, notebook_id)
     content_type = request.headers.get("Content-Type", "")
     is_json_request = "application/json" in content_type
 
@@ -42,6 +42,7 @@ def rename_notebook(request, notebook_id):
                 "status": "success",
                 "notebook_id": notebook.id,
                 "title": notebook.title,
+                "folder_id": notebook.folder_id,
             }
         )
 

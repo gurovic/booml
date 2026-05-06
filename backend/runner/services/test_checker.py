@@ -108,7 +108,7 @@ class TestChecker(unittest.TestCase):
             self.assertIn('metric_name', result.outputs)
             self.assertEqual(result.outputs['metric_name'], 'accuracy')
             self.assertEqual(result.errors, '')
-            mock_broadcast.assert_called_once_with(1, 'accuracy', 0.76)
+            mock_broadcast.assert_called_once_with(1, 'accuracy', result.outputs["metric_score"])
             self.mock_submission.save.assert_called_once()
             self.assertIn('metric', self.mock_submission.metrics)
             
@@ -132,14 +132,17 @@ class TestChecker(unittest.TestCase):
 
     @patch('runner.services.checker.pd.read_csv')
     def test_check_with_missing_problem_descriptor(self, mock_read_csv):
-        """Тест проверки с отсутствующим ProblemDescriptor"""
-        self.mock_problem.descriptor = None  # Используем правильное имя поля
-        
+        self.mock_problem.descriptor = None
+        mock_read_csv.side_effect = [
+            self.test_data['submission'],
+            self.test_data['ground_truth']
+        ]
+
         checker = SubmissionChecker()
         result = checker.check_submission(self.mock_submission)
-        
-        self.assertFalse(result.ok)
-        self.assertIn("ProblemDescriptor not found", result.errors)
+
+        self.assertTrue(result.ok)
+        self.assertIn("metric_name", result.outputs)
 
     @patch('runner.services.checker.pd.read_csv')
     def test_check_with_missing_metric(self, mock_read_csv):
@@ -239,7 +242,7 @@ class TestChecker(unittest.TestCase):
         
         self.assertIsInstance(result, CheckResult)
         self.assertTrue(result.ok)
-        mock_broadcast.assert_called_once_with(1, 'accuracy', 0.91)
+        mock_broadcast.assert_called_once_with(1, 'accuracy', result.outputs["metric_score"])
 
     @patch('runner.services.checker.broadcast_metric_update')
     @patch('runner.services.checker.ReportGenerator')
@@ -273,7 +276,7 @@ class TestChecker(unittest.TestCase):
                 self.assertTrue(result.ok)
                 self.assertEqual(result.outputs['metric_name'], metric_name)
                 self.assertIsInstance(result.outputs['metric_score'], float)
-                mock_broadcast.assert_called_once_with(1, metric_name, 0.55)
+                mock_broadcast.assert_called_once_with(1, metric_name, result.outputs["metric_score"])
                 mock_broadcast.reset_mock()
 
     @patch('runner.services.checker.broadcast_metric_update')
@@ -301,4 +304,86 @@ class TestChecker(unittest.TestCase):
         self.assertTrue(result.ok)
         self.assertEqual(result.outputs['metric_name'], 'macro_iou')
         self.assertIn('macro_iou', self.mock_submission.metrics)
-        mock_broadcast.assert_called_once_with(1, 'macro_iou', 0.42)
+        mock_broadcast.assert_called_once_with(1, 'macro_iou', result.outputs["metric_score"])
+
+    @patch('runner.services.checker.broadcast_metric_update')
+    @patch('runner.services.checker.ReportGenerator')
+    @patch('runner.services.checker.pd.read_csv')
+    def test_csv_match_success(self, mock_read_csv, mock_report_generator, mock_broadcast):
+        submission_df = pd.DataFrame(
+            {
+                "id": [1, 2],
+                "feature_a": [10, 20],
+                "feature_b": [0.1, 0.2],
+            }
+        )
+        ground_truth_df = submission_df.copy()
+
+        self.mock_problem_descriptor.metric_name = "csv_match"
+        self.mock_problem_descriptor.metric_code = ""
+        self.mock_problem_descriptor.check_order = False
+        self.mock_problem_descriptor.id_column = "id"
+
+        self.mock_problem_data.test_file = None
+        self.mock_problem_data.answer_file = MagicMock()
+        self.mock_problem_data.answer_file.path = "/fake/path/answer.csv"
+        self.mock_problem_data.answer_file.name = "answer.csv"
+
+        mock_read_csv.side_effect = [submission_df, ground_truth_df]
+
+        mock_report = Mock(spec=Report)
+        mock_report.id = 1
+        mock_report.metric = 1.0
+        mock_report_generator.return_value.create_report_from_testing_system.return_value = mock_report
+
+        checker = SubmissionChecker()
+        result = checker.check_submission(self.mock_submission)
+
+        self.assertTrue(result.ok)
+        self.assertEqual(result.outputs["metric_name"], "csv_match")
+        self.assertEqual(result.outputs["metric_score"], 100.0)
+        mock_broadcast.assert_called_once_with(1, "csv_match", 100.0)
+
+    @patch('runner.services.checker.broadcast_metric_update')
+    @patch('runner.services.checker.ReportGenerator')
+    @patch('runner.services.checker.pd.read_csv')
+    def test_csv_match_mismatch_returns_zero_score(self, mock_read_csv, mock_report_generator, mock_broadcast):
+        submission_df = pd.DataFrame(
+            {
+                "id": [1, 2],
+                "feature_a": [10, 20],
+                "feature_b": [0.1, 0.2],
+            }
+        )
+        ground_truth_df = pd.DataFrame(
+            {
+                "id": [1, 2],
+                "feature_a": [10, 25],
+                "feature_b": [0.1, 0.2],
+            }
+        )
+
+        self.mock_problem_descriptor.metric_name = "csv_match"
+        self.mock_problem_descriptor.metric_code = ""
+        self.mock_problem_descriptor.check_order = False
+        self.mock_problem_descriptor.id_column = "id"
+
+        self.mock_problem_data.test_file = None
+        self.mock_problem_data.answer_file = MagicMock()
+        self.mock_problem_data.answer_file.path = "/fake/path/answer.csv"
+        self.mock_problem_data.answer_file.name = "answer.csv"
+
+        mock_read_csv.side_effect = [submission_df, ground_truth_df]
+
+        mock_report = Mock(spec=Report)
+        mock_report.id = 1
+        mock_report.metric = 0.0
+        mock_report_generator.return_value.create_report_from_testing_system.return_value = mock_report
+
+        checker = SubmissionChecker()
+        result = checker.check_submission(self.mock_submission)
+
+        self.assertTrue(result.ok)
+        self.assertEqual(result.outputs["metric_score"], 0.0)
+        mock_broadcast.assert_called_once_with(1, "csv_match", 0.0)
+

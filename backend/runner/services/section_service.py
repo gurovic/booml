@@ -6,10 +6,21 @@ from django.contrib.auth import get_user_model
 from django.db import transaction
 
 from ..models import Section
+from .user_access import is_platform_admin
 
 User = get_user_model()
 
-ROOT_SECTION_TITLES = ("Авторские", "Тематические", "Олимпиады")
+# Root categories shown on HomePage. Historically they existed under different titles
+# ("Тематические" vs "Тематическое", "Авторские" vs "Авторское"), so we treat them as aliases.
+ROOT_SECTION_CANONICAL_ORDER = ("Олимпиады", "Тематические", "Авторские")
+ROOT_SECTION_TITLE_ALIASES: dict[str, str] = {
+    "Олимпиады": "Олимпиады",
+    "Тематические": "Тематические",
+    "Тематическое": "Тематические",
+    "Авторские": "Авторские",
+    "Авторское": "Авторские",
+}
+ROOT_SECTION_TITLES = tuple(ROOT_SECTION_TITLE_ALIASES.keys())
 
 
 @dataclass(slots=True)
@@ -17,6 +28,7 @@ class SectionCreateInput:
     title: str
     owner: User
     description: str = ""
+    is_published: bool = True
     parent: Section | None = None
 
 
@@ -35,7 +47,17 @@ def _ensure_no_cycles(parent: Section, child_id: int | None) -> None:
 
 
 def is_root_section(section: Section) -> bool:
-    return section.parent_id is None and section.title in ROOT_SECTION_TITLES
+    return section.parent_id is None and section.title in ROOT_SECTION_TITLE_ALIASES
+
+
+def root_section_order_key(section: Section) -> tuple[int, str]:
+    """Stable ordering for root categories across title aliases."""
+    canonical = ROOT_SECTION_TITLE_ALIASES.get(section.title)
+    try:
+        idx = ROOT_SECTION_CANONICAL_ORDER.index(canonical) if canonical else 10_000
+    except ValueError:
+        idx = 10_000
+    return (idx, (section.title or "").lower())
 
 
 def create_section(payload: SectionCreateInput) -> Section:
@@ -46,7 +68,12 @@ def create_section(payload: SectionCreateInput) -> Section:
     if payload.parent is None and payload.title not in ROOT_SECTION_TITLES:
         raise ValueError("Root sections must be one of the predefined categories")
     if payload.parent is not None:
-        if not is_root_section(payload.parent) and payload.parent.owner_id != payload.owner.pk:
+        can_admin_everywhere = is_platform_admin(payload.owner)
+        if (
+            not can_admin_everywhere
+            and not is_root_section(payload.parent)
+            and payload.parent.owner_id != payload.owner.pk
+        ):
             raise ValueError("Only section owner can create nested sections")
         _ensure_no_cycles(payload.parent, child_id=None)
     if payload.parent is None and Section.objects.filter(
@@ -58,6 +85,7 @@ def create_section(payload: SectionCreateInput) -> Section:
         section = Section(
             title=payload.title,
             description=payload.description or "",
+            is_published=payload.is_published,
             owner=payload.owner,
             parent=payload.parent,
         )

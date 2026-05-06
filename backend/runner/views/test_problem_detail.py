@@ -1,17 +1,29 @@
 import tempfile
-from pathlib import Path
 from importlib import import_module
-from types import SimpleNamespace
-from unittest.mock import ANY, patch
-import os
 from pathlib import Path
+from types import SimpleNamespace
+from datetime import timedelta
+from unittest.mock import ANY, patch
 
 from django.contrib.auth import get_user_model
+from django.core.files.base import ContentFile
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 from django.urls import reverse
+from django.utils import timezone
 
-from runner.models import Problem, Submission, ProblemData, ProblemDescriptor
+from runner.models import (
+    Contest,
+    ContestProblem,
+    Course,
+    CourseParticipant,
+    Problem,
+    ProblemData,
+    ProblemDescriptor,
+    Section,
+    Submission,
+)
+from runner.services.section_service import SectionCreateInput, create_section
 
 problem_detail_view = import_module("runner.views.problem_detail")
 
@@ -34,6 +46,12 @@ class ProblemDetailViewTests(TestCase):
             b"id,target\n1,0.5\n",
             content_type="text/csv",
         )
+
+    def _problem_api_url(self):
+        return reverse("runner:backend_problem_detail")
+
+    def _problem_download_url(self):
+        return reverse("runner:backend_problem_file_download", args=[self.problem.id])
 
     @override_settings(MEDIA_ROOT=tempfile.gettempdir())
     def test_get_renders_upload_form(self):
@@ -269,3 +287,190 @@ class ProblemDetailViewTests(TestCase):
         feedback = response.context["submission_feedback"]
         self.assertEqual(feedback["level"], "error")
         self.assertEqual(feedback["details"], "Single error message")
+
+    def test_problem_detail_api_includes_contest_context(self):
+        root_section = Section.objects.get(title="Авторские", parent__isnull=True)
+        section = create_section(
+            SectionCreateInput(
+                title="Problem API Section",
+                owner=self.user,
+                parent=root_section,
+            )
+        )
+        course = Course.objects.create(
+            title="Problem API Course",
+            owner=self.user,
+            section=section,
+        )
+        CourseParticipant.objects.create(
+            course=course,
+            user=self.user,
+            role=CourseParticipant.Role.TEACHER,
+            is_owner=True,
+        )
+        contest = Contest.objects.create(
+            title="Problem API Contest",
+            course=course,
+            created_by=self.user,
+            is_published=True,
+            approval_status=Contest.ApprovalStatus.APPROVED,
+            start_time=timezone.now() - timedelta(minutes=30),
+            duration_minutes=120,
+            allow_upsolving=True,
+        )
+        ContestProblem.objects.create(contest=contest, problem=self.problem, position=0)
+
+        self.client.force_login(self.user)
+        response = self.client.get(
+            self._problem_api_url(),
+            {"problem_id": self.problem.id, "contest_id": contest.id},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertIn("contest", payload)
+        self.assertEqual(payload["contest"]["id"], contest.id)
+        self.assertTrue(payload["contest"]["allow_notifications"])
+        self.assertTrue(payload["contest"]["allow_student_questions"])
+        self.assertTrue(payload["contest"]["can_submit"])
+        self.assertEqual(payload["contest"]["time_state"], "running")
+
+    def test_problem_detail_api_forbids_scheduled_contest_for_student(self):
+        teacher = get_user_model().objects.create_user(username="teacher_api", password="pass12345")
+        root_section = Section.objects.get(title="Авторские", parent__isnull=True)
+        section = create_section(
+            SectionCreateInput(
+                title="Scheduled API Section",
+                owner=teacher,
+                parent=root_section,
+            )
+        )
+        course = Course.objects.create(
+            title="Scheduled API Course",
+            owner=teacher,
+            section=section,
+        )
+        CourseParticipant.objects.create(
+            course=course,
+            user=teacher,
+            role=CourseParticipant.Role.TEACHER,
+            is_owner=True,
+        )
+        CourseParticipant.objects.create(
+            course=course,
+            user=self.user,
+            role=CourseParticipant.Role.STUDENT,
+        )
+        contest = Contest.objects.create(
+            title="Scheduled Contest",
+            course=course,
+            created_by=teacher,
+            is_published=True,
+            approval_status=Contest.ApprovalStatus.APPROVED,
+            start_time=timezone.now() + timedelta(hours=2),
+            duration_minutes=60,
+        )
+        ContestProblem.objects.create(contest=contest, problem=self.problem, position=0)
+
+        self.client.force_login(self.user)
+        response = self.client.get(
+            self._problem_api_url(),
+            {"problem_id": self.problem.id, "contest_id": contest.id},
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_problem_detail_api_returns_full_file_list_from_root_and_hides_answer(self):
+        problem_data_root = self.media_root / "problem_data_root"
+        problem_dir = problem_data_root / str(self.problem.id)
+        (problem_dir / "train").mkdir(parents=True, exist_ok=True)
+        (problem_dir / "test").mkdir(parents=True, exist_ok=True)
+        (problem_dir / "sample_submission").mkdir(parents=True, exist_ok=True)
+        (problem_dir / "answer").mkdir(parents=True, exist_ok=True)
+
+        (problem_dir / "train" / "b.csv").write_text("id,x\n1,2\n", encoding="utf-8")
+        (problem_dir / "train" / "a.csv").write_text("id,x\n3,4\n", encoding="utf-8")
+        (problem_dir / "test" / "data.zip").write_bytes(b"PK\x03\x04test")
+        (problem_dir / "sample_submission" / "template.csv").write_text("id,target\n1,0\n", encoding="utf-8")
+        (problem_dir / "answer" / "secret.csv").write_text("id,target\n1,1\n", encoding="utf-8")
+
+        with override_settings(MEDIA_ROOT=self.media_root, PROBLEM_DATA_ROOT=problem_data_root):
+            pdata = ProblemData.objects.create(problem=self.problem)
+            # Duplicate name with root source: root file should win via dedupe and ordering.
+            pdata.train_file.save("a.csv", ContentFile(b"id,x\n9,9\n"), save=True)
+            pdata.test_file.save("fallback_test.csv", ContentFile(b"id,y\n1,1\n"), save=True)
+
+            response = self.client.get(self._problem_api_url(), {"problem_id": self.problem.id})
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+
+        actual = [(item["kind"], item["name"]) for item in data["file_list"]]
+        self.assertEqual(
+            actual,
+            [
+                ("train", "train.csv"),
+                ("test", "test.csv"),
+                ("sample_submission", "sample_submission.csv"),
+            ],
+        )
+        self.assertTrue(all(item["kind"] != "answer" for item in data["file_list"]))
+        self.assertEqual(data["files"]["train"], data["file_list"][0]["url"])
+        self.assertEqual(data["files"]["test"], data["file_list"][1]["url"])
+        self.assertEqual(data["files"]["sample_submission"], data["file_list"][2]["url"])
+
+    def test_problem_file_download_reads_from_problem_data_root(self):
+        problem_data_root = self.media_root / "problem_data_root"
+        train_dir = problem_data_root / str(self.problem.id) / "train"
+        train_dir.mkdir(parents=True, exist_ok=True)
+        expected = b"PK\x03\x04root-zip"
+        (train_dir / "dataset.zip").write_bytes(expected)
+
+        with override_settings(MEDIA_ROOT=self.media_root, PROBLEM_DATA_ROOT=problem_data_root):
+            response = self.client.get(
+                self._problem_download_url(),
+                {"kind": "train", "name": "train.csv"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("train.csv", response["Content-Disposition"])
+        self.assertEqual(b"".join(response.streaming_content), expected)
+
+    def test_problem_file_download_rejects_path_traversal(self):
+        problem_data_root = self.media_root / "problem_data_root"
+        with override_settings(MEDIA_ROOT=self.media_root, PROBLEM_DATA_ROOT=problem_data_root):
+            response = self.client.get(
+                self._problem_download_url(),
+                {"kind": "train", "name": "../secret.csv"},
+            )
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_problem_file_download_falls_back_to_problem_data_model(self):
+        problem_data_root = self.media_root / "problem_data_root"
+
+        with override_settings(MEDIA_ROOT=self.media_root, PROBLEM_DATA_ROOT=problem_data_root):
+            pdata = ProblemData.objects.create(problem=self.problem)
+            pdata.train_file.save("fallback.csv", ContentFile(b"id,x\n7,8\n"), save=True)
+
+            response = self.client.get(
+                self._problem_download_url(),
+                {"kind": "train", "name": "train.csv"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("train.csv", response["Content-Disposition"])
+        self.assertEqual(b"".join(response.streaming_content), b"id,x\n7,8\n")
+
+    def test_problem_detail_api_reads_files_from_media_root_when_external_root_missing(self):
+        media_problem_dir = self.media_root / "problem_data" / str(self.problem.id) / "test"
+        media_problem_dir.mkdir(parents=True, exist_ok=True)
+        (media_problem_dir / "media_only.csv").write_text("id,v\n1,5\n", encoding="utf-8")
+
+        missing_root = self.media_root / "missing_problem_data_root"
+        with override_settings(MEDIA_ROOT=self.media_root, PROBLEM_DATA_ROOT=missing_root):
+            response = self.client.get(self._problem_api_url(), {"problem_id": self.problem.id})
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertIn({"kind": "test", "name": "test.csv", "url": data["files"]["test"]}, data["file_list"])

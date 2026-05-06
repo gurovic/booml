@@ -1,10 +1,9 @@
 import logging
-
-from celery import shared_task
 from django.conf import settings
 from kombu.exceptions import OperationalError as KombuOperationalError
 from redis.exceptions import ConnectionError as RedisConnectionError
 
+from runner.celery import app as celery_app
 from runner.models.submission import Submission
 from runner.services import checker as checker_service
 
@@ -14,13 +13,25 @@ logger = logging.getLogger(__name__)
 def _use_celery_queue() -> bool:
     return getattr(settings, "RUNNER_USE_CELERY_QUEUE", False)
 
+def _should_run_inline_for_broker() -> bool:
+    broker_url = (celery_app.conf.broker_url or "").lower()
+    return broker_url.startswith("memory://")
 
-@shared_task
+
+@celery_app.task
 def enqueue_submission_for_evaluation(submission_id: int):
     logger.info(f"[QUEUE] Submission {submission_id} added to evaluation queue.")
     if not _use_celery_queue():
         logger.info("[QUEUE] Celery queue disabled; running submission %s inline.", submission_id)
         return evaluate_submission(submission_id)
+
+    if _should_run_inline_for_broker():
+        logger.info(
+            "[QUEUE] In-memory broker detected; running submission %s inline.",
+            submission_id,
+        )
+        evaluate_submission(submission_id)
+        return {"status": "enqueued", "submission_id": submission_id}
 
     try:
         evaluate_submission.delay(submission_id)
@@ -35,7 +46,7 @@ def enqueue_submission_for_evaluation(submission_id: int):
 
 
 
-@shared_task
+@celery_app.task
 def evaluate_submission(submission_id: int):
     logger.info(f"[WORKER] Evaluating submission {submission_id}")
     try:
@@ -46,10 +57,26 @@ def evaluate_submission(submission_id: int):
 
         # --- Обработка результата ---
         status = Submission.STATUS_ACCEPTED if result.ok else Submission.STATUS_FAILED
-        metrics_payload = dict(result.outputs or {})
+        result_outputs = dict(result.outputs or {})
         if result.ok:
-            if "metric" not in metrics_payload and "metric_score" in metrics_payload:
-                metrics_payload["metric"] = metrics_payload["metric_score"]
+            # Checker may already persist a rich metrics payload; keep it and merge worker outputs.
+            if isinstance(submission.metrics, dict):
+                metrics_payload = dict(submission.metrics or {})
+            elif isinstance(submission.metrics, (int, float)):
+                numeric_value = float(submission.metrics)
+                metrics_payload = {
+                    "metric": numeric_value,
+                    "metric_score": numeric_value,
+                }
+            elif isinstance(submission.metrics, str):
+                metrics_payload = {"metric": submission.metrics}
+            else:
+                metrics_payload = {}
+            metrics_payload.update(result_outputs)
+            metric_score = metrics_payload.get("metric_score")
+            if isinstance(metric_score, (int, float)):
+                # Keep metric aligned with latest checker output.
+                metrics_payload["metric"] = float(metric_score)
         else:
             error_value = result.errors or "Unknown evaluation error"
             if isinstance(error_value, (list, tuple)):

@@ -1,5 +1,6 @@
 from http import HTTPStatus
 from tempfile import TemporaryDirectory
+import importlib.util
 
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -35,6 +36,8 @@ class NotebookSessionAPITests(TestCase):
         self.files_url = reverse("session-files")
         self.download_url = reverse("session-file-download")
         self.upload_url = reverse("session-file-upload")
+        self.preview_url = reverse("session-file-preview")
+        self.chart_url = reverse("session-file-chart")
         _sessions.clear()
 
     def tearDown(self):
@@ -110,6 +113,20 @@ class NotebookSessionAPITests(TestCase):
         self.assertTrue(any(item["path"] == "result.txt" for item in data.get("files", [])))
         self.assertIn("vm", data)
 
+    def test_session_files_listing_hides_streams(self):
+        session_id = f"notebook:{self.notebook.id}"
+        session = create_session(session_id)
+        stream_dir = session.workdir / ".streams"
+        stream_dir.mkdir(parents=True, exist_ok=True)
+        (stream_dir / "tmp.stdout").write_text("x", encoding="utf-8")
+
+        resp = self.client.get(f"{self.files_url}?session_id={session_id}")
+
+        self.assertEqual(resp.status_code, HTTPStatus.OK)
+        data = resp.json()
+        paths = {item["path"] for item in data.get("files", [])}
+        self.assertNotIn(".streams/tmp.stdout", paths)
+
     def test_session_file_download(self):
         session_id = f"notebook:{self.notebook.id}"
         create_session(session_id)
@@ -125,6 +142,79 @@ class NotebookSessionAPITests(TestCase):
         create_session(session_id)
 
         resp = self.client.get(f"{self.download_url}?session_id={session_id}&path=../secret.txt")
+        self.assertEqual(resp.status_code, HTTPStatus.NOT_FOUND)
+
+    def test_session_file_delete_success(self):
+        session_id = f"notebook:{self.notebook.id}"
+        session = create_session(session_id)
+        target = session.workdir / "delete_me.txt"
+        target.write_text("bye", encoding="utf-8")
+
+        resp = self.client.delete(
+            self.download_url,
+            data={"session_id": session_id, "path": "delete_me.txt"},
+            content_type="application/json",
+        )
+
+        self.assertEqual(resp.status_code, HTTPStatus.OK)
+        data = resp.json()
+        self.assertEqual(data["session_id"], session_id)
+        self.assertEqual(data["path"], "delete_me.txt")
+        self.assertTrue(data["deleted"])
+        self.assertFalse(target.exists())
+
+    def test_session_file_delete_prevents_escape(self):
+        session_id = f"notebook:{self.notebook.id}"
+        create_session(session_id)
+
+        resp = self.client.delete(
+            self.download_url,
+            data={"session_id": session_id, "path": "../secret.txt"},
+            content_type="application/json",
+        )
+
+        self.assertEqual(resp.status_code, HTTPStatus.NOT_FOUND)
+
+    def test_session_file_delete_forbidden_for_other_user(self):
+        session_id = f"notebook:{self.notebook.id}"
+        session = create_session(session_id)
+        target = session.workdir / "private.txt"
+        target.write_text("secret", encoding="utf-8")
+
+        other = User.objects.create_user(username="other_deleter", password="pass123")
+        self.client.logout()
+        self.client.login(username="other_deleter", password="pass123")
+
+        resp = self.client.delete(
+            self.download_url,
+            data={"session_id": session_id, "path": "private.txt"},
+            content_type="application/json",
+        )
+
+        self.assertEqual(resp.status_code, HTTPStatus.FORBIDDEN)
+        self.assertTrue(target.exists())
+
+    def test_session_file_delete_missing_file_returns_404(self):
+        session_id = f"notebook:{self.notebook.id}"
+        create_session(session_id)
+
+        resp = self.client.delete(
+            self.download_url,
+            data={"session_id": session_id, "path": "missing.txt"},
+            content_type="application/json",
+        )
+
+        self.assertEqual(resp.status_code, HTTPStatus.NOT_FOUND)
+
+    def test_session_file_delete_missing_session_returns_404(self):
+        session_id = f"notebook:{self.notebook.id}"
+
+        resp = self.client.delete(
+            self.download_url,
+            data={"session_id": session_id, "path": "file.txt"},
+            content_type="application/json",
+        )
+
         self.assertEqual(resp.status_code, HTTPStatus.NOT_FOUND)
 
     def test_session_file_upload(self):
@@ -194,6 +284,184 @@ class NotebookSessionAPITests(TestCase):
         )
 
         self.assertEqual(resp.status_code, HTTPStatus.NOT_FOUND)
+
+    def test_session_file_preview_csv(self):
+        session_id = f"notebook:{self.notebook.id}"
+        session = create_session(session_id)
+        csv_path = session.workdir / "sample.csv"
+        csv_path.write_text("a,b\n1,2\n3,4\n", encoding="utf-8")
+
+        resp = self.client.get(f"{self.preview_url}?session_id={session_id}&path=sample.csv")
+
+        self.assertEqual(resp.status_code, HTTPStatus.OK)
+        data = resp.json()
+        self.assertEqual(data["format"], "csv")
+        self.assertEqual(data["columns"], ["a", "b"])
+        self.assertEqual(data["rows"][0], ["1", "2"])
+
+    def test_session_file_preview_prevents_escape(self):
+        session_id = f"notebook:{self.notebook.id}"
+        create_session(session_id)
+
+        resp = self.client.get(f"{self.preview_url}?session_id={session_id}&path=../secret.csv")
+
+        self.assertEqual(resp.status_code, HTTPStatus.NOT_FOUND)
+
+    def test_session_file_preview_unsupported_type(self):
+        session_id = f"notebook:{self.notebook.id}"
+        session = create_session(session_id)
+        txt_path = session.workdir / "notes.txt"
+        txt_path.write_text("hello", encoding="utf-8")
+
+        resp = self.client.get(f"{self.preview_url}?session_id={session_id}&path=notes.txt")
+
+        self.assertEqual(resp.status_code, HTTPStatus.BAD_REQUEST)
+        self.assertIn("Unsupported file type", resp.json().get("detail", ""))
+
+    def test_session_file_preview_forbidden_for_other_user(self):
+        session_id = f"notebook:{self.notebook.id}"
+        session = create_session(session_id)
+        csv_path = session.workdir / "sample.csv"
+        csv_path.write_text("a,b\n1,2\n", encoding="utf-8")
+
+        other = User.objects.create_user(username="other_viewer", password="pass123")
+        self.client.logout()
+        self.client.login(username="other_viewer", password="pass123")
+
+        resp = self.client.get(f"{self.preview_url}?session_id={session_id}&path=sample.csv")
+
+        self.assertEqual(resp.status_code, HTTPStatus.FORBIDDEN)
+
+    def test_session_file_preview_missing_session_returns_404(self):
+        session_id = f"notebook:{self.notebook.id}"
+
+        resp = self.client.get(f"{self.preview_url}?session_id={session_id}&path=sample.csv")
+
+        self.assertEqual(resp.status_code, HTTPStatus.NOT_FOUND)
+
+    def test_session_file_chart_schema_and_recommendation(self):
+        session_id = f"notebook:{self.notebook.id}"
+        session = create_session(session_id)
+        csv_path = session.workdir / "sample.csv"
+        csv_path.write_text("x,y,cat\n1,10,a\n2,11,b\n3,12,a\n", encoding="utf-8")
+
+        resp = self.client.post(
+            self.chart_url,
+            {"session_id": session_id, "path": "sample.csv"},
+            content_type="application/json",
+        )
+
+        self.assertEqual(resp.status_code, HTTPStatus.OK)
+        data = resp.json()
+        self.assertIn("schema", data)
+        self.assertEqual(data["schema"]["numeric_columns"], ["x", "y"])
+        self.assertIsNotNone(data.get("recommended"))
+        self.assertEqual(data["recommended"]["chart_type"], "scatter")
+
+    def test_session_file_chart_bar_with_aggregation(self):
+        session_id = f"notebook:{self.notebook.id}"
+        session = create_session(session_id)
+        csv_path = session.workdir / "scores.csv"
+        csv_path.write_text(
+            "city,score,attempts\nMoscow,10,1\nMoscow,20,2\nSPB,5,3\n",
+            encoding="utf-8",
+        )
+
+        resp = self.client.post(
+            self.chart_url,
+            {
+                "session_id": session_id,
+                "path": "scores.csv",
+                "chart_type": "bar",
+                "x": "city",
+                "y": ["score"],
+                "agg": "mean",
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(resp.status_code, HTTPStatus.OK)
+        data = resp.json()
+        chart = data.get("chart") or {}
+        self.assertEqual(chart.get("type"), "bar")
+        self.assertTrue((data.get("chart_image") or "").startswith("data:image/png;base64,"))
+        series = chart.get("series") or []
+        self.assertTrue(series)
+        values = {item["x"]: item["y"] for item in series[0]["points"]}
+        self.assertEqual(values["Moscow"], 15.0)
+        self.assertEqual(values["SPB"], 5.0)
+
+    def test_session_file_chart_hist(self):
+        session_id = f"notebook:{self.notebook.id}"
+        session = create_session(session_id)
+        csv_path = session.workdir / "hist.csv"
+        csv_path.write_text("score\n1\n2\n3\n4\n5\n", encoding="utf-8")
+
+        resp = self.client.post(
+            self.chart_url,
+            {
+                "session_id": session_id,
+                "path": "hist.csv",
+                "chart_type": "hist",
+                "y": ["score"],
+                "bins": 4,
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(resp.status_code, HTTPStatus.OK)
+        data = resp.json()
+        chart = data.get("chart") or {}
+        self.assertEqual(chart.get("type"), "hist")
+        self.assertTrue((data.get("chart_image") or "").startswith("data:image/png;base64,"))
+        bins = (chart.get("series") or [{}])[0].get("bins") or []
+        self.assertEqual(len(bins), 4)
+        self.assertEqual(sum(item["count"] for item in bins), 5)
+
+    def test_session_file_chart_forbidden_for_other_user(self):
+        session_id = f"notebook:{self.notebook.id}"
+        session = create_session(session_id)
+        csv_path = session.workdir / "sample.csv"
+        csv_path.write_text("x,y\n1,2\n", encoding="utf-8")
+
+        other = User.objects.create_user(username="chart_other", password="pass123")
+        self.client.logout()
+        self.client.login(username="chart_other", password="pass123")
+
+        resp = self.client.post(
+            self.chart_url,
+            {"session_id": session_id, "path": "sample.csv"},
+            content_type="application/json",
+        )
+
+        self.assertEqual(resp.status_code, HTTPStatus.FORBIDDEN)
+
+    def test_session_file_preview_parquet(self):
+        session_id = f"notebook:{self.notebook.id}"
+        session = create_session(session_id)
+        parquet_path = session.workdir / "sample.parquet"
+
+        has_pyarrow = importlib.util.find_spec("pyarrow") is not None
+        if has_pyarrow:
+            import pyarrow as pa
+            import pyarrow.parquet as pq
+
+            table = pa.table({"a": [1, 2], "b": ["x", "y"]})
+            pq.write_table(table, parquet_path)
+        else:
+            # Simulate a parquet upload in environments without pyarrow.
+            parquet_path.write_bytes(b"PAR1")
+
+        resp = self.client.get(f"{self.preview_url}?session_id={session_id}&path=sample.parquet")
+        data = resp.json()
+        if has_pyarrow:
+            self.assertEqual(resp.status_code, HTTPStatus.OK)
+            self.assertEqual(data["format"], "parquet")
+            self.assertEqual(data["columns"], ["a", "b"])
+            self.assertEqual(data["rows"][0], ["1", "x"])
+        else:
+            self.assertEqual(resp.status_code, HTTPStatus.BAD_REQUEST)
+            self.assertIn("pyarrow", (data.get("detail") or "").lower())
 
     def test_stop_session_success(self):
         session_id = f"notebook:{self.notebook.id}"

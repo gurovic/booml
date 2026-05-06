@@ -20,7 +20,7 @@ body {
 /* Container */
 .container {
   width: 100%;
-  max-width: 1200px;
+  max-width: 1440px;
   margin: 0 auto;
   padding: 0 16px;
 }
@@ -46,6 +46,18 @@ body {
 .button--secondary {
   background-color: var(--color-button-secondary);
   color: var(--color-button-text-secondary);
+}
+
+.button--danger {
+  background: rgba(180, 35, 24, 0.08);
+  border: 1px solid rgba(180, 35, 24, 0.24);
+  color: var(--color-text-danger);
+}
+
+.button--danger:hover {
+  opacity: 1;
+  background: rgba(180, 35, 24, 0.12);
+  border-color: rgba(180, 35, 24, 0.34);
 }
 
 .button:hover {

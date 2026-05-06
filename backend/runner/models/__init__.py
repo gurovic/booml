@@ -1,14 +1,17 @@
 from .notebook import Notebook
+from .notebook_folder import NotebookFolder
 from .cell import Cell
 from .report import Report
 from .submission import Submission
-from .contest import Contest
+from .contest import Contest, ContestProblem
 from .problem_desriptor import ProblemDescriptor
 from .problem_data import ProblemData
 from .prevalidation import PreValidation
 from .leaderboard import Leaderboard
-from .notebook import Notebook
 from .problem import Problem
 from .tag import Tag
-from .section import Section
-from .course import Course, CourseParticipant
+from .section import Section, SectionTeacher
+from .course import Course, CourseParticipant, FavoriteCourse
+from .site_update import SiteUpdate
+from .profile import Profile, TeacherAccessRequest
+from .contest_notification import ContestNotification, ContestNotificationRecipient

@@ -21,6 +21,33 @@ class RunPrevalidationTestCase(TestCase):
     def tearDown(self):
         self.tmpdir.cleanup()
 
+    def _create_submission(
+        self,
+        submission_csv: str,
+        *,
+        sample_csv: str | None = None,
+        id_column: str = "id",
+        target_column: str = "value",
+        target_type: str = "int",
+        check_order: bool = False,
+    ) -> Submission:
+        problem = Problem.objects.create(title="Test Problem", created_at=timezone.now().date())
+        ProblemDescriptor.objects.create(
+            problem=problem,
+            id_column=id_column,
+            target_column=target_column,
+            target_type=target_type,
+            check_order=check_order,
+        )
+        if sample_csv is not None:
+            problem_data = ProblemData.objects.create(problem=problem)
+            problem_data.sample_submission_file.save("sample.csv", ContentFile(sample_csv), save=True)
+
+        test_user = User.objects.create_user(username=f"testuser_{Problem.objects.count()}")
+        submission = Submission.objects.create(problem=problem, user=test_user)
+        submission.file.save("submission.csv", ContentFile(submission_csv), save=True)
+        return submission
+
     @patch("runner.services.prevalidation_service.transaction.atomic")
     @patch("runner.services.prevalidation_service.PreValidation.save")
     @patch("runner.services.prevalidation_service.Submission.save")
@@ -150,3 +177,89 @@ class RunPrevalidationTestCase(TestCase):
         self.assertTrue(any("Row count does not match sample submission" in err for err in preval.errors))
         mock_preval_save.assert_called()
         mock_sub_save.assert_called()
+
+    @override_settings(MEDIA_ROOT=tempfile.gettempdir())
+    def test_missing_header_row(self):
+        submission = self._create_submission("")
+        preval = run_prevalidation(submission)
+        self.assertEqual(preval.status, "failed")
+        self.assertTrue(any("Missing CSV header row" in err for err in preval.errors))
+
+    @override_settings(MEDIA_ROOT=tempfile.gettempdir())
+    def test_duplicate_columns_in_header(self):
+        submission = self._create_submission("id,id\n1,2\n")
+        preval = run_prevalidation(submission)
+        self.assertEqual(preval.status, "failed")
+        self.assertTrue(any("Duplicate column names in header" in err for err in preval.errors))
+
+    @override_settings(MEDIA_ROOT=tempfile.gettempdir())
+    def test_missing_and_extra_columns(self):
+        submission = self._create_submission("id,extra\n1,foo\n")
+        preval = run_prevalidation(submission)
+        self.assertEqual(preval.status, "failed")
+        self.assertTrue(any("Missing required columns" in err for err in preval.errors))
+        self.assertTrue(any("Unexpected columns" in err for err in preval.errors))
+
+    @override_settings(MEDIA_ROOT=tempfile.gettempdir())
+    def test_empty_data_rows(self):
+        submission = self._create_submission("id,value\n")
+        preval = run_prevalidation(submission)
+        self.assertEqual(preval.status, "failed")
+        self.assertTrue(any("CSV contains no data rows" in err for err in preval.errors))
+
+    @override_settings(MEDIA_ROOT=tempfile.gettempdir())
+    def test_sample_header_mismatch(self):
+        submission = self._create_submission(
+            "id,value\n1,10\n",
+            sample_csv="id,pred\n1,10\n",
+        )
+        preval = run_prevalidation(submission)
+        self.assertEqual(preval.status, "failed")
+        self.assertTrue(any("Columns do not match sample submission" in err for err in preval.errors))
+
+    @override_settings(MEDIA_ROOT=tempfile.gettempdir())
+    def test_row_column_count_errors(self):
+        submission = self._create_submission("id,value\n1,2,3\n4\n")
+        preval = run_prevalidation(submission)
+        self.assertEqual(preval.status, "failed")
+        self.assertTrue(any("Too many columns at line 2" in err for err in preval.errors))
+        self.assertTrue(any("Not enough columns at line 3" in err for err in preval.errors))
+
+    @override_settings(MEDIA_ROOT=tempfile.gettempdir())
+    def test_sample_header_takes_priority_over_descriptor_columns(self):
+        submission = self._create_submission(
+            "id,pred\n1,10\n2,20\n",
+            sample_csv="id,pred\n1,10\n2,20\n",
+            target_column="prediction",
+            target_type="float",
+        )
+        preval = run_prevalidation(submission)
+        self.assertEqual(preval.status, "passed")
+        self.assertEqual(preval.errors_count, 0)
+
+    @override_settings(MEDIA_ROOT=tempfile.gettempdir())
+    def test_exact_sample_submission_with_empty_values_passes(self):
+        sample_csv = "id,pred\n1,\n2,\n"
+        submission = self._create_submission(
+            sample_csv,
+            sample_csv=sample_csv,
+            target_column="prediction",
+            target_type="float",
+        )
+        preval = run_prevalidation(submission)
+        self.assertEqual(preval.status, "passed")
+        self.assertEqual(preval.errors_count, 0)
+
+    @override_settings(MEDIA_ROOT=tempfile.gettempdir())
+    def test_descriptor_id_fallback_to_first_column_when_schema_file_missing(self):
+        submission = self._create_submission(
+            "person,value\nu1,10\nu2,20\n",
+            sample_csv=None,
+            id_column="id",
+            target_column="value",
+            target_type="int",
+        )
+        preval = run_prevalidation(submission)
+        self.assertEqual(preval.status, "warnings")
+        self.assertEqual(preval.errors_count, 0)
+        self.assertGreaterEqual(preval.warnings_count, 1)

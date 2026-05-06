@@ -1,7 +1,40 @@
+from pathlib import Path
+
 from django import forms
+from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
-from django.contrib.auth import authenticate
+
+from runner.models import TeacherAccessRequest
+from runner.services.captcha import (
+    CaptchaConfigError,
+    CaptchaValidationError,
+    get_client_ip,
+    is_captcha_enabled,
+    verify_turnstile_token,
+)
+
+TEACHER_PROOF_MAX_SIZE = 10 * 1024 * 1024
+TEACHER_PROOF_ALLOWED_TYPES = {"image/jpeg", "image/png", "image/webp"}
+TEACHER_PROOF_ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
+
+
+def validate_teacher_proof(proof):
+    if not proof:
+        return "Приложите скриншот из МЭШ или другое подтверждение статуса учителя."
+
+    if proof.size > TEACHER_PROOF_MAX_SIZE:
+        return "Файл слишком большой. Максимальный размер 10MB."
+
+    extension = Path(proof.name).suffix.lower()
+    if extension not in TEACHER_PROOF_ALLOWED_EXTENSIONS:
+        return "Допустимы только изображения JPEG, PNG или WEBP."
+
+    content_type = getattr(proof, "content_type", "")
+    if content_type and content_type not in TEACHER_PROOF_ALLOWED_TYPES:
+        return "Допустимы только изображения JPEG, PNG или WEBP."
+
+    return None
 
 
 class RegisterForm(forms.ModelForm):
@@ -27,6 +60,17 @@ class RegisterForm(forms.ModelForm):
         initial=ROLE_STUDENT,
         widget=forms.RadioSelect,
     )
+    teacher_proof = forms.FileField(
+        label="Подтверждение статуса учителя",
+        required=False,
+        help_text="Для учительского аккаунта приложите скриншот из МЭШ или другое подтверждение.",
+    )
+    teacher_comment = forms.CharField(
+        label="Комментарий для модератора",
+        required=False,
+        widget=forms.Textarea,
+    )
+    captcha_token = forms.CharField(required=False, widget=forms.HiddenInput())
 
     class Meta:
         model = User
@@ -35,6 +79,10 @@ class RegisterForm(forms.ModelForm):
             'username': forms.TextInput(attrs={'placeholder': 'Имя пользователя'}),
             'email': forms.EmailInput(attrs={'placeholder': 'Email'}),
         }
+
+    def __init__(self, *args, request=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.request = request
 
     def clean_password2(self):
         password1 = self.cleaned_data.get('password1')
@@ -49,14 +97,43 @@ class RegisterForm(forms.ModelForm):
             raise ValidationError('Пароль должен быть не менее 8 символов')
         return password1
 
+    def clean(self):
+        cleaned_data = super().clean()
+
+        role_value = cleaned_data.get("role")
+        teacher_proof = cleaned_data.get("teacher_proof")
+        if role_value == self.ROLE_TEACHER:
+            proof_error = validate_teacher_proof(teacher_proof)
+            if proof_error:
+                self.add_error("teacher_proof", proof_error)
+
+        if not is_captcha_enabled():
+            return cleaned_data
+
+        try:
+            verify_turnstile_token(
+                cleaned_data.get("captcha_token", ""),
+                remote_ip=get_client_ip(self.request),
+            )
+        except CaptchaValidationError as exc:
+            self.add_error("captcha_token", str(exc))
+        except CaptchaConfigError:
+            raise ValidationError("Капча временно недоступна. Попробуйте позже.")
+
+        return cleaned_data
+
     def save(self, commit=True):
         user = super().save(commit=False)
         user.set_password(self.cleaned_data['password1'])
-        role_value = self.cleaned_data.get('role', self.ROLE_STUDENT)
-        if role_value == self.ROLE_TEACHER:
-            user.is_staff = True  # ставим учителя в staff
+        user.is_staff = False
         if commit:
             user.save()
+            if self.cleaned_data.get('role') == self.ROLE_TEACHER:
+                TeacherAccessRequest.objects.create(
+                    user=user,
+                    proof=self.cleaned_data['teacher_proof'],
+                    comment=(self.cleaned_data.get('teacher_comment') or '').strip(),
+                )
         return user
 
 

@@ -1,11 +1,14 @@
 import json
+import base64
+import email.header
+import zipfile
 from io import BytesIO
 
 from django.contrib.auth import get_user_model
 from django.test import Client, TestCase
 from django.urls import reverse
 
-from ..models import Notebook, Cell
+from ..models import Notebook, Cell, NotebookFolder
 
 
 class ImportExportNotebookTests(TestCase):
@@ -45,18 +48,27 @@ class ImportExportNotebookTests(TestCase):
         export_response = self.client.get(export_url)
 
         self.assertEqual(export_response.status_code, 200)
-        self.assertIn("application/json", export_response.get("Content-Type", ""))
+        self.assertIn("json", export_response.get("Content-Type", "").lower())
+        
+        # Проверяем, что имя файла правильное
+        content_disposition = export_response.get('Content-Disposition', '')
+        self.assertIn('attachment', content_disposition)
+        self.assertIn('.ipynb', content_disposition)
+        self.assertIn('Test_Notebook.ipynb', content_disposition)
 
         exported_data = json.loads(export_response.content.decode('utf-8'))
         
-        self.assertIn('notebook', exported_data)
         self.assertIn('cells', exported_data)
-        self.assertEqual(exported_data['notebook']['title'], 'Test Notebook')
+        self.assertIn('metadata', exported_data)
+        booml = exported_data['metadata'].get('booml_metadata', {})
+        self.assertEqual(booml.get('booml_title'), 'Test Notebook')
+        self.assertEqual(booml.get('compute_device'), 'cpu')
         self.assertEqual(len(exported_data['cells']), 3)
 
         json_file = BytesIO(export_response.content)
         json_file.name = 'test_notebook.json'
-        
+        json_file.seek(0)
+
         import_url = reverse("runner:import_notebook")
         import_response = self.client.post(
             import_url,
@@ -67,19 +79,20 @@ class ImportExportNotebookTests(TestCase):
         self.assertEqual(import_response.status_code, 200)
         import_data = import_response.json()
         self.assertEqual(import_data['status'], 'success')
-        self.assertEqual(import_data['cells_created'], 3)
-        self.assertEqual(import_data['cells_total'], 3)
+        self.assertIn('notebook_id', import_data)
 
         imported_notebook = Notebook.objects.get(id=import_data['notebook_id'])
         self.assertIsNotNone(imported_notebook)
         self.assertEqual(imported_notebook.title, 'Test Notebook')
+        self.assertEqual(imported_notebook.compute_device, 'cpu')
 
         imported_cells = imported_notebook.cells.all().order_by('execution_order')
         self.assertEqual(imported_cells.count(), 3)
         
         self.assertEqual(imported_cells[0].cell_type, Cell.CODE)
         self.assertEqual(imported_cells[0].content, 'print("Hello")')
-        self.assertEqual(imported_cells[0].output, 'Hello')
+        # При импорте вывод не сохраняется
+        self.assertEqual(imported_cells[0].output, '')
         self.assertEqual(imported_cells[0].execution_order, 0)
         
         self.assertEqual(imported_cells[1].cell_type, Cell.TEXT)
@@ -96,10 +109,12 @@ class ImportExportNotebookTests(TestCase):
         self.assertEqual(export_response.status_code, 200)
         exported_data = json.loads(export_response.content.decode('utf-8'))
         self.assertEqual(len(exported_data['cells']), 0)
-        self.assertEqual(exported_data['notebook']['title'], 'Test Notebook')
+        booml = exported_data.get('metadata', {}).get('booml_metadata', {})
+        self.assertEqual(booml.get('booml_title'), 'Test Notebook')
 
         json_file = BytesIO(export_response.content)
         json_file.name = 'empty_notebook.json'
+        json_file.seek(0)
 
         import_url = reverse("runner:import_notebook")
         import_response = self.client.post(
@@ -111,8 +126,7 @@ class ImportExportNotebookTests(TestCase):
         self.assertEqual(import_response.status_code, 200)
         import_data = import_response.json()
         self.assertEqual(import_data['status'], 'success')
-        self.assertEqual(import_data['cells_created'], 0)
-        self.assertEqual(import_data['cells_total'], 0)
+        self.assertIn('notebook_id', import_data)
 
         imported_notebook = Notebook.objects.get(id=import_data['notebook_id'])
         # owner может быть None
@@ -138,7 +152,174 @@ class ImportExportNotebookTests(TestCase):
         self.assertIn('filename', response_data)
         
         notebook_data = response_data['data']
-        self.assertEqual(notebook_data['notebook']['title'], 'Test Notebook')
+        booml = notebook_data['metadata'].get('booml_metadata', {})
+        self.assertEqual(booml.get('booml_title'), 'Test Notebook')
         self.assertEqual(len(notebook_data['cells']), 1)
-        self.assertEqual(notebook_data['cells'][0]['content'], 'test code')
+        source = notebook_data['cells'][0].get('source', [])
+        content = '\n'.join(source) if isinstance(source, list) else source
+        self.assertEqual(content, 'test code')
 
+    def test_export_notebook_filename(self):
+        """Проверяет, что экспортируемый файл имеет правильное имя с расширением .ipynb"""
+        export_url = reverse("runner:export_notebook", args=[self.notebook.id])
+        export_response = self.client.get(export_url)
+        
+        self.assertEqual(export_response.status_code, 200)
+        
+        # Проверяем Content-Disposition заголовок
+        content_disposition = export_response.get('Content-Disposition', '')
+        self.assertIn('attachment', content_disposition)
+        self.assertIn('.ipynb', content_disposition)
+        
+        # Проверяем, что имя файла содержит название блокнота
+        # Формат: attachment; filename="Test_Notebook.ipynb"; filename*=UTF-8''...
+        self.assertIn('Test_Notebook.ipynb', content_disposition)
+        
+        # Проверяем Content-Type
+        content_type = export_response.get('Content-Type', '')
+        self.assertIn('application/json', content_type)
+
+    def test_export_notebook_filename_with_cyrillic(self):
+        """Проверяет экспорт блокнота с кириллическим названием"""
+        cyrillic_notebook = Notebook.objects.create(
+            owner=self.user,
+            title="Мой блокнот"
+        )
+        
+        export_url = reverse("runner:export_notebook", args=[cyrillic_notebook.id])
+        export_response = self.client.get(export_url)
+        
+        self.assertEqual(export_response.status_code, 200)
+        
+        # Получаем Content-Disposition заголовок
+        # Django может кодировать заголовки с не-ASCII символами, поэтому нужно декодировать
+        content_disposition_raw = export_response.get('Content-Disposition', '')
+        
+        # Декодируем заголовок, если он закодирован (RFC 2047)
+        try:
+            decoded_header = email.header.decode_header(content_disposition_raw)
+            content_disposition = ''.join(
+                part.decode(encoding or 'utf-8') if isinstance(part, bytes) else part
+                for part, encoding in decoded_header
+            )
+        except (UnicodeDecodeError, AttributeError):
+            # Если декодирование не удалось, используем исходную строку
+            content_disposition = content_disposition_raw
+        
+        # Проверяем базовые требования
+        self.assertIn('attachment', content_disposition.lower())
+        self.assertIn('.ipynb', content_disposition.lower())
+        
+        # Проверяем наличие filename параметра
+        self.assertTrue(
+            'filename' in content_disposition.lower(),
+            f"Должен быть параметр filename. Получено: {content_disposition}"
+        )
+        
+        # Проверяем наличие filename* для поддержки UTF-8 (RFC 5987)
+        # Это важно для правильной обработки кириллицы в браузерах
+        self.assertTrue(
+            'filename*' in content_disposition.lower() or 'utf-8' in content_disposition.lower(),
+            f"Должен быть параметр filename* для UTF-8. Получено: {content_disposition}"
+        )
+        
+        # Извлекаем имя файла из заголовка для проверки
+        import re
+        # Пытаемся найти имя файла в разных форматах
+        filename_match = re.search(r'filename[^=]*=["\']([^"\']+)["\']', content_disposition, re.IGNORECASE)
+        if not filename_match:
+            # Пытаемся найти без кавычек
+            filename_match = re.search(r'filename[^=]*=([^;\s]+)', content_disposition, re.IGNORECASE)
+        
+        if filename_match:
+            filename = filename_match.group(1)
+            # Проверяем, что имя файла содержит расширение .ipynb
+            self.assertIn('.ipynb', filename.lower())
+            # Проверяем, что имя файла не пустое и не просто "notebook.ipynb"
+            self.assertNotEqual(filename.lower(), 'notebook.ipynb', 
+                              f"Имя файла должно быть основано на названии блокнота, получено: {filename}")
+
+    def test_export_notebook_filename_sanitization(self):
+        """Проверяет очистку недопустимых символов из имени файла"""
+        # Создаем блокнот с недопустимыми символами в названии
+        invalid_chars_notebook = Notebook.objects.create(
+            owner=self.user,
+            title='Test/Notebook:Name*With?Invalid"Chars<>|'
+        )
+        
+        export_url = reverse("runner:export_notebook", args=[invalid_chars_notebook.id])
+        export_response = self.client.get(export_url)
+        
+        self.assertEqual(export_response.status_code, 200)
+        
+        # Проверяем Content-Disposition заголовок
+        content_disposition = export_response.get('Content-Disposition', '')
+        self.assertIn('attachment', content_disposition)
+        self.assertIn('.ipynb', content_disposition)
+        
+        # Проверяем, что недопустимые символы заменены на подчеркивания
+        # Ожидаемое имя: Test_Notebook_Name_With_Invalid_Chars_.ipynb
+        self.assertIn('Test_Notebook', content_disposition)
+        # Убеждаемся, что недопустимые символы отсутствуют
+        self.assertNotIn('Test/Notebook', content_disposition)
+        self.assertNotIn(':', content_disposition.split('filename')[1] if 'filename' in content_disposition else '')
+
+    def test_backend_export_archive_requires_auth(self):
+        export_url = reverse("runner:backend_export_notebooks_archive")
+        response = self.client.post(
+            export_url,
+            data=json.dumps({
+                "notebook_ids": [self.notebook.id],
+                "folder_ids": [],
+            }),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 401)
+
+    def test_backend_export_archive_returns_zip_for_selected_entries(self):
+        self.client.login(username="user", password="pass")
+        root_notebook = Notebook.objects.create(owner=self.user, title="Root")
+        folder = NotebookFolder.objects.create(
+            owner=self.user,
+            title="Pack",
+            kind=NotebookFolder.Kind.CUSTOM,
+        )
+        folder_notebook = Notebook.objects.create(
+            owner=self.user,
+            folder=folder,
+            title="Inside",
+        )
+        Cell.objects.create(
+            notebook=root_notebook,
+            cell_type=Cell.CODE,
+            content="print('root')",
+            execution_order=0,
+        )
+        Cell.objects.create(
+            notebook=folder_notebook,
+            cell_type=Cell.TEXT,
+            content="inside",
+            execution_order=0,
+        )
+
+        export_url = reverse("runner:backend_export_notebooks_archive")
+        response = self.client.post(
+            export_url,
+            data=json.dumps({
+                "notebook_ids": [root_notebook.id],
+                "folder_ids": [folder.id],
+            }),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("application/zip", response.get("Content-Type", "").lower())
+        self.assertIn(".zip", response.get("Content-Disposition", ""))
+
+        with zipfile.ZipFile(BytesIO(response.content), mode="r") as archive:
+            names = archive.namelist()
+            self.assertIn("Root.ipynb", names)
+            self.assertIn("Pack/Inside.ipynb", names)
+
+            inside_payload = json.loads(archive.read("Pack/Inside.ipynb").decode("utf-8"))
+            self.assertIn("cells", inside_payload)
+            self.assertEqual(len(inside_payload["cells"]), 1)

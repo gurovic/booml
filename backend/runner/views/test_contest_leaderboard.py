@@ -10,7 +10,11 @@ from django.utils import timezone
 
 from runner.models import Contest, Course, CourseParticipant, Problem, ProblemDescriptor, Section, Submission
 from runner.services.section_service import SectionCreateInput, create_section
-from runner.views.contest_leaderboard import build_contest_problem_leaderboards, contest_problem_leaderboard
+from runner.views.contest_leaderboard import (
+    build_contest_overall_leaderboard,
+    build_contest_problem_leaderboards,
+    contest_problem_leaderboard,
+)
 
 User = get_user_model()
 
@@ -117,7 +121,7 @@ class ContestLeaderboardViewTests(TestCase):
         leaderboards = {lb["problem_id"]: lb for lb in payload["leaderboards"]}
 
         rmse_board = leaderboards[self.problem_rmse.id]
-        self.assertTrue(rmse_board["lower_is_better"])
+        self.assertFalse(rmse_board["lower_is_better"])
         rmse_entries = rmse_board["entries"]
         rmse_user_ids = {entry["user_id"] for entry in rmse_entries}
         self.assertEqual(
@@ -157,3 +161,223 @@ class ContestLeaderboardViewTests(TestCase):
         entries = leaderboards[0]["entries"]
         user_ids = {entry["user_id"] for entry in entries}
         self.assertEqual(user_ids, {self.bob.id})
+
+    def test_unpublished_problem_is_excluded_from_leaderboards(self):
+        self.problem_accuracy.is_published = False
+        self.problem_accuracy.save(update_fields=["is_published"])
+
+        request = self.factory.get("/")
+        request.user = self.teacher
+        response = contest_problem_leaderboard.__wrapped__(request, contest_id=self.contest.id)
+
+        self.assertEqual(response.status_code, 200)
+        payload = json.loads(response.content.decode())
+        self.assertEqual([row["problem_id"] for row in payload["leaderboards"]], [self.problem_rmse.id])
+        self.assertEqual(payload["overall_leaderboard"]["problems_count"], 1)
+
+    def test_overall_leaderboard_ioi_scores(self):
+        self._create_submission(self.alice, self.problem_rmse, "rmse", 0.4)
+        self._create_submission(self.bob, self.problem_rmse, "rmse", 0.2)
+        self._create_submission(self.alice, self.problem_accuracy, "accuracy", 0.9)
+        self._create_submission(self.bob, self.problem_accuracy, "accuracy", 0.9)
+
+        overall = build_contest_overall_leaderboard(self.contest)
+        entries = {entry["user_id"]: entry for entry in overall["entries"]}
+
+        self.assertEqual(entries[self.bob.id]["rank"], 1)
+        self.assertEqual(entries[self.alice.id]["rank"], 2)
+        self.assertIsNone(entries[self.charlie.id]["rank"])
+        self.assertAlmostEqual(entries[self.bob.id]["total_score"], 170.0, places=6)
+        self.assertAlmostEqual(entries[self.alice.id]["total_score"], 150.0, places=6)
+
+    def test_overall_leaderboard_icpc_penalty(self):
+        start_time = timezone.now() - timedelta(hours=2)
+        icpc_contest = Contest.objects.create(
+            title="ICPC Contest",
+            course=self.course,
+            created_by=self.teacher,
+            is_published=True,
+            approval_status=Contest.ApprovalStatus.APPROVED,
+            scoring=Contest.Scoring.ICPC,
+            start_time=start_time,
+        )
+        icpc_contest.problems.add(self.problem_rmse, self.problem_accuracy)
+
+        alice_fail = self._create_submission(
+            self.alice,
+            self.problem_rmse,
+            "rmse",
+            1.0,
+            status=Submission.STATUS_FAILED,
+        )
+        alice_ok = self._create_submission(
+            self.alice,
+            self.problem_rmse,
+            "rmse",
+            0.5,
+        )
+        alice_second = self._create_submission(
+            self.alice,
+            self.problem_accuracy,
+            "accuracy",
+            0.8,
+        )
+        bob_ok = self._create_submission(
+            self.bob,
+            self.problem_rmse,
+            "rmse",
+            0.3,
+        )
+
+        Submission.objects.filter(pk=alice_fail.pk).update(
+            submitted_at=start_time + timedelta(minutes=10)
+        )
+        Submission.objects.filter(pk=alice_ok.pk).update(
+            submitted_at=start_time + timedelta(minutes=30)
+        )
+        Submission.objects.filter(pk=alice_second.pk).update(
+            submitted_at=start_time + timedelta(minutes=70)
+        )
+        Submission.objects.filter(pk=bob_ok.pk).update(
+            submitted_at=start_time + timedelta(minutes=20)
+        )
+
+        overall = build_contest_overall_leaderboard(icpc_contest)
+        entries = {entry["user_id"]: entry for entry in overall["entries"]}
+
+        self.assertEqual(entries[self.alice.id]["solved_count"], 2)
+        self.assertEqual(entries[self.bob.id]["solved_count"], 1)
+        self.assertEqual(entries[self.alice.id]["penalty_minutes"], 120)
+        self.assertEqual(entries[self.bob.id]["penalty_minutes"], 20)
+        self.assertEqual(entries[self.alice.id]["rank"], 1)
+        self.assertEqual(entries[self.bob.id]["rank"], 2)
+
+    def test_upsolving_scores_are_separated_from_official_results(self):
+        start_time = timezone.now() - timedelta(hours=3)
+        timed_contest = Contest.objects.create(
+            title="Timed Upsolving Contest",
+            course=self.course,
+            created_by=self.teacher,
+            is_published=True,
+            approval_status=Contest.ApprovalStatus.APPROVED,
+            start_time=start_time,
+            duration_minutes=60,
+            allow_upsolving=True,
+        )
+        timed_contest.problems.add(self.problem_accuracy)
+
+        before_deadline = self._create_submission(
+            self.alice,
+            self.problem_accuracy,
+            "accuracy",
+            0.6,
+        )
+        after_deadline = self._create_submission(
+            self.alice,
+            self.problem_accuracy,
+            "accuracy",
+            0.95,
+        )
+        Submission.objects.filter(pk=before_deadline.pk).update(
+            submitted_at=start_time + timedelta(minutes=20)
+        )
+        Submission.objects.filter(pk=after_deadline.pk).update(
+            submitted_at=start_time + timedelta(minutes=90)
+        )
+
+        boards = build_contest_problem_leaderboards(timed_contest)
+        alice_problem_entry = next(
+            row
+            for row in boards[0]["entries"]
+            if row["user_id"] == self.alice.id
+        )
+        self.assertIsNotNone(alice_problem_entry["best_score"])
+        self.assertIsNotNone(alice_problem_entry["best_score_after_deadline"])
+        self.assertTrue(alice_problem_entry["improved_after_deadline"])
+        self.assertLess(
+            alice_problem_entry["best_score"],
+            alice_problem_entry["best_score_after_deadline"],
+        )
+
+        overall = build_contest_overall_leaderboard(timed_contest)
+        alice_overall = next(
+            row
+            for row in overall["entries"]
+            if row["user_id"] == self.alice.id
+        )
+        self.assertIsNotNone(alice_overall["total_score"])
+        self.assertIsNotNone(alice_overall["upsolving_total_score"])
+        self.assertLess(alice_overall["total_score"], alice_overall["upsolving_total_score"])
+
+    def test_same_problem_submissions_are_shared_across_contests(self):
+        earlier_contest = Contest.objects.create(
+            title="Earlier Contest",
+            course=self.course,
+            created_by=self.teacher,
+            is_published=True,
+            approval_status=Contest.ApprovalStatus.APPROVED,
+        )
+        target_contest_start = timezone.now() - timedelta(hours=3)
+        target_contest = Contest.objects.create(
+            title="Target Contest",
+            course=self.course,
+            created_by=self.teacher,
+            is_published=True,
+            approval_status=Contest.ApprovalStatus.APPROVED,
+            start_time=target_contest_start,
+            duration_minutes=60,
+            allow_upsolving=False,
+        )
+        earlier_contest.problems.add(self.problem_accuracy)
+        target_contest.problems.add(self.problem_accuracy)
+
+        before_end_submission = self._create_submission(
+            self.alice,
+            self.problem_accuracy,
+            "accuracy",
+            0.82,
+        )
+        after_end_submission = self._create_submission(
+            self.alice,
+            self.problem_accuracy,
+            "accuracy",
+            0.96,
+        )
+        # Submission made before target contest start (e.g. in another contest)
+        # should be counted automatically in the timed contest.
+        Submission.objects.filter(pk=before_end_submission.pk).update(
+            submitted_at=target_contest_start - timedelta(hours=1)
+        )
+        # Better submission after target contest end (e.g. in another contest) must not
+        # affect the official frozen results of the timed contest.
+        Submission.objects.filter(pk=after_end_submission.pk).update(
+            submitted_at=target_contest_start + timedelta(hours=2)
+        )
+
+        problem_boards = build_contest_problem_leaderboards(target_contest)
+        alice_problem_entry = next(
+            row for row in problem_boards[0]["entries"] if row["user_id"] == self.alice.id
+        )
+        self.assertIsNotNone(alice_problem_entry["best_score"])
+        self.assertIsNotNone(alice_problem_entry["best_score_after_deadline"])
+        self.assertLess(
+            alice_problem_entry["best_score"],
+            alice_problem_entry["best_score_after_deadline"],
+        )
+
+        overall = build_contest_overall_leaderboard(target_contest)
+        alice_overall = next(row for row in overall["entries"] if row["user_id"] == self.alice.id)
+        self.assertEqual(alice_overall["solved_count"], 1)
+        self.assertIsNotNone(alice_overall["total_score"])
+        self.assertIsNone(alice_overall["upsolving_total_score"])
+
+    def test_student_cannot_view_leaderboard_before_start(self):
+        self.contest.start_time = timezone.now() + timedelta(hours=1)
+        self.contest.duration_minutes = 60
+        self.contest.save(update_fields=["start_time", "duration_minutes"])
+
+        request = self.factory.get("/")
+        request.user = self.alice
+        response = contest_problem_leaderboard.__wrapped__(request, contest_id=self.contest.id)
+
+        self.assertEqual(response.status_code, 403)

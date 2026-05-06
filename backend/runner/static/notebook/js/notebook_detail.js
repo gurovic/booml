@@ -9,12 +9,22 @@ const notebookDetail = {
     cellQueue: [],
     currentRun: null,
     cellOutputSnapshots: {},
+    runCellStreamStartUrl: null,
+    runCellStreamStatusUrl: null,
+    runCellInputUrl: null,
     storageEnabled: undefined,
     inactivityTimers: {
         prompt: null,
         ban: null,
     },
     inactivityOverlay: null,
+    inactivityMode: 'prompt',
+    inactivityPromptMs: 15 * 60 * 1000,
+    inactivityBanMs: 10 * 60 * 1000,
+    activityTrackingEnabled: false,
+    activityHandler: null,
+    activityEvents: ['click', 'keydown', 'mousemove', 'scroll', 'touchstart'],
+    streamPollTimeoutMs: null,
     lastActivityTs: null,
     filesRequestId: 0,
     sessionState: 'idle',
@@ -28,8 +38,19 @@ const notebookDetail = {
     },
     sessionStatusElement: null,
     sessionButtons: {},
+    computeDeviceSelect: null,
+    computeDeviceHint: null,
+    updateDeviceUrl: null,
+    currentComputeDevice: 'cpu',
+    inactivityToggleButton: null,
     clipboardCellId: null,
     clipboardIndicator: null,
+    filesPanel: null,
+    filesList: null,
+    filesPreview: null,
+    sessionFileChartUrl: null,
+    previewRequestId: 0,
+
 
     sanitizeUrl(value) {
         if (typeof value !== 'string') {
@@ -101,6 +122,167 @@ const notebookDetail = {
         } catch (error) {
             console.warn('Не удалось очистить localStorage', error);
         }
+    },
+
+    normalizeInactivityMode(value) {
+        if (!value) {
+            return 'prompt';
+        }
+        const normalized = String(value).trim().toLowerCase();
+        if (['off', 'none', 'disabled', 'unlimited', 'false', '0'].includes(normalized)) {
+            return 'off';
+        }
+        return 'prompt';
+    },
+
+    parseMinutes(value, fallbackMs) {
+        if (value === undefined || value === null || value === '') {
+            return fallbackMs;
+        }
+        const numeric = Number(value);
+        if (!Number.isFinite(numeric) || numeric <= 0) {
+            return 0;
+        }
+        return numeric * 60 * 1000;
+    },
+
+    updateInactivityToggle() {
+        if (!this.inactivityToggleButton) {
+            return;
+        }
+        if (this.inactivityMode === 'off') {
+            this.inactivityToggleButton.textContent = 'Debug · Остановка сессии: без ограничений';
+            return;
+        }
+        const minutes = this.inactivityPromptMs
+            ? Math.max(1, Math.round(this.inactivityPromptMs / 60000))
+            : 0;
+        this.inactivityToggleButton.textContent = minutes
+            ? `Debug · Остановка сессии: спрашивать через ${minutes} мин`
+            : 'Debug · Остановка сессии: спрашивать';
+    },
+
+    clearInactivityTimers() {
+        if (this.inactivityTimers.prompt) {
+            clearTimeout(this.inactivityTimers.prompt);
+            this.inactivityTimers.prompt = null;
+        }
+        if (this.inactivityTimers.ban) {
+            clearTimeout(this.inactivityTimers.ban);
+            this.inactivityTimers.ban = null;
+        }
+    },
+
+    disableActivityTracking() {
+        if (!this.activityTrackingEnabled) {
+            return;
+        }
+        if (this.activityHandler) {
+            this.activityEvents.forEach((evt) => {
+                document.removeEventListener(evt, this.activityHandler);
+            });
+        }
+        this.activityTrackingEnabled = false;
+    },
+
+    toggleInactivityMode() {
+        if (this.inactivityMode === 'off') {
+            this.inactivityMode = 'prompt';
+            this.initActivityTracking();
+            this.markActivity();
+        } else {
+            this.inactivityMode = 'off';
+            this.clearInactivityTimers();
+            this.hideInactivityPrompt();
+            this.disableActivityTracking();
+        }
+        if (this.notebookElement) {
+            this.notebookElement.dataset.inactivityMode = this.inactivityMode;
+        }
+        this.updateInactivityToggle();
+    },
+
+    stripPythonStringsAndComments(code) {
+        if (!code) {
+            return '';
+        }
+        const source = String(code);
+        let out = '';
+        let i = 0;
+        let state = 'normal';
+        let quote = '';
+        while (i < source.length) {
+            const ch = source[i];
+            const next = source[i + 1];
+            const next2 = source[i + 2];
+
+            if (state === 'normal') {
+                if (ch === '#') {
+                    while (i < source.length && source[i] !== '\n') {
+                        i += 1;
+                    }
+                    continue;
+                }
+                if (ch === "'" || ch === '"') {
+                    if (ch === next && ch === next2) {
+                        state = 'triple';
+                        quote = ch;
+                        out += '   ';
+                        i += 3;
+                        continue;
+                    }
+                    state = 'single';
+                    quote = ch;
+                    out += ' ';
+                    i += 1;
+                    continue;
+                }
+                out += ch;
+                i += 1;
+                continue;
+            }
+
+            if (state === 'single') {
+                if (ch === '\\' && i + 1 < source.length) {
+                    out += ' ';
+                    i += 2;
+                    continue;
+                }
+                if (ch === quote) {
+                    state = 'normal';
+                    out += ' ';
+                    i += 1;
+                    continue;
+                }
+                out += ch === '\n' ? '\n' : ' ';
+                i += 1;
+                continue;
+            }
+
+            if (state === 'triple') {
+                if (ch === quote && next === quote && next2 === quote) {
+                    state = 'normal';
+                    out += '   ';
+                    i += 3;
+                    continue;
+                }
+                out += ch === '\n' ? '\n' : ' ';
+                i += 1;
+                continue;
+            }
+        }
+        return out;
+    },
+
+    requiresInteractiveInput(code) {
+        if (!code) {
+            return false;
+        }
+        const cleaned = this.stripPythonStringsAndComments(code);
+        return /\binput\s*\(/.test(cleaned)
+            || /\bbuiltins\s*\.\s*input\b/.test(cleaned)
+            || /\bsys\s*\.\s*stdin\b/.test(cleaned)
+            || /\bfileinput\s*\.\s*input\b/.test(cleaned);
     },
 
     getStoredSessionId() {
@@ -315,6 +497,7 @@ const notebookDetail = {
                 return;
             }
             this.rememberOutputSnapshot(cellId, outputElement.innerHTML);
+            this.enhanceOutputElement(outputElement);
         });
     },
 
@@ -351,8 +534,12 @@ const notebookDetail = {
         });
     },
 
-    enqueueCellRun(cellId) {
-        this.cellQueue.push({ cellId, enqueuedAt: Date.now() });
+    enqueueCellRun(cellId, options = {}) {
+        this.cellQueue.push({
+            cellId,
+            enqueuedAt: Date.now(),
+            stopQueueOnError: Boolean(options.stopQueueOnError),
+        });
         this.updateQueueStatuses();
         this.processQueue();
     },
@@ -374,7 +561,11 @@ const notebookDetail = {
         job.controller = controller;
         job.cancelled = false;
         this.currentRun = job;
-        this.executeQueueJob(job).finally(() => {
+        this.executeQueueJob(job).then((status) => {
+            if (job.stopQueueOnError && status !== 'success') {
+                this.cellQueue = this.cellQueue.filter((queuedJob) => !queuedJob.stopQueueOnError);
+            }
+        }).finally(() => {
             const cellId = job.cellId;
             if (this.currentRun && this.currentRun.cellId === cellId) {
                 this.currentRun = null;
@@ -410,23 +601,25 @@ const notebookDetail = {
         const cellId = job.cellId;
         const cellElement = document.querySelector(`[data-cell-id="${cellId}"]`);
         if (!cellElement) {
-            return;
+            return 'skipped';
         }
         const textarea = cellElement.querySelector('textarea');
         const outputElement = document.getElementById(`output-${cellId}`);
         const saveOutputUrl = this.buildCellUrl(this.saveOutputUrlTemplate, cellId);
         const runCellUrl = this.runCellUrl;
+        const runCellStreamStartUrl = this.runCellStreamStartUrl;
+        const runCellStreamStatusUrl = this.runCellStreamStatusUrl;
 
-        if (!textarea || !outputElement || !runCellUrl) {
+        if (!textarea || !outputElement || (!runCellUrl && !(runCellStreamStartUrl && runCellStreamStatusUrl))) {
             this.setCellStatus(cellId, 'error');
-            return;
+            return 'error';
         }
 
         const cellNumericId = Number(cellId);
         if (Number.isNaN(cellNumericId)) {
             alert('Некорректный идентификатор ячейки');
             this.setCellStatus(cellId, 'error');
-            return;
+            return 'error';
         }
 
         const sessionId = await this.ensureSession();
@@ -435,7 +628,7 @@ const notebookDetail = {
             alert('Сначала создайте сессию.');
             this.updateSessionStatus('idle', 'Сессия не создана. Создайте новую.');
             this.setCellStatus(cellId, 'error');
-            return;
+            return 'error';
         }
 
         const code = textarea.value;
@@ -452,41 +645,98 @@ const notebookDetail = {
         const startedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
 
         try {
-            const response = await fetch(runCellUrl, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': this.config.csrfToken
-                },
-                body: JSON.stringify({
-                    session_id: sessionId,
-                    cell_id: cellNumericId
-                }),
-                signal: job.controller?.signal
-            });
-
-            const data = await response.json();
-
-            if (!response.ok) {
-                const message = data?.detail || data?.error || 'Не удалось выполнить ячейку';
-                const error = new Error(message);
-                error.status = response.status;
-                throw error;
+            const needsInput = this.requiresInteractiveInput(code);
+            const canStream = Boolean(runCellStreamStartUrl && runCellStreamStatusUrl);
+            const useStreaming = canStream && !needsInput;
+            if (needsInput && !runCellUrl) {
+                throw new Error('Интерактивный ввод недоступен');
             }
 
-            const formattedOutput = NotebookUtils.formatCellRunResult(data);
-            outputElement.innerHTML = formattedOutput;
-            outputElement.className = data.error ? 'output error' : 'output success';
-            this.renderArtifacts(cellId, []);
-            const finalStatus = data.error ? 'error' : 'success';
-            const durationMs = Math.max(
-                0,
-                (typeof performance !== 'undefined' ? performance.now() : Date.now()) - startedAt,
-            );
-            const meta = finalStatus === 'success' ? { durationMs } : null;
-            this.setCellStatus(cellId, finalStatus, meta);
-            this.rememberOutputSnapshot(cellId, formattedOutput);
-            await this.saveCellState(cellId, code, formattedOutput, saveOutputUrl);
+            if (useStreaming) {
+                return await this.executeQueueJobStreaming({
+                    job,
+                    cellId,
+                    sessionId,
+                    cellNumericId,
+                    code,
+                    outputElement,
+                    saveOutputUrl,
+                    startedAt,
+                    runCellStreamStartUrl,
+                    runCellStreamStatusUrl,
+                });
+            } else {
+                const response = await fetch(runCellUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': this.config.csrfToken
+                    },
+                    body: JSON.stringify({
+                        session_id: sessionId,
+                        cell_id: cellNumericId
+                    }),
+                    signal: job.controller?.signal
+                });
+
+                let data = await response.json();
+
+                if (!response.ok) {
+                    const message = data?.detail || data?.error || 'Не удалось выполнить ячейку';
+                    const error = new Error(message);
+                    error.status = response.status;
+                    throw error;
+                }
+
+                while (data?.status === 'input_required') {
+                    const formattedOutput = NotebookUtils.formatCellRunResult(data);
+                    outputElement.innerHTML = formattedOutput;
+                    this.enhanceOutputElement(outputElement);
+                    outputElement.className = 'output running';
+                    this.renderArtifacts(cellId, data.artifacts || []);
+                    if (!this.runCellInputUrl) {
+                        throw new Error('URL интерактивного ввода недоступен');
+                    }
+                    const value = await this.awaitInlineInput(outputElement);
+                    const inputResponse = await fetch(this.runCellInputUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': this.config.csrfToken
+                        },
+                        body: JSON.stringify({
+                            session_id: sessionId,
+                            cell_id: cellNumericId,
+                            run_id: data.run_id,
+                            input: value
+                        }),
+                        signal: job.controller?.signal
+                    });
+                    data = await inputResponse.json();
+                    if (!inputResponse.ok) {
+                        const message = data?.detail || data?.error || 'Не удалось отправить ввод';
+                        const error = new Error(message);
+                        error.status = inputResponse.status;
+                        throw error;
+                    }
+                }
+
+                const formattedOutput = NotebookUtils.formatCellRunResult(data);
+                outputElement.innerHTML = formattedOutput;
+                this.enhanceOutputElement(outputElement);
+                const finalStatus = (data.error || data.status === 'error') ? 'error' : 'success';
+                outputElement.className = finalStatus === 'error' ? 'output error' : 'output success';
+                this.renderArtifacts(cellId, data.artifacts || []);
+                const durationMs = Math.max(
+                    0,
+                    (typeof performance !== 'undefined' ? performance.now() : Date.now()) - startedAt,
+                );
+                const meta = finalStatus === 'success' ? { durationMs } : null;
+                this.setCellStatus(cellId, finalStatus, meta);
+                this.rememberOutputSnapshot(cellId, formattedOutput);
+                await this.saveCellState(cellId, code, formattedOutput, saveOutputUrl);
+                return finalStatus;
+            }
         } catch (error) {
             if (error?.status === 400 && /Сессия не создана/i.test(error.message || '')) {
                 this.handleSessionLost('Сессия не создана. Создайте новую.');
@@ -510,47 +760,1117 @@ const notebookDetail = {
                     this.rememberOutputSnapshot(cellId, note);
                     await this.saveCellState(cellId, code, note, saveOutputUrl);
                 }
-                return;
+                return 'cancelled';
             }
             console.error('Ошибка выполнения ячейки:', error);
             const message = error?.message || 'Не удалось выполнить ячейку';
-            const errorHtml = `<div class="output-error"><strong>Ошибка:</strong> ${NotebookUtils.escapeHtml(message)}</div>`;
+            const errorHtml = `<div class="output-error">${NotebookUtils.escapeHtml(message)}</div>`;
             outputElement.innerHTML = errorHtml;
             outputElement.className = 'output error';
             this.renderArtifacts(cellId, []);
             this.setCellStatus(cellId, 'error');
             this.rememberOutputSnapshot(cellId, errorHtml);
             await this.saveCellState(cellId, code, errorHtml, saveOutputUrl);
+            return 'error';
         }
     },
 
-    initActivityTracking() {
-        this.lastActivityTs = Date.now();
-        const events = ['click', 'keydown', 'mousemove', 'scroll', 'touchstart'];
-        this.activityHandler = this.markActivity.bind(this);
-        events.forEach((evt) => {
-            document.addEventListener(evt, this.activityHandler, { passive: true });
+    async executeQueueJobStreaming(payload) {
+        const {
+            job,
+            cellId,
+            sessionId,
+            cellNumericId,
+            code,
+            outputElement,
+            saveOutputUrl,
+            startedAt,
+            runCellStreamStartUrl,
+            runCellStreamStatusUrl,
+        } = payload;
+
+        const startResponse = await fetch(runCellStreamStartUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': this.config.csrfToken
+            },
+            body: JSON.stringify({
+                session_id: sessionId,
+                cell_id: cellNumericId
+            }),
+            signal: job.controller?.signal
         });
+
+        const startData = await startResponse.json();
+        if (!startResponse.ok) {
+            const message = startData?.detail || startData?.error || 'Не удалось выполнить ячейку';
+            const error = new Error(message);
+            error.status = startResponse.status;
+            throw error;
+        }
+
+        const runId = startData?.run_id;
+        if (!runId) {
+            throw new Error('Не удалось запустить выполнение ячейки');
+        }
+
+        let stdoutOffset = 0;
+        let stderrOffset = 0;
+        let stdoutNode = null;
+        let stderrNode = null;
+
+        const clearLoading = () => {
+            if (outputElement.querySelector('.output-loading')) {
+                outputElement.innerHTML = '';
+            }
+        };
+
+        const ensureStdoutNode = () => {
+            if (stdoutNode) {
+                return;
+            }
+            clearLoading();
+            const wrapper = document.createElement('div');
+            wrapper.className = 'output-text';
+            stdoutNode = document.createElement('pre');
+            stdoutNode.setAttribute('data-stream-stdout', '');
+            wrapper.appendChild(stdoutNode);
+            outputElement.appendChild(wrapper);
+        };
+
+        const ensureStderrNode = () => {
+            if (stderrNode) {
+                return;
+            }
+            clearLoading();
+            const wrapper = document.createElement('div');
+            wrapper.className = 'output-stderr';
+            stderrNode = document.createElement('pre');
+            stderrNode.setAttribute('data-stream-stderr', '');
+            wrapper.appendChild(stderrNode);
+            outputElement.appendChild(wrapper);
+        };
+
+        const appendText = (node, text) => {
+            if (!node || !text) {
+                return;
+            }
+            node.appendChild(document.createTextNode(text));
+        };
+
+        const maxPollMs = this.streamPollTimeoutMs;
+        while (true) {
+            const nowMs = (typeof performance !== 'undefined' && performance.now)
+                ? performance.now()
+                : Date.now();
+            if (maxPollMs && nowMs - startedAt > maxPollMs) {
+                const error = new Error('Превышено время ожидания выполнения');
+                error.status = 408;
+                throw error;
+            }
+            if (job.cancelled) {
+                throw new Error('cancelled');
+            }
+            const statusUrl = `${runCellStreamStatusUrl}?run_id=${encodeURIComponent(runId)}&stdout_offset=${stdoutOffset}&stderr_offset=${stderrOffset}`;
+            const statusResponse = await fetch(statusUrl, {
+                headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                signal: job.controller?.signal
+            });
+            const statusData = await statusResponse.json();
+            if (!statusResponse.ok) {
+                const message = statusData?.detail || statusData?.error || 'Не удалось получить статус выполнения';
+                const error = new Error(message);
+                error.status = statusResponse.status;
+                throw error;
+            }
+
+            if (statusData.stdout) {
+                ensureStdoutNode();
+                appendText(stdoutNode, statusData.stdout);
+            }
+            if (statusData.stderr) {
+                ensureStderrNode();
+                appendText(stderrNode, statusData.stderr);
+            }
+            const stdoutNext = Number(statusData.stdout_offset);
+            if (Number.isFinite(stdoutNext)) {
+                stdoutOffset = stdoutNext;
+            }
+            const stderrNext = Number(statusData.stderr_offset);
+            if (Number.isFinite(stderrNext)) {
+                stderrOffset = stderrNext;
+            }
+
+            if (statusData.status === 'error') {
+                const message = statusData?.detail || 'Не удалось выполнить ячейку';
+                const error = new Error(message);
+                error.status = 500;
+                throw error;
+            }
+
+            if (statusData.status === 'finished') {
+                const result = statusData.result;
+                const data = result || {
+                    stdout: '',
+                    stderr: '',
+                    error: null,
+                    outputs: [],
+                    artifacts: []
+                };
+                const formattedOutput = NotebookUtils.formatCellRunResult(data);
+                outputElement.innerHTML = formattedOutput;
+                this.enhanceOutputElement(outputElement);
+                outputElement.className = data.error ? 'output error' : 'output success';
+                this.renderArtifacts(cellId, data.artifacts || []);
+                const finalStatus = data.error ? 'error' : 'success';
+                const durationMs = Math.max(
+                    0,
+                    (typeof performance !== 'undefined' ? performance.now() : Date.now()) - startedAt,
+                );
+                const meta = finalStatus === 'success' ? { durationMs } : null;
+                this.setCellStatus(cellId, finalStatus, meta);
+                this.rememberOutputSnapshot(cellId, formattedOutput);
+                await this.saveCellState(cellId, code, formattedOutput, saveOutputUrl);
+                return finalStatus;
+            }
+
+            await new Promise((resolve) => setTimeout(resolve, 300));
+        }
+    },
+
+    clearInlineStdin(outputElement) {
+        if (!outputElement) {
+            return;
+        }
+        const existing = outputElement.querySelector('.stdin-inline');
+        if (existing) {
+            existing.remove();
+        }
+    },
+
+    getStdoutPre(outputElement) {
+        if (!outputElement) {
+            return null;
+        }
+        return outputElement.querySelector('[data-stream-stdout]') || outputElement.querySelector('.output-text pre');
+    },
+
+    ensureStdoutPre(outputElement) {
+        let pre = this.getStdoutPre(outputElement);
+        if (pre) {
+            return pre;
+        }
+        const wrapper = document.createElement('div');
+        wrapper.className = 'output-text';
+        pre = document.createElement('pre');
+        wrapper.appendChild(pre);
+        outputElement.appendChild(wrapper);
+        return pre;
+    },
+
+    awaitInlineInput(outputElement) {
+        this.clearInlineStdin(outputElement);
+        const pre = this.ensureStdoutPre(outputElement);
+        const wrapper = document.createElement('span');
+        wrapper.className = 'stdin-inline';
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.autocomplete = 'off';
+        input.spellcheck = false;
+        input.autocapitalize = 'off';
+        input.autocorrect = 'off';
+        input.className = 'stdin-inline';
+        wrapper.appendChild(input);
+        pre.appendChild(wrapper);
+        input.focus();
+        return new Promise((resolve) => {
+            input.addEventListener('keydown', (event) => {
+                if (event.key !== 'Enter') {
+                    return;
+                }
+                event.preventDefault();
+                const value = input.value || '';
+                wrapper.remove();
+                resolve(value);
+            });
+        });
+    },
+
+    enhanceOutputElement(outputElement) {
+        if (!outputElement) {
+            return;
+        }
+        const containers = outputElement.querySelectorAll('.dataframe-container');
+        containers.forEach((container) => {
+            if (container.dataset.enhanced === 'true') {
+                return;
+            }
+            const table = container.querySelector('table');
+            if (!table) {
+                return;
+            }
+            const toolbar = this.buildDataframeToolbar(container, table);
+            if (toolbar) {
+                container.insertAdjacentElement('beforebegin', toolbar);
+            }
+            this.highlightNullCells(table);
+            container.dataset.enhanced = 'true';
+        });
+    },
+
+    buildDataframeToolbar(container, table) {
+        const toolbar = document.createElement('div');
+        toolbar.className = 'dataframe-toolbar';
+
+        const summary = document.createElement('span');
+        summary.className = 'dataframe-summary';
+        const { rows, cols } = this.getTableShape(table);
+        summary.textContent = `Строк: ${rows} · Столбцов: ${cols}`;
+
+        const toggleButton = document.createElement('button');
+        toggleButton.type = 'button';
+        toggleButton.className = 'dataframe-toggle';
+        toggleButton.textContent = 'Показать всё';
+        toggleButton.addEventListener('click', () => {
+            const expanded = container.classList.toggle('dataframe-expanded');
+            toggleButton.textContent = expanded ? 'Свернуть' : 'Показать всё';
+        });
+
+        const searchInput = document.createElement('input');
+        searchInput.type = 'search';
+        searchInput.className = 'dataframe-search';
+        searchInput.placeholder = 'Поиск...';
+        searchInput.addEventListener('input', () => {
+            this.filterTableRows(table, searchInput.value);
+        });
+
+        const copyButton = document.createElement('button');
+        copyButton.type = 'button';
+        copyButton.className = 'dataframe-copy';
+        copyButton.textContent = 'Копировать CSV';
+        copyButton.addEventListener('click', () => this.copyTableCsv(table, copyButton));
+
+        const downloadButton = document.createElement('button');
+        downloadButton.type = 'button';
+        downloadButton.className = 'dataframe-download';
+        downloadButton.textContent = 'Скачать CSV';
+        downloadButton.addEventListener('click', () => this.downloadTableCsv(table));
+
+        const chartButton = document.createElement('button');
+        chartButton.type = 'button';
+        chartButton.className = 'dataframe-chart';
+        chartButton.textContent = 'График';
+        chartButton.addEventListener('click', () => this.buildTableChart(table, chartButton));
+
+        const infoButton = document.createElement('button');
+        infoButton.type = 'button';
+        infoButton.className = 'dataframe-info-toggle';
+        infoButton.textContent = 'Инфо';
+
+        toolbar.appendChild(summary);
+        toolbar.appendChild(searchInput);
+        toolbar.appendChild(toggleButton);
+        toolbar.appendChild(copyButton);
+        toolbar.appendChild(downloadButton);
+        toolbar.appendChild(chartButton);
+        toolbar.appendChild(infoButton);
+        this.attachDataframeInfo(container, table, toolbar, infoButton);
+        return toolbar;
+    },
+
+    getTableShape(table) {
+        const headerRow = table.querySelector('thead tr');
+        const cols = headerRow ? headerRow.querySelectorAll('th').length - 1 : 0;
+        const bodyRows = table.querySelectorAll('tbody tr').length;
+        return { rows: bodyRows, cols: Math.max(cols, 0) };
+    },
+
+    highlightNullCells(table) {
+        const nullValues = new Set(['NaN', 'NaT', 'None', 'null']);
+        const cells = table.querySelectorAll('td');
+        cells.forEach((cell) => {
+            const value = (cell.textContent || '').trim();
+            if (nullValues.has(value)) {
+                cell.classList.add('df-null');
+            }
+        });
+    },
+
+    attachDataframeInfo(container, table, toolbar, infoButton) {
+        const rawMeta = container.dataset.meta;
+        let meta = null;
+        if (rawMeta) {
+            try {
+                meta = JSON.parse(decodeURIComponent(rawMeta));
+            } catch (_error) {
+                try {
+                    meta = JSON.parse(rawMeta);
+                } catch (_error2) {
+                    meta = null;
+                }
+            }
+        }
+
+        const panel = document.createElement('div');
+        panel.className = 'dataframe-info';
+        panel.hidden = true;
+
+        const items = [];
+        if (meta) {
+            if (typeof meta.nulls_total === 'number') {
+                items.push(`<div><strong>Пропуски:</strong> ${meta.nulls_total}</div>`);
+            }
+            if (typeof meta.memory_bytes === 'number') {
+                items.push(`<div><strong>Память:</strong> ${this.formatBytes(meta.memory_bytes)}</div>`);
+            }
+            if (meta.dtype_counts && typeof meta.dtype_counts === 'object') {
+                const parts = Object.entries(meta.dtype_counts).map(([dtype, count]) => `${dtype}: ${count}`);
+                if (parts.length) {
+                    items.push(`<div><strong>Типы:</strong> ${parts.join(', ')}</div>`);
+                }
+            }
+            if (Array.isArray(meta.columns_preview) && meta.columns_preview.length) {
+                const rows = meta.columns_preview.map((col) => {
+                    const nulls = typeof col.nulls === 'number' ? `, null: ${col.nulls}` : '';
+                    return `<tr><td>${NotebookUtils.escapeHtml(col.name)}</td><td>${NotebookUtils.escapeHtml(col.dtype)}</td><td>${col.non_null ?? ''}${nulls}</td></tr>`;
+                }).join('');
+                const more = meta.columns_truncated ? '<div class="df-info-note">Показаны первые колонки.</div>' : '';
+                items.push(`
+                    <div class="df-info-columns">
+                        <div class="df-info-title">Колонки</div>
+                        <table>
+                            <thead><tr><th>Имя</th><th>Тип</th><th>Незаполн.</th></tr></thead>
+                            <tbody>${rows}</tbody>
+                        </table>
+                        ${more}
+                    </div>
+                `);
+            }
+        } else if (table) {
+            const nulls = table.querySelectorAll('td.df-null').length;
+            items.push(`<div><strong>Пропуски:</strong> ${nulls}</div>`);
+            items.push('<div class="df-info-note">Полная статистика недоступна (metadata не передан).</div>');
+        }
+        panel.innerHTML = items.join('');
+        if (!panel.innerHTML) {
+            infoButton.disabled = true;
+            return;
+        }
+
+        infoButton.addEventListener('click', () => {
+            const next = panel.hidden;
+            panel.hidden = !next;
+            infoButton.textContent = next ? 'Скрыть инфо' : 'Инфо';
+        });
+        toolbar.insertAdjacentElement('afterend', panel);
+    },
+
+    formatBytes(value) {
+        const bytes = Number(value);
+        if (!Number.isFinite(bytes) || bytes < 0) {
+            return '';
+        }
+        if (bytes >= 1024 * 1024) {
+            return `${(bytes / (1024 * 1024)).toFixed(1)} МБ`;
+        }
+        if (bytes >= 1024) {
+            return `${(bytes / 1024).toFixed(1)} КБ`;
+        }
+        return `${Math.round(bytes)} Б`;
+    },
+
+    copyTableCsv(table, button) {
+        const csv = this.tableToCsv(table);
+        if (!csv) {
+            return;
+        }
+        const done = () => {
+            const original = button.textContent;
+            button.textContent = 'Скопировано';
+            setTimeout(() => {
+                button.textContent = original;
+            }, 1200);
+        };
+        if (navigator.clipboard?.writeText) {
+            navigator.clipboard.writeText(csv).then(done, done);
+        } else {
+            const textarea = document.createElement('textarea');
+            textarea.value = csv;
+            textarea.style.position = 'fixed';
+            textarea.style.opacity = '0';
+            document.body.appendChild(textarea);
+            textarea.select();
+            try {
+                document.execCommand('copy');
+            } catch (_error) {
+                // ignore
+            }
+            textarea.remove();
+            done();
+        }
+    },
+
+    downloadTableCsv(table) {
+        const csv = this.tableToCsv(table);
+        if (!csv) {
+            return;
+        }
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = 'dataframe.csv';
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 0);
+    },
+
+    filterTableRows(table, query) {
+        const normalized = (query || '').trim().toLowerCase();
+        const rows = table.querySelectorAll('tbody tr');
+        rows.forEach((row) => {
+            if (!normalized) {
+                row.style.display = '';
+                return;
+            }
+            const cells = row.querySelectorAll('th, td');
+            const match = Array.from(cells).some((cell) => {
+                const text = (cell.textContent || '').toLowerCase();
+                return text.includes(normalized);
+            });
+            row.style.display = match ? '' : 'none';
+        });
+    },
+
+    tableToCsv(table) {
+        const rows = Array.from(table.querySelectorAll('tr'));
+        if (!rows.length) {
+            return '';
+        }
+        const escapeCell = (value) => {
+            const safe = String(value ?? '');
+            const escaped = safe.replace(/"/g, '""');
+            return `"${escaped}"`;
+        };
+        return rows.map((row) => {
+            const cells = Array.from(row.querySelectorAll('th, td'));
+            return cells.map((cell) => escapeCell(cell.textContent)).join(',');
+        }).join('\n');
+    },
+
+    async buildTableChart(table, button) {
+        if (!this.sessionFileUploadUrl || !this.sessionFileChartUrl) {
+            return;
+        }
+
+        const csv = this.tableToCsv(table);
+        if (!csv) {
+            return;
+        }
+
+        let sessionId = await this.ensureSession();
+        if (!sessionId) {
+            try {
+                sessionId = await this.createSession();
+            } catch (error) {
+                console.error('Не удалось создать сессию для построения графика:', error);
+                return;
+            }
+        }
+
+        const originalLabel = button?.textContent || 'График';
+        if (button) {
+            button.disabled = true;
+            button.textContent = 'График...';
+        }
+
+        try {
+            const tempPath = `.charts/table_${Date.now()}.csv`;
+            await this.uploadChartCsv(sessionId, tempPath, csv);
+
+            const recommendation = await this.fetchChartPayload({
+                session_id: sessionId,
+                path: tempPath,
+            });
+            const panel = this.getOrCreateChartConfigPanel(table);
+            panel.hidden = false;
+            panel.dataset.sessionId = sessionId;
+            panel.dataset.path = tempPath;
+            this.populateChartConfigurator(panel, recommendation);
+            this.setChartConfiguratorStatus(panel, 'Выберите тип графика и колонки, затем нажмите "Построить".');
+        } catch (error) {
+            console.error('Не удалось построить график:', error);
+            const panel = this.getOrCreateChartConfigPanel(table);
+            panel.hidden = false;
+            this.setChartConfiguratorStatus(panel, error?.message || 'Не удалось подготовить график.', true);
+        } finally {
+            if (button) {
+                button.disabled = false;
+                button.textContent = originalLabel;
+            }
+        }
+    },
+
+    async uploadChartCsv(sessionId, path, csvText) {
+        const blob = new Blob([csvText], { type: 'text/csv;charset=utf-8' });
+        const formData = new FormData();
+        formData.append('session_id', sessionId);
+        formData.append('path', path);
+        formData.append('file', blob, 'table.csv');
+
+        const response = await fetch(this.sessionFileUploadUrl, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': this.config.csrfToken
+            },
+            body: formData
+        });
+
+        let data = null;
+        try {
+            data = await response.json();
+        } catch (_error) {
+            data = null;
+        }
+        if (!response.ok) {
+            const message = data?.detail || data?.message || 'Не удалось загрузить таблицу для графика.';
+            throw new Error(message);
+        }
+    },
+
+    async fetchChartPayload(payload) {
+        const response = await fetch(this.sessionFileChartUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': this.config.csrfToken
+            },
+            body: JSON.stringify(payload)
+        });
+        let data = null;
+        try {
+            data = await response.json();
+        } catch (_error) {
+            data = null;
+        }
+        if (!response.ok) {
+            const message = data?.detail || data?.message || 'Ошибка построения графика.';
+            throw new Error(message);
+        }
+        return data;
+    },
+
+    getOrCreateChartConfigPanel(table) {
+        const container = table?.closest('.dataframe-container');
+        if (!container) {
+            return null;
+        }
+        if (container._chartConfigPanel && container._chartConfigPanel.isConnected) {
+            return container._chartConfigPanel;
+        }
+        const panel = document.createElement('div');
+        panel.className = 'dataframe-info';
+        panel.hidden = true;
+        panel.innerHTML = `
+            <div><strong>Настройки графика</strong></div>
+            <div>
+                <label>Тип:
+                    <select data-chart-field="type">
+                        <option value="line">line</option>
+                        <option value="bar">bar</option>
+                        <option value="scatter">scatter</option>
+                        <option value="hist">hist</option>
+                        <option value="box">box</option>
+                    </select>
+                </label>
+                <label data-chart-wrap="x"> X:
+                    <select data-chart-field="x"></select>
+                </label>
+                <label data-chart-wrap="y"> Y:
+                    <select data-chart-field="y"></select>
+                </label>
+                <label data-chart-wrap="agg"> agg:
+                    <select data-chart-field="agg">
+                        <option value="mean">mean</option>
+                        <option value="sum">sum</option>
+                        <option value="median">median</option>
+                        <option value="min">min</option>
+                        <option value="max">max</option>
+                        <option value="count">count</option>
+                    </select>
+                </label>
+                <label data-chart-wrap="bins"> bins:
+                    <input data-chart-field="bins" type="number" min="2" max="200" value="20" />
+                </label>
+                <button type="button" data-chart-action="build">Построить</button>
+                <button type="button" data-chart-action="hide">Скрыть</button>
+            </div>
+            <div data-chart-status></div>
+        `;
+        container.insertAdjacentElement('beforebegin', panel);
+
+        const typeSelect = panel.querySelector('[data-chart-field="type"]');
+        typeSelect?.addEventListener('change', () => this.syncChartConfiguratorFields(panel));
+        panel.querySelector('[data-chart-action="build"]')?.addEventListener('click', () => this.submitChartFromConfigurator(table, panel));
+        panel.querySelector('[data-chart-action="hide"]')?.addEventListener('click', () => {
+            panel.hidden = true;
+        });
+
+        container._chartConfigPanel = panel;
+        return panel;
+    },
+
+    populateChartConfigurator(panel, recommendationResponse) {
+        if (!panel) {
+            return;
+        }
+        const schema = recommendationResponse?.schema || {};
+        const recommended = recommendationResponse?.recommended || {};
+        panel._chartSchema = schema;
+        panel._chartRecommended = recommended;
+        const typeSelect = panel.querySelector('[data-chart-field="type"]');
+        if (typeSelect) {
+            typeSelect.value = recommended.chart_type || 'hist';
+        }
+        this.syncChartConfiguratorFields(panel);
+    },
+
+    syncChartConfiguratorFields(panel) {
+        if (!panel) {
+            return;
+        }
+        const isUnnamedColumn = (name) => /^unnamed:\s*\d+$/i.test(String(name || '').trim());
+        const sanitizeColumns = (values) => (
+            Array.isArray(values)
+                ? values.filter((name) => !!name && !isUnnamedColumn(name))
+                : []
+        );
+        const schema = panel._chartSchema || {};
+        const recommended = panel._chartRecommended || {};
+        const numeric = sanitizeColumns(schema.numeric_columns);
+        const categorical = sanitizeColumns(schema.categorical_columns);
+        const datetimeCols = sanitizeColumns(schema.datetime_columns);
+        const allColumns = Array.isArray(schema.columns)
+            ? sanitizeColumns(schema.columns.map((item) => item?.name).filter(Boolean))
+            : [];
+
+        const createOptions = (values, includeEmpty = false, emptyLabel = '—') => {
+            const seen = new Set();
+            const result = [];
+            if (includeEmpty) {
+                result.push({ value: '', label: emptyLabel });
+            }
+            (values || []).forEach((value) => {
+                if (!value || seen.has(value)) {
+                    return;
+                }
+                seen.add(value);
+                result.push({ value, label: value });
+            });
+            return result;
+        };
+        const applyOptions = (select, options, preferred) => {
+            if (!select) {
+                return;
+            }
+            select.innerHTML = '';
+            options.forEach((optionItem) => {
+                const option = document.createElement('option');
+                option.value = optionItem.value;
+                option.textContent = optionItem.label;
+                select.appendChild(option);
+            });
+            const fallback = options.length ? options[0].value : '';
+            select.value = options.some((item) => item.value === preferred) ? preferred : fallback;
+        };
+
+        const typeSelect = panel.querySelector('[data-chart-field="type"]');
+        const xSelect = panel.querySelector('[data-chart-field="x"]');
+        const ySelect = panel.querySelector('[data-chart-field="y"]');
+        const aggSelect = panel.querySelector('[data-chart-field="agg"]');
+        const binsInput = panel.querySelector('[data-chart-field="bins"]');
+        const xWrap = panel.querySelector('[data-chart-wrap="x"]');
+        const yWrap = panel.querySelector('[data-chart-wrap="y"]');
+        const aggWrap = panel.querySelector('[data-chart-wrap="agg"]');
+        const binsWrap = panel.querySelector('[data-chart-wrap="bins"]');
+
+        const chartType = typeSelect?.value || 'hist';
+        const recommendedY = Array.isArray(recommended.y) && recommended.y.length ? recommended.y[0] : '';
+
+        if (chartType === 'line') {
+            xWrap.hidden = false;
+            yWrap.hidden = false;
+            aggWrap.hidden = true;
+            binsWrap.hidden = true;
+            applyOptions(xSelect, createOptions([...datetimeCols, ...allColumns]), recommended.x || datetimeCols[0] || allColumns[0] || '');
+            applyOptions(ySelect, createOptions(numeric), recommendedY || numeric[0] || '');
+            return;
+        }
+        if (chartType === 'scatter') {
+            xWrap.hidden = false;
+            yWrap.hidden = false;
+            aggWrap.hidden = true;
+            binsWrap.hidden = true;
+            applyOptions(xSelect, createOptions(numeric), recommended.x || numeric[0] || '');
+            applyOptions(ySelect, createOptions(numeric), recommendedY || numeric[1] || numeric[0] || '');
+            return;
+        }
+        if (chartType === 'bar') {
+            xWrap.hidden = false;
+            yWrap.hidden = false;
+            aggWrap.hidden = false;
+            binsWrap.hidden = true;
+            applyOptions(xSelect, createOptions([...categorical, ...datetimeCols, ...allColumns]), recommended.x || categorical[0] || allColumns[0] || '');
+            applyOptions(ySelect, createOptions(numeric, true, 'count (без Y)'), recommendedY || '');
+            if (aggSelect) {
+                aggSelect.value = recommended.agg || 'mean';
+            }
+            return;
+        }
+        if (chartType === 'hist') {
+            xWrap.hidden = true;
+            yWrap.hidden = false;
+            aggWrap.hidden = true;
+            binsWrap.hidden = false;
+            applyOptions(ySelect, createOptions(numeric), recommendedY || numeric[0] || '');
+            if (binsInput) {
+                binsInput.value = String(recommended.bins || 20);
+            }
+            return;
+        }
+
+        xWrap.hidden = true;
+        yWrap.hidden = false;
+        aggWrap.hidden = true;
+        binsWrap.hidden = true;
+        applyOptions(ySelect, createOptions(numeric), recommendedY || numeric[0] || '');
+    },
+
+    readChartConfiguratorPayload(panel) {
+        const typeSelect = panel.querySelector('[data-chart-field="type"]');
+        const xSelect = panel.querySelector('[data-chart-field="x"]');
+        const ySelect = panel.querySelector('[data-chart-field="y"]');
+        const aggSelect = panel.querySelector('[data-chart-field="agg"]');
+        const binsInput = panel.querySelector('[data-chart-field="bins"]');
+        const xWrap = panel.querySelector('[data-chart-wrap="x"]');
+        const yWrap = panel.querySelector('[data-chart-wrap="y"]');
+        const aggWrap = panel.querySelector('[data-chart-wrap="agg"]');
+        const binsWrap = panel.querySelector('[data-chart-wrap="bins"]');
+
+        const payload = {
+            chart_type: typeSelect?.value || 'hist',
+        };
+        if (!xWrap.hidden && xSelect?.value) {
+            payload.x = xSelect.value;
+        }
+        if (!yWrap.hidden && ySelect?.value) {
+            payload.y = [ySelect.value];
+        }
+        if (!aggWrap.hidden && aggSelect?.value) {
+            payload.agg = aggSelect.value;
+        }
+        if (!binsWrap.hidden && binsInput) {
+            const bins = Number(binsInput.value);
+            if (Number.isFinite(bins) && bins >= 2 && bins <= 200) {
+                payload.bins = Math.round(bins);
+            }
+        }
+        return payload;
+    },
+
+    setChartConfiguratorStatus(panel, message, isError = false) {
+        const status = panel?.querySelector('[data-chart-status]');
+        if (!status) {
+            return;
+        }
+        const text = (message || '').trim();
+        status.textContent = isError && text ? `Ошибка: ${text}` : text;
+    },
+
+    async submitChartFromConfigurator(table, panel) {
+        if (!panel) {
+            return;
+        }
+        const sessionId = panel.dataset.sessionId || '';
+        const path = panel.dataset.path || '';
+        if (!sessionId || !path) {
+            this.setChartConfiguratorStatus(panel, 'Сначала нажмите «График» для подготовки данных.', true);
+            return;
+        }
+        const payload = this.readChartConfiguratorPayload(panel);
+        const buildButton = panel.querySelector('[data-chart-action="build"]');
+        if (buildButton) {
+            buildButton.disabled = true;
+        }
+        this.setChartConfiguratorStatus(panel, 'Строю график...');
+        try {
+            const result = await this.fetchChartPayload({
+                session_id: sessionId,
+                path,
+                ...payload,
+            });
+            this.showChartResult(table, result);
+            this.setChartConfiguratorStatus(panel, 'График построен.');
+        } catch (error) {
+            console.error('Не удалось построить график:', error);
+            this.setChartConfiguratorStatus(panel, error?.message || 'Не удалось построить график.', true);
+        } finally {
+            if (buildButton) {
+                buildButton.disabled = false;
+            }
+        }
+    },
+
+    showChartResult(table, chartResponse) {
+        if (!table) {
+            return;
+        }
+        const container = table.closest('.dataframe-container');
+        if (!container) {
+            return;
+        }
+
+        let panel = (container._chartResultPanel && container._chartResultPanel.isConnected)
+            ? container._chartResultPanel
+            : null;
+        if (!panel) {
+            panel = document.createElement('div');
+            panel.className = 'dataframe-info';
+            const configPanel = (container._chartConfigPanel && container._chartConfigPanel.isConnected)
+                ? container._chartConfigPanel
+                : null;
+            if (configPanel) {
+                configPanel.insertAdjacentElement('afterend', panel);
+            } else {
+                container.insertAdjacentElement('beforebegin', panel);
+            }
+            container._chartResultPanel = panel;
+        }
+
+        const chart = chartResponse?.chart || {};
+        const image = chartResponse?.chart_image || '';
+        const schema = chartResponse?.schema || {};
+        const seriesCount = Array.isArray(chart.series) ? chart.series.length : 0;
+        const rows = Number.isFinite(schema.rows) ? schema.rows : '—';
+
+        panel.innerHTML = `
+            <div><strong>Тип графика:</strong> ${NotebookUtils.escapeHtml(chart.type || 'неизвестно')}</div>
+            <div><strong>Строк:</strong> ${NotebookUtils.escapeHtml(String(rows))} · <strong>Серий:</strong> ${NotebookUtils.escapeHtml(String(seriesCount))}</div>
+            <div><button type="button" data-chart-action="hide-result">Скрыть график</button></div>
+            ${image ? `<div><img src="${image}" alt="chart"></div>` : '<div>Изображение графика не получено</div>'}
+        `;
+        panel.hidden = false;
+        panel.querySelector('[data-chart-action="hide-result"]')?.addEventListener('click', () => {
+            panel.hidden = true;
+        });
+    },
+
+    initActivityTracking() {
+        if (this.inactivityMode === 'off' || !this.inactivityPromptMs) {
+            this.disableActivityTracking();
+            return;
+        }
+        this.lastActivityTs = Date.now();
+        if (!this.activityTrackingEnabled) {
+            this.activityHandler = this.markActivity.bind(this);
+            this.activityEvents.forEach((evt) => {
+                document.addEventListener(evt, this.activityHandler, { passive: true });
+            });
+            this.activityTrackingEnabled = true;
+        }
         this.scheduleInactivityPrompt();
     },
 
+    initImportExport() {
+    // Инициализация импорта/экспорта
+    // Методы будут вызываться из обработчиков событий
+    },
+
+    async exportNotebook() {
+    /** Экспортирует текущий ноутбук в формате .ipynb */
+    if (!this.config.notebookId) {
+        alert('ID ноутбука не найден');
+        return;
+    }
+    
+    const exportUrl = this.sanitizeUrl(this.notebookElement?.dataset.exportNotebookUrl);
+    if (!exportUrl) {
+        alert('URL экспорта недоступен');
+        return;
+    }
+    
+    try {
+        // Получаем файл через fetch, чтобы иметь контроль над именем файла
+        const response = await fetch(exportUrl);
+        if (!response.ok) {
+            throw new Error('Ошибка при экспорте блокнота');
+        }
+        
+        // Получаем имя файла из заголовка Content-Disposition
+        const contentDisposition = response.headers.get('Content-Disposition');
+        let filename = null;
+        
+        if (contentDisposition) {
+            // Пытаемся извлечь имя файла из разных форматов заголовка
+            // Формат 1: filename="название.ipynb"
+            let match = contentDisposition.match(/filename="([^"]+)"/);
+            if (match && match[1]) {
+                filename = match[1];
+            } else {
+                // Формат 2: filename*=UTF-8''название.ipynb
+                match = contentDisposition.match(/filename\*=UTF-8''([^;]+)/);
+                if (match && match[1]) {
+                    filename = decodeURIComponent(match[1]);
+                } else {
+                    // Формат 3: filename=название.ipynb (без кавычек)
+                    match = contentDisposition.match(/filename=([^;]+)/);
+                    if (match && match[1]) {
+                        filename = match[1].trim();
+                    }
+                }
+            }
+        }
+        
+        // Если имя файла не получено из заголовка, используем название блокнота из DOM
+        if (!filename || filename === 'notebook.ipynb' || !filename.endsWith('.ipynb')) {
+            const notebookTitle = document.querySelector('#notebook-title')?.textContent?.trim() || 'notebook';
+            // Очищаем название от недопустимых символов
+            const safeTitle = notebookTitle
+                .replace(/[<>:"/\\|?*]/g, '_')
+                .replace(/\s+/g, '_')
+                .replace(/_+/g, '_')
+                .replace(/^_+|_+$/g, '');
+            filename = safeTitle ? `${safeTitle}.ipynb` : 'notebook.ipynb';
+        }
+        
+        // Создаем blob и скачиваем файл с правильным именем
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename; // Явно указываем имя файла с расширением .ipynb
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
+    } catch (error) {
+        console.error('Ошибка экспорта:', error);
+        alert('Ошибка при экспорте блокнота: ' + error.message);
+    }
+    },
+
+    triggerImportFileSelect() {
+    /** Открывает диалог выбора файла для импорта */
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.ipynb,.json';
+    input.style.display = 'none';
+    
+    input.addEventListener('change', (event) => {
+        const file = event.target.files?.[0];
+        if (file) {
+            this.handleImportFile(file);
+        }
+        document.body.removeChild(input);
+    });
+    
+    document.body.appendChild(input);
+    input.click();
+},
+
+async handleImportFile(file) {
+    /** Обрабатывает загруженный файл для импорта */
+    if (!file) {
+        return;
+    }
+    
+    const importUrl = this.sanitizeUrl(this.notebookElement?.dataset.importNotebookUrl);
+    if (!importUrl) {
+        alert('URL импорта недоступен');
+        return;
+    }
+    
+    // Проверяем расширение
+    const fileName = file.name.toLowerCase();
+    if (!fileName.endsWith('.ipynb') && !fileName.endsWith('.json')) {
+        alert('Поддерживаются только .ipynb и .json файлы');
+        return;
+    }
+    
+    try {
+        const formData = new FormData();
+        formData.append('file', file);
+        
+        const response = await fetch(importUrl, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': this.config.csrfToken
+            },
+            body: formData
+        });
+        
+        const data = await response.json();
+        
+        if (!response.ok) {
+            throw new Error(data?.message || 'Ошибка импорта');
+        }
+        
+        if (data.status === 'success') {
+            alert(data.message);
+            // Перенаправляем на новый ноутбук
+            if (data.notebook_id) {
+                const redirectUrl = this.buildNotebookUrl(data.notebook_id);
+                if (redirectUrl) {
+                    window.location.href = redirectUrl;
+                } else {
+                    // Или просто перезагружаем страницу
+                    window.location.reload();
+                }
+            }
+        }
+    } catch (error) {
+        console.error('Ошибка импорта:', error);
+        alert('Ошибка импорта: ' + (error.message || error));
+    }
+    },
+
+    buildNotebookUrl(notebookId) {
+    /** Строит URL для ноутбука */
+    if (!notebookId) {
+        return null;
+    }
+    // Строим URL напрямую, так как шаблон может содержать 0 вместо плейсхолдера
+    return `/notebook/${notebookId}/`;
+    },
+
     markActivity() {
+        if (this.inactivityMode === 'off' || !this.inactivityPromptMs) {
+            return;
+        }
         this.lastActivityTs = Date.now();
         this.hideInactivityPrompt();
         this.scheduleInactivityPrompt();
     },
 
     scheduleInactivityPrompt() {
+        if (this.inactivityMode === 'off' || !this.inactivityPromptMs) {
+            return;
+        }
         if (this.inactivityTimers.prompt) {
             clearTimeout(this.inactivityTimers.prompt);
         }
         this.inactivityTimers.prompt = window.setTimeout(
             () => this.showInactivityPrompt(),
-            30 * 60 * 1000,
+            this.inactivityPromptMs,
         );
     },
 
     showInactivityPrompt() {
+        if (this.inactivityMode === 'off') {
+            return;
+        }
         if (!this.inactivityOverlay) {
             this.inactivityOverlay = this.buildInactivityOverlay();
             document.body.appendChild(this.inactivityOverlay);
@@ -559,10 +1879,14 @@ const notebookDetail = {
         if (this.inactivityTimers.ban) {
             clearTimeout(this.inactivityTimers.ban);
         }
-        this.inactivityTimers.ban = window.setTimeout(
-            () => this.banSession(),
-            10 * 60 * 1000,
-        );
+        if (this.inactivityBanMs) {
+            this.inactivityTimers.ban = window.setTimeout(
+                () => this.banSession(),
+                this.inactivityBanMs,
+            );
+        } else {
+            this.inactivityTimers.ban = null;
+        }
     },
 
     hideInactivityPrompt() {
@@ -598,17 +1922,25 @@ const notebookDetail = {
         title.style.marginTop = '0';
 
         const text = document.createElement('p');
-        text.textContent = 'Сессия будет перезапущена через 10 минут бездействия.';
-
-        const button = document.createElement('button');
-        button.textContent = 'Да, продолжаю';
-        button.style.marginTop = '12px';
-        button.addEventListener('click', () => this.handlePresenceConfirm());
+        const helper = document.createElement('p');
+        if (this.inactivityBanMs) {
+            const minutes = Math.max(1, Math.round(this.inactivityBanMs / 60000));
+            text.textContent = `Сессия будет перезапущена через ${minutes} минут бездействия.`;
+        } else {
+            text.textContent = 'Сессия будет перезапущена при длительном бездействии.';
+        }
+        helper.textContent = 'Кликните в любом месте, чтобы продолжить.';
+        helper.style.marginTop = '12px';
+        helper.style.fontSize = '13px';
+        helper.style.color = '#555';
 
         modal.appendChild(title);
         modal.appendChild(text);
-        modal.appendChild(button);
+        modal.appendChild(helper);
         overlay.appendChild(modal);
+        overlay.addEventListener('click', () => {
+            this.handlePresenceConfirm();
+        });
         overlay.hidden = true;
         return overlay;
     },
@@ -636,24 +1968,55 @@ const notebookDetail = {
         this.copyCellUrlTemplate = this.notebookElement?.dataset.copyCellUrlTemplate || '';
         this.moveCellUrlTemplate = this.notebookElement?.dataset.moveCellUrlTemplate || '';
         this.runCellUrl = this.sanitizeUrl(config.runCellUrl) || this.sanitizeUrl(this.notebookElement?.dataset.runCellUrl);
+        this.runCellInputUrl = this.sanitizeUrl(config.runCellInputUrl) || this.sanitizeUrl(this.notebookElement?.dataset.runCellInputUrl);
+        this.runCellStreamStartUrl = this.sanitizeUrl(config.runCellStreamStartUrl) || this.sanitizeUrl(this.notebookElement?.dataset.runCellStreamStartUrl);
+        this.runCellStreamStatusUrl = this.sanitizeUrl(config.runCellStreamStatusUrl) || this.sanitizeUrl(this.notebookElement?.dataset.runCellStreamStatusUrl);
         this.sessionCreateUrl = this.sanitizeUrl(config.sessionCreateUrl) || this.sanitizeUrl(this.notebookElement?.dataset.sessionCreateUrl);
         this.sessionResetUrl = this.sanitizeUrl(config.sessionResetUrl) || this.sanitizeUrl(this.notebookElement?.dataset.sessionResetUrl);
         this.sessionFilesUrl = this.sanitizeUrl(config.sessionFilesUrl) || this.sanitizeUrl(this.notebookElement?.dataset.sessionFilesUrl);
         this.sessionFileUploadUrl = this.sanitizeUrl(config.sessionFileUploadUrl) || this.sanitizeUrl(this.notebookElement?.dataset.sessionFileUploadUrl);
         this.sessionFileDownloadUrl = this.sanitizeUrl(config.sessionFileDownloadUrl) || this.sanitizeUrl(this.notebookElement?.dataset.sessionFileDownloadUrl);
+        this.sessionFilePreviewUrl = this.sanitizeUrl(config.sessionFilePreviewUrl) || this.sanitizeUrl(this.notebookElement?.dataset.sessionFilePreviewUrl);
+        this.sessionFileChartUrl = this.sanitizeUrl(config.sessionFileChartUrl) || this.sanitizeUrl(this.notebookElement?.dataset.sessionFileChartUrl);
         this.sessionStopUrl = this.sanitizeUrl(config.sessionStopUrl) || this.sanitizeUrl(this.notebookElement?.dataset.sessionStopUrl);
+        const rawInactivityMode = config.inactivityMode ?? this.notebookElement?.dataset.inactivityMode;
+        this.inactivityMode = this.normalizeInactivityMode(rawInactivityMode);
+        this.inactivityPromptMs = this.parseMinutes(
+            config.inactivityPromptMinutes ?? this.notebookElement?.dataset.inactivityPromptMinutes,
+            15 * 60 * 1000,
+        );
+        this.inactivityBanMs = this.parseMinutes(
+            config.inactivityBanMinutes ?? this.notebookElement?.dataset.inactivityBanMinutes,
+            10 * 60 * 1000,
+        );
+        this.streamPollTimeoutMs = this.parseMinutes(
+            config.streamPollTimeoutMinutes ?? this.notebookElement?.dataset.streamPollTimeoutMinutes,
+            0,
+        ) || null;
         this.sessionStatusElement = this.notebookElement?.querySelector('[data-session-status]') || null;
         this.sessionButtons = {
             create: this.notebookElement?.querySelector('[data-action="create-session"]') || null,
             reset: this.notebookElement?.querySelector('[data-action="reset-session"]') || null,
             stop: this.notebookElement?.querySelector('[data-action="stop-session"]') || null,
         };
+        this.computeDeviceSelect = this.notebookElement?.querySelector('[data-compute-device]') || null;
+        this.computeDeviceHint = this.notebookElement?.querySelector('[data-compute-device-hint]') || null;
+        this.updateDeviceUrl = this.sanitizeUrl(this.notebookElement?.dataset.updateDeviceUrl);
+        const initialDevice = (this.notebookElement?.dataset.notebookDevice || '').toLowerCase();
+        this.currentComputeDevice = (initialDevice === 'gpu' || initialDevice === 'cpu') ? initialDevice : 'cpu';
+        if (this.computeDeviceSelect) {
+            this.computeDeviceSelect.value = this.currentComputeDevice;
+        }
+        this.inactivityToggleButton = this.notebookElement?.querySelector('[data-action="toggle-inactivity-mode"]') || null;
+        this.updateInactivityToggle();
         this.clipboardCellId = null;
         this.clipboardIndicator = this.notebookElement?.querySelector('[data-clipboard-indicator]') || null;
         this.filesPanel = document.querySelector('[data-files-panel]');
         this.filesList = this.filesPanel?.querySelector('[data-files-list]');
+        this.filesPreview = this.filesPanel?.querySelector('[data-files-preview]');
         this.filesLoadedFor = null;
         this.filesRequestId = 0;
+        this.previewRequestId = 0;
         this.initialFilesLoaded = false;
         this.cellStatuses = this.loadCellStatuses();
         this.saveTextCellUrlTemplate = this.notebookElement?.dataset.saveTextCellUrlTemplate || '';
@@ -695,6 +2058,13 @@ const notebookDetail = {
         if (this.notebookElement) {
             this.notebookElement.addEventListener('click', this.handleNotebookClick.bind(this));
         }
+        if (this.computeDeviceSelect) {
+            this.computeDeviceSelect.addEventListener('change', (event) => {
+                const target = event.target;
+                const value = target && typeof target.value === 'string' ? target.value : '';
+                this.requestComputeDeviceChange(value);
+            });
+        }
 
         if (this.filesPanel) {
             this.filesPanel.addEventListener('change', (event) => {
@@ -715,6 +2085,56 @@ const notebookDetail = {
         }
     },
 
+    async requestComputeDeviceChange(nextDevice) {
+        const normalized = (nextDevice || '').toLowerCase();
+        if (normalized !== 'cpu' && normalized !== 'gpu') {
+            if (this.computeDeviceSelect) {
+                this.computeDeviceSelect.value = this.currentComputeDevice;
+            }
+            alert('Недопустимое устройство вычислений.');
+            return;
+        }
+        if (!this.updateDeviceUrl) {
+            if (this.computeDeviceSelect) {
+                this.computeDeviceSelect.value = this.currentComputeDevice;
+            }
+            alert('Не удалось сохранить устройство вычислений.');
+            return;
+        }
+        if (normalized === this.currentComputeDevice) {
+            return;
+        }
+        try {
+            const response = await fetch(this.updateDeviceUrl, {
+                method: 'PATCH',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': this.config.csrfToken
+                },
+                body: JSON.stringify({ compute_device: normalized })
+            });
+            const data = await response.json();
+            if (!response.ok) {
+                const message = data?.message || data?.detail || 'Не удалось обновить устройство вычислений';
+                throw new Error(message);
+            }
+            this.currentComputeDevice = normalized;
+            if (this.notebookElement) {
+                this.notebookElement.dataset.notebookDevice = normalized;
+            }
+            if (this.sessionState === 'ready' && this.computeDeviceHint) {
+                this.computeDeviceHint.textContent = 'Изменение применится после перезапуска сессии';
+            }
+        } catch (error) {
+            console.error('Не удалось обновить устройство вычислений:', error);
+            if (this.computeDeviceSelect) {
+                this.computeDeviceSelect.value = this.currentComputeDevice;
+            }
+            const message = error?.message || 'Не удалось обновить устройство вычислений';
+            alert(message);
+        }
+    },
+
     handleNotebookClick(e) {
         const actionTarget = e.target.closest('[data-action]');
 
@@ -729,6 +2149,9 @@ const notebookDetail = {
         if (action === 'delete-notebook') {
             e.preventDefault();
             this.deleteNotebook(actionTarget);
+        }
+        else if (action === 'toggle-inactivity-mode') {
+            this.toggleInactivityMode();
         }
         else if (action === 'create-cell') {
             this.createCell();
@@ -786,6 +2209,12 @@ const notebookDetail = {
         }
         else if (action === 'refresh-files') {
             this.refreshSessionFiles();
+        }
+        else if (action === 'preview-file') {
+            this.previewFile(actionTarget);
+        }
+        else if (action === 'hide-preview') {
+            this.clearFilesPreview();
         }
         else if (action === 'upload-file') {
             this.triggerFileUploadSelect();
@@ -1477,6 +2906,7 @@ const notebookDetail = {
             if (this.filesList) {
                 this.filesList.innerHTML = '<div class="files-empty">Создайте сессию, чтобы увидеть файлы.</div>';
             }
+            this.clearFilesPreview();
             return;
         }
         const requestId = ++this.filesRequestId;
@@ -1509,6 +2939,131 @@ const notebookDetail = {
                 this.filesList.innerHTML = '<div class="files-error">Не удалось загрузить список файлов</div>';
             }
         }
+    },
+
+    isPreviewableFile(path) {
+        if (!path) {
+            return false;
+        }
+        const lowered = String(path).toLowerCase();
+        return lowered.endsWith('.csv') || lowered.endsWith('.parquet') || lowered.endsWith('.parq');
+    },
+
+    clearFilesPreview(message = '') {
+        if (!this.filesPreview) {
+            return;
+        }
+        if (!message) {
+            this.filesPreview.innerHTML = '';
+            return;
+        }
+        const safe = NotebookUtils.escapeHtml(message);
+        this.filesPreview.innerHTML = `<div class="files-preview-message">${safe}</div>`;
+    },
+
+    async previewFile(button) {
+        if (!button) {
+            return;
+        }
+        if (!this.sessionFilePreviewUrl) {
+            alert('URL предпросмотра недоступен');
+            return;
+        }
+        const sessionId = await this.ensureSession();
+        if (!sessionId) {
+            alert('Сначала создайте сессию.');
+            return;
+        }
+        const encodedPath = button.dataset.filePath || '';
+        if (!encodedPath) {
+            alert('Путь к файлу недоступен');
+            return;
+        }
+        let path = '';
+        try {
+            path = decodeURIComponent(encodedPath);
+        } catch (_error) {
+            path = encodedPath;
+        }
+        const requestId = ++this.previewRequestId;
+        try {
+            this.clearFilesPreview('Загрузка предпросмотра...');
+            const url = `${this.sessionFilePreviewUrl}?session_id=${encodeURIComponent(sessionId)}&path=${encodeURIComponent(path)}`;
+            const response = await fetch(url, {
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            });
+            let data = null;
+            try {
+                data = await response.json();
+            } catch (_error) {
+                data = null;
+            }
+            if (requestId !== this.previewRequestId) {
+                return;
+            }
+            if (!response.ok) {
+                const message = data?.detail || data?.message || 'Не удалось загрузить предпросмотр';
+                throw new Error(message);
+            }
+            this.renderFilePreview(path, data);
+        } catch (error) {
+            console.error('Не удалось загрузить предпросмотр файла:', error);
+            const message = error?.message || 'Не удалось загрузить предпросмотр';
+            this.clearFilesPreview(message);
+        }
+    },
+
+    renderFilePreview(path, data) {
+        if (!this.filesPreview) {
+            return;
+        }
+        let columns = Array.isArray(data?.columns) ? data.columns : [];
+        const rows = Array.isArray(data?.rows) ? data.rows : [];
+        if (columns.length === 0 && rows.length > 0 && Array.isArray(rows[0])) {
+            columns = Array.from({ length: rows[0].length }, (_value, index) => `col${index + 1}`);
+        }
+        const truncated = data?.truncated || {};
+        const truncatedRows = Boolean(truncated?.rows);
+        const truncatedCols = Boolean(truncated?.cols);
+        const format = data?.format ? String(data.format).toUpperCase() : '';
+        const safePath = NotebookUtils.escapeHtml(path || '');
+        const infoParts = [];
+        infoParts.push(`Строк: ${rows.length}`);
+        infoParts.push(`Колонок: ${columns.length}`);
+        if (format) {
+            infoParts.push(`Формат: ${format}`);
+        }
+        const infoLine = infoParts.join(' · ');
+        const headerCells = columns.map((col) => `<th>${NotebookUtils.escapeHtml(String(col))}</th>`).join('');
+        let bodyHtml = '';
+        const colspan = Math.max(columns.length, 1);
+        if (rows.length === 0) {
+            bodyHtml = `<tr><td colspan="${colspan}">Нет данных для предпросмотра</td></tr>`;
+        } else {
+            bodyHtml = rows.map((row) => {
+                const cells = columns.map((_, index) => {
+                    const value = Array.isArray(row) && row.length > index ? row[index] : '';
+                    return `<td>${NotebookUtils.escapeHtml(String(value ?? ''))}</td>`;
+                }).join('');
+                return `<tr>${cells}</tr>`;
+            }).join('');
+        }
+        const truncationNote = (truncatedRows || truncatedCols)
+            ? '<div class="files-preview-note">Показаны не все данные.</div>'
+            : '';
+
+        this.filesPreview.innerHTML = `
+            <div class="files-preview-header">
+                <strong>Предпросмотр:</strong> ${safePath}
+                <button type="button" data-action="hide-preview">Скрыть</button>
+            </div>
+            <div class="files-preview-info">${infoLine}</div>
+            ${truncationNote}
+            <table class="files-preview-table">
+                <thead><tr>${headerCells}</tr></thead>
+                <tbody>${bodyHtml}</tbody>
+            </table>
+        `;
     },
 
     async triggerFileUploadSelect() {
@@ -1622,6 +3177,7 @@ const notebookDetail = {
         if (!Array.isArray(files) || files.length === 0) {
             this.filesList.innerHTML = '<div class="files-empty">Файлы ещё не созданы</div>';
             this.filesLoadedFor = this.sessionId || null;
+            this.clearFilesPreview();
             return;
         }
         const sessionId = this.sessionId ? encodeURIComponent(this.sessionId) : '';
@@ -1629,15 +3185,20 @@ const notebookDetail = {
         const items = files.slice(0, MAX_FILES_DISPLAY).map((file) => {
             const safePath = NotebookUtils.escapeHtml(file.path || 'file');
             const sizeLabel = this.formatFileSize(file.size);
+            const encodedPath = encodeURIComponent(file.path || '');
             const href = downloadBase && sessionId
                 ? `${downloadBase}?session_id=${sessionId}&path=${encodeURIComponent(file.path)}`
                 : '';
             const link = href
                 ? `<a href="${href}" target="_blank" rel="noopener noreferrer">${safePath}</a>`
                 : `<span>${safePath}</span>`;
+            const previewButton = this.isPreviewableFile(file.path)
+                ? `<button type="button" data-action="preview-file" data-file-path="${encodedPath}">Предпросмотр</button>`
+                : '';
             return `<div class="file-entry">
                 ${link}
                 <span class="file-meta">${sizeLabel}</span>
+                ${previewButton}
             </div>`;
         }).join('');
         this.filesList.innerHTML = items;
@@ -1657,11 +3218,15 @@ const notebookDetail = {
                     <input type="file" data-upload-input multiple style="display: none;">
                 </div>
             </div>
-            <div class="files-panel-body" data-files-list>
-                <div class="files-empty">Файлы ещё не созданы</div>
+            <div class="files-panel-body">
+                <div data-files-list>
+                    <div class="files-empty">Файлы ещё не созданы</div>
+                </div>
+                <div data-files-preview></div>
             </div>
         `;
         this.filesList = this.filesPanel.querySelector('[data-files-list]');
+        this.filesPreview = this.filesPanel.querySelector('[data-files-preview]');
     },
 
     formatFileSize(bytes) {
@@ -1693,7 +3258,7 @@ const notebookDetail = {
 
         const items = artifacts.map(artifact => {
             const name = NotebookUtils.escapeHtml(artifact?.name || 'artifact');
-            const url = typeof artifact?.url === 'string' ? encodeURI(artifact.url) : '#';
+            const url = this.buildArtifactUrl(artifact);
 
             return `<li><a href="${url}" download target="_blank" rel="noopener noreferrer">${name}</a></li>`;
         }).join('');
@@ -1703,6 +3268,20 @@ const notebookDetail = {
             <ul class="artifacts-list">${items}</ul>
         `;
         container.classList.add('has-artifacts');
+    },
+
+    buildArtifactUrl(artifact) {
+        const direct = typeof artifact?.url === 'string' ? artifact.url.trim() : '';
+        if (direct) {
+            return encodeURI(direct);
+        }
+        const path = typeof artifact?.path === 'string' ? artifact.path : '';
+        if (!path || !this.sessionFileDownloadUrl || !this.sessionId) {
+            return '#';
+        }
+        const sessionId = encodeURIComponent(this.sessionId);
+        const encodedPath = encodeURIComponent(path);
+        return `${this.sessionFileDownloadUrl}?session_id=${sessionId}&path=${encodedPath}`;
     },
 
     async deleteCell(cellId, cellElement) {
@@ -1994,12 +3573,12 @@ const notebookDetail = {
 
 };
 const runAll = function() {
-    const cells = document.querySelectorAll('.cell')
+    const cells = document.querySelectorAll('.cell[data-cell-type="code"]')
     for (const cell of cells) {
         const id = cell.getAttribute('data-cell-id');
         if (!id) continue;
+        if (!cell.querySelector('[data-action="run-cell"]')) continue;
 
-        // запускаем так же, как запускается одиночная ячейка
-        notebookDetail.runCell(id);
+        notebookDetail.enqueueCellRun(id, { stopQueueOnError: true });
     }
 };

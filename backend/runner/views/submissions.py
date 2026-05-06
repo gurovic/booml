@@ -10,7 +10,7 @@ def _primary_metric(metrics):
     if isinstance(metrics, (int, float)):
         return float(metrics)
     if isinstance(metrics, dict):
-        for key in ("metric", "score", "accuracy", "f1", "auc"):
+        for key in ("score_100", "metric_score", "metric", "score", "accuracy", "f1", "auc"):
             if key in metrics:
                 try:
                     return float(metrics[key])
@@ -48,7 +48,12 @@ def _latest_result(submissions):
     if not submissions:
         return None
     latest_submission = submissions[0]
-    status_map = {"accepted": "OK", "validated": "OK", "failed": "FAILED"}
+    status_map = {
+        "accepted": "OK",
+        "validated": "OK",
+        "failed": "FAILED",
+        "validation_error": "FAILED",
+    }
     result_status = status_map.get(getattr(latest_submission, "status", ""), getattr(latest_submission, "status", ""))
     return {
         "status": result_status,

@@ -22,9 +22,9 @@
                             Имя пользователя
                         </label>
                         <input
-                            type="text"
                             id="username"
                             v-model="formData.username"
+                            type="text"
                             :class="[
                                 'form-group__input',
                                 { 'form-group__input--error': formErrors.username }
@@ -46,9 +46,9 @@
                             Email
                         </label>
                         <input
-                            type="email"
                             id="email"
                             v-model="formData.email"
+                            type="email"
                             :class="[
                                 'form-group__input',
                                 { 'form-group__input--error': formErrors.email }
@@ -70,9 +70,9 @@
                             Пароль
                         </label>
                         <input
-                            type="password"
                             id="password"
                             v-model="formData.password"
+                            type="password"
                             :class="[
                                 'form-group__input',
                                 { 'form-group__input--error': formErrors.password }
@@ -97,9 +97,9 @@
                             Подтверждение пароля
                         </label>
                         <input
-                            type="password"
                             id="password2"
                             v-model="formData.password2"
+                            type="password"
                             :class="[
                                 'form-group__input',
                                 { 'form-group__input--error': formErrors.password2 }
@@ -126,9 +126,9 @@
                                 :class="{ 'option--selected': formData.role === role.value }"
                             >
                                 <input
+                                    v-model="formData.role"
                                     type="radio"
                                     :value="role.value"
-                                    v-model="formData.role"
                                     :disabled="loading"
                                     class="option__input"
                                 >
@@ -147,22 +147,113 @@
                         </div>
                     </div>
 
-                    <div class="form-group form-group--checkbox">
-                        <label class="checkbox-label">
+                    <div v-if="formData.role === 'teacher'" class="form-group">
+                        <label for="teacher-proof" class="form-group__label">
+                            Подтверждение статуса учителя
+                        </label>
+                        <div
+                            class="teacher-proof-picker"
+                            :class="{
+                                'teacher-proof-picker--error': formErrors.teacher_proof,
+                                'teacher-proof-picker--disabled': loading,
+                                'teacher-proof-picker--selected': teacherProof
+                            }"
+                        >
                             <input
-                                type="checkbox"
-                                v-model="acceptTerms"
+                                id="teacher-proof"
+                                :key="teacherProofInputKey"
+                                type="file"
+                                accept="image/jpeg,image/png,image/webp"
+                                class="teacher-proof-picker__input"
                                 :disabled="loading"
                                 required
+                                @change="handleTeacherProofChange"
                             >
-                            <span class="checkbox-custom"></span>
+                            <label class="teacher-proof-picker__button" for="teacher-proof">
+                                <span class="teacher-proof-picker__icon" aria-hidden="true">+</span>
+                                <span>{{ teacherProof ? 'Заменить файл' : 'Выбрать файл' }}</span>
+                            </label>
+                            <div class="teacher-proof-picker__info">
+                                <span class="teacher-proof-picker__name">
+                                    {{ teacherProofName }}
+                                </span>
+                                <span class="teacher-proof-picker__meta">
+                                    JPEG, PNG или WEBP до 10MB
+                                </span>
+                            </div>
+                        </div>
+                        <small class="form-group__hint">
+                            Подойдёт скриншот из МЭШ. Форматы: JPEG, PNG или WEBP, до 10MB.
+                        </small>
+                        <div
+                            v-if="formErrors.teacher_proof"
+                            class="form-group__error"
+                        >
+                            {{ formErrors.teacher_proof }}
+                        </div>
+                    </div>
+
+                    <div v-if="formData.role === 'teacher'" class="form-group">
+                        <label for="teacher-comment" class="form-group__label">
+                            Комментарий для модератора
+                        </label>
+                        <textarea
+                            id="teacher-comment"
+                            v-model="teacherComment"
+                            :class="[
+                                'form-group__input',
+                                'form-group__textarea',
+                                { 'form-group__input--error': formErrors.teacher_comment }
+                            ]"
+                            rows="3"
+                            placeholder="Например: школа, предмет, ссылка на профиль МЭШ"
+                            :disabled="loading"
+                        ></textarea>
+                        <div
+                            v-if="formErrors.teacher_comment"
+                            class="form-group__error"
+                        >
+                            {{ formErrors.teacher_comment }}
+                        </div>
+                    </div>
+
+                    <div class="form-group form-group--checkbox">
+                        <div class="checkbox-row">
+                            <label class="checkbox-label" for="accept-terms">
+                                <input
+                                    id="accept-terms"
+                                    v-model="acceptTerms"
+                                    type="checkbox"
+                                    :disabled="loading"
+                                    required
+                                >
+                                <span class="checkbox-custom"></span>
+                            </label>
                             <span class="checkbox-text">
                                 Я согласен с
-                                <a href="#" class="link">условиями использования</a>
+                                <router-link :to="{ name: 'terms' }" class="link">условиями использования</router-link>
                                 и
-                                <a href="#" class="link">политикой конфиденциальности</a>
+                                <router-link :to="{ name: 'privacy' }" class="link">политикой конфиденциальности</router-link>
                             </span>
+                        </div>
+                    </div>
+
+                    <div v-if="captchaEnabled" class="form-group">
+                        <label class="form-group__label">
+                            Подтверждение
                         </label>
+                        <TurnstileCaptcha
+                            ref="captchaRef"
+                            v-model="captchaToken"
+                            :site-key="captchaSiteKey"
+                            @load-error="handleCaptchaLoadError"
+                        />
+                        <div
+                            v-if="formErrors.captcha"
+                            class="form-group__error"
+                        >
+                            {{ formErrors.captcha }}
+                        </div>
                     </div>
 
                     <button
@@ -171,7 +262,7 @@
                             'card__submit button button--primary',
                             { 'card__submit--loading': loading }
                         ]"
-                        :disabled="loading || !acceptTerms"
+                        :disabled="loading || !acceptTerms || isTeacherProofMissing || (captchaEnabled && !captchaToken)"
                     >
                         <span
                             v-if="loading"
@@ -186,7 +277,7 @@
                 <div class="card__footer">
                     <p class="card__footer-text">
                         Уже есть аккаунт?
-                        <router-link to="/login" class="card__footer-link">
+                        <router-link :to="{ name: 'login', query: authLinkQuery }" class="card__footer-link">
                             Войдите
                         </router-link>
                     </p>
@@ -197,15 +288,29 @@
 </template>
 
 <script setup>
-import { ref, reactive } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, reactive, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+
+import '@/assets/styles/form.css'
+import TurnstileCaptcha from '@/components/ui/TurnstileCaptcha.vue'
 import { useUserStore } from '@/stores/UserStore'
+import {
+    buildAuthRedirect,
+    resolveAuthReasonFromQuery,
+    resolveRedirectFromQuery,
+} from '@/utils/redirect'
 
 const router = useRouter()
+const route = useRoute()
 const userStore = useUserStore()
 
 const loading = ref(false)
 const acceptTerms = ref(false)
+const captchaRef = ref(null)
+const captchaToken = ref('')
+const teacherProof = ref(null)
+const teacherProofInputKey = ref(0)
+const teacherComment = ref('')
 const formData = reactive({
     username: '',
     email: '',
@@ -228,10 +333,72 @@ const roles = [
     }
 ]
 
+const redirectPath = computed(() => resolveRedirectFromQuery(route.query))
+const authReason = computed(() => resolveAuthReasonFromQuery(route.query))
+const authLinkQuery = computed(() => (
+    buildAuthRedirect({
+        redirect: redirectPath.value,
+        reason: authReason.value,
+    })
+))
+const captchaSiteKey = (process.env.VUE_APP_TURNSTILE_SITE_KEY || '').trim()
+const captchaEnabled = Boolean(captchaSiteKey)
+const isTeacherProofMissing = computed(() => formData.role === 'teacher' && !teacherProof.value)
+const teacherProofName = computed(() => teacherProof.value?.name || 'Файл не выбран')
+
+const resolveRedirect = () => redirectPath.value
+
+watch(
+    () => formData.role,
+    (role) => {
+        if (role === 'teacher') {
+            return
+        }
+
+        teacherProof.value = null
+        teacherComment.value = ''
+        teacherProofInputKey.value += 1
+        delete formErrors.teacher_proof
+        delete formErrors.teacher_comment
+    }
+)
+
 const clearErrors = () => {
     Object.keys(formErrors).forEach(key => {
         delete formErrors[key]
     })
+}
+
+const handleTeacherProofChange = (event) => {
+    const file = event.target.files?.[0]
+    delete formErrors.teacher_proof
+
+    if (!file) {
+        teacherProof.value = null
+        return
+    }
+
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp']
+    const allowedExtensions = ['.jpg', '.jpeg', '.png', '.webp']
+    const fileName = file.name.toLowerCase()
+    const hasAllowedType = allowedTypes.includes(file.type)
+    const hasAllowedExtension = allowedExtensions.some(ext => fileName.endsWith(ext))
+
+    if (file.size > 10 * 1024 * 1024) {
+        teacherProof.value = null
+        teacherProofInputKey.value += 1
+        formErrors.teacher_proof = 'Файл слишком большой. Максимальный размер 10MB.'
+        return
+    }
+
+    if (!hasAllowedType && !hasAllowedExtension) {
+        teacherProof.value = null
+        teacherProofInputKey.value += 1
+        formErrors.teacher_proof = 'Загрузите скриншот в формате JPEG, PNG или WEBP.'
+        return
+    }
+
+    teacherProof.value = file
 }
 
 const handleSubmit = async () => {
@@ -239,25 +406,40 @@ const handleSubmit = async () => {
     clearErrors()
 
     try {
-        const result = await userStore.registerUser(formData.username, formData.email, formData.password, formData.password2, formData.role)
+        const result = await userStore.registerUser(
+            formData.username,
+            formData.email,
+            formData.password,
+            formData.password2,
+            formData.role,
+            captchaToken.value,
+            teacherProof.value,
+            teacherComment.value
+        )
 
         if (result.success) {
             const loginResult = await userStore.loginUser(formData.username, formData.password)
 
             if (loginResult.success) {
-                await router.push('/')
+                await router.push(resolveRedirect())
             } else {
                 formErrors.general = 'Регистрация прошла успешно, но не удалось войти автоматически. Пожалуйста, войдите вручную.'
             }
         } else {
             handleErrors(result.error)
+            captchaRef.value?.reset()
         }
     } catch (error) {
         console.error('Register error:', error)
         formErrors.general = 'Произошла ошибка. Попробуйте позже.'
+        captchaRef.value?.reset()
     } finally {
         loading.value = false
     }
+}
+
+const handleCaptchaLoadError = () => {
+    formErrors.captcha = 'Не удалось загрузить капчу. Обновите страницу и попробуйте снова.'
 }
 
 const handleErrors = (error) => {
@@ -271,8 +453,9 @@ const handleErrors = (error) => {
                 const cleanMessage = message.trim()
 
                 const fieldMap = {
-                    'password1': 'password',
-                    'password2': 'password2'
+                    password1: 'password',
+                    password2: 'password2',
+                    captcha_token: 'captcha',
                 }
 
                 const vueField = fieldMap[field] || field
@@ -286,8 +469,6 @@ const handleErrors = (error) => {
 </script>
 
 <style scoped>
-import '@/assets/styles/form.css'
-
 .auth-page {
     min-height: 100vh;
     display: flex;
@@ -305,6 +486,131 @@ import '@/assets/styles/form.css'
 @keyframes spin {
     to {
         transform: translate(-50%, -50%) rotate(360deg);
+    }
+}
+
+.form-group__textarea {
+    min-height: 88px;
+    resize: vertical;
+}
+
+.teacher-proof-picker {
+    display: flex;
+    align-items: stretch;
+    gap: 10px;
+    width: 100%;
+    min-height: 52px;
+}
+
+.teacher-proof-picker__input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    border: 0;
+}
+
+.teacher-proof-picker__button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-width: 150px;
+    padding: 0 16px;
+    border: 1px solid var(--color-button-primary);
+    border-radius: 8px;
+    background: var(--color-button-primary);
+    color: var(--color-button-text-primary);
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1;
+    cursor: pointer;
+    transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+}
+
+.teacher-proof-picker__button:hover {
+    transform: translateY(-1px);
+}
+
+.teacher-proof-picker__input:focus-visible + .teacher-proof-picker__button {
+    outline: 2px solid rgba(20, 78, 236, 0.25);
+    outline-offset: 2px;
+}
+
+.teacher-proof-picker__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.18);
+    font-size: 16px;
+    line-height: 1;
+}
+
+.teacher-proof-picker__info {
+    display: flex;
+    flex: 1;
+    min-width: 0;
+    flex-direction: column;
+    justify-content: center;
+    gap: 3px;
+    padding: 8px 12px;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    background: #ffffff;
+}
+
+.teacher-proof-picker__name {
+    overflow: hidden;
+    color: var(--color-text-primary);
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1.25;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.teacher-proof-picker__meta {
+    overflow: hidden;
+    color: var(--color-text-secondary);
+    font-size: 12px;
+    line-height: 1.25;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.teacher-proof-picker--selected .teacher-proof-picker__info {
+    border-color: rgba(20, 78, 236, 0.35);
+    background: rgba(20, 78, 236, 0.04);
+}
+
+.teacher-proof-picker--error .teacher-proof-picker__info,
+.teacher-proof-picker--error .teacher-proof-picker__button {
+    border-color: #ef4444;
+}
+
+.teacher-proof-picker--disabled {
+    opacity: 0.7;
+}
+
+.teacher-proof-picker--disabled .teacher-proof-picker__button {
+    cursor: not-allowed;
+    transform: none;
+}
+
+@media (max-width: 520px) {
+    .teacher-proof-picker {
+        flex-direction: column;
+    }
+
+    .teacher-proof-picker__button {
+        min-height: 46px;
+        width: 100%;
     }
 }
 </style>

@@ -1,4 +1,5 @@
 from django.contrib import admin
+from django.utils.html import format_html
 
 from .models import (
     Report,
@@ -11,10 +12,15 @@ from .models import (
     Section,
     Course,
     CourseParticipant,
+    FavoriteCourse,
     PreValidation,
     Leaderboard,
     ProblemDescriptor,
-    Tag
+    Tag,
+    ContestProblem,
+    SiteUpdate,
+    Profile,
+    TeacherAccessRequest,
 )
 
 @admin.register(Report)  # Регистрируем модель в админке
@@ -59,7 +65,7 @@ admin.site.register(ProblemData)
 
 @admin.register(Notebook)
 class NotebookAdmin(admin.ModelAdmin):
-    list_display = ("id", "title", "owner", "created_at", "updated_at")
+    list_display = ("id", "title", "owner", "compute_device", "created_at", "updated_at")
     list_filter = ("created_at", "updated_at")
     search_fields = ("title", "owner__username")
 
@@ -71,6 +77,14 @@ class CellAdmin(admin.ModelAdmin):
     search_fields = ("notebook__title",)
 
 
+class ContestProblemInline(admin.TabularInline):
+    model = ContestProblem
+    extra = 0
+    autocomplete_fields = ("problem",)
+    ordering = ("position", "id")
+    fields = ("problem", "position")
+
+
 @admin.register(Contest)
 class ContestAdmin(admin.ModelAdmin):
     list_display = (
@@ -78,18 +92,42 @@ class ContestAdmin(admin.ModelAdmin):
         "title",
         "course",
         "is_published",
+        "approval_status",
+        "access_type",
         "is_rated",
         "scoring",
         "registration_type",
         "status",
         "start_time",
         "duration_minutes",
+        "allow_upsolving",
         "created_by",
         "created_at",
     )
-    list_filter = ("is_published", "is_rated", "scoring", "registration_type", "status", "course")
+    list_filter = (
+        "is_published",
+        "approval_status",
+        "access_type",
+        "is_rated",
+        "scoring",
+        "registration_type",
+        "status",
+        "allow_upsolving",
+        "course",
+    )
     search_fields = ("title", "course__title", "created_by__username", "source")
-    filter_horizontal = ("problems",)
+    inlines = (ContestProblemInline,)
+    filter_horizontal = ("allowed_participants",)
+    list_editable = ("is_published", "approval_status", "access_type")
+
+    def save_model(self, request, obj, form, change):
+        # Auto-approve contests when admin publishes them
+        if obj.is_published and obj.approval_status == Contest.ApprovalStatus.PENDING:
+            obj.approval_status = Contest.ApprovalStatus.APPROVED
+            obj.approved_by = request.user
+            from django.utils import timezone
+            obj.approved_at = timezone.now()
+        super().save_model(request, obj, form, change)
 
 
 @admin.register(PreValidation)
@@ -113,6 +151,8 @@ class ProblemDescriptorAdmin(admin.ModelAdmin):
         "id_column",
         "target_column",
         "metric_name",
+        "score_curve_p",
+        "score_reference_metric",
         "has_custom_metric",
         "check_order",
         "created_at",
@@ -145,7 +185,85 @@ class CourseParticipantAdmin(admin.ModelAdmin):
     list_filter = ("role", "is_owner")
     search_fields = ("course__title", "user__username")
 
+@admin.register(FavoriteCourse)
+class FavoriteCourseAdmin(admin.ModelAdmin):
+    list_display = ("id", "user", "course", "position", "created_at")
+    list_filter = ("created_at",)
+    search_fields = ("user__username", "course__title")
+    ordering = ("user_id", "position", "id")
+
+@admin.register(SiteUpdate)
+class SiteUpdateAdmin(admin.ModelAdmin):
+    list_display = ("id", "title", "is_published", "created_at")
+    list_filter = ("is_published", "created_at")
+    search_fields = ("title", "body")
+    ordering = ("-created_at",)
+    
 @admin.register(Tag)
 class TagAdmin(admin.ModelAdmin):
     list_display = ("id", "name")
     search_fields = ("name",)
+
+
+@admin.register(Profile)
+class ProfileAdmin(admin.ModelAdmin):
+    list_display = ("user", "role", "gpu_access")
+    list_filter = ("role", "gpu_access")
+    search_fields = ("user__username", "user__email")
+
+
+@admin.register(TeacherAccessRequest)
+class TeacherAccessRequestAdmin(admin.ModelAdmin):
+    list_display = ("id", "user", "status", "created_at", "reviewed_by", "reviewed_at")
+    list_filter = ("status", "created_at", "reviewed_at")
+    search_fields = ("user__username", "user__email", "comment", "review_comment")
+    readonly_fields = ("created_at", "updated_at", "reviewed_at", "proof_link")
+    actions = ("approve_requests", "reject_requests")
+
+    fieldsets = (
+        ("Заявка", {
+            "fields": ("user", "status", "proof", "proof_link", "comment")
+        }),
+        ("Модерация", {
+            "fields": ("review_comment", "reviewed_by", "reviewed_at")
+        }),
+        ("Служебное", {
+            "fields": ("created_at", "updated_at"),
+            "classes": ("collapse",)
+        }),
+    )
+
+    def proof_link(self, obj):
+        if not obj or not obj.proof:
+            return "Нет файла"
+        return format_html('<a href="{}" target="_blank" rel="noopener">Открыть подтверждение</a>', obj.proof.url)
+
+    proof_link.short_description = "Файл подтверждения"
+
+    def save_model(self, request, obj, form, change):
+        old_status = None
+        if change:
+            old_status = TeacherAccessRequest.objects.filter(pk=obj.pk).values_list("status", flat=True).first()
+
+        super().save_model(request, obj, form, change)
+
+        if obj.status == TeacherAccessRequest.STATUS_APPROVED and old_status != TeacherAccessRequest.STATUS_APPROVED:
+            obj.approve(reviewer=request.user, comment=obj.review_comment)
+        elif obj.status == TeacherAccessRequest.STATUS_REJECTED and old_status != TeacherAccessRequest.STATUS_REJECTED:
+            obj.reject(reviewer=request.user, comment=obj.review_comment)
+
+    @admin.action(description="Одобрить выбранные заявки")
+    def approve_requests(self, request, queryset):
+        for teacher_request in queryset.exclude(status=TeacherAccessRequest.STATUS_APPROVED):
+            teacher_request.approve(
+                reviewer=request.user,
+                comment=teacher_request.review_comment,
+            )
+
+    @admin.action(description="Отклонить выбранные заявки")
+    def reject_requests(self, request, queryset):
+        for teacher_request in queryset.exclude(status=TeacherAccessRequest.STATUS_REJECTED):
+            teacher_request.reject(
+                reviewer=request.user,
+                comment=teacher_request.review_comment,
+            )

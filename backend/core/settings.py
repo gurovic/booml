@@ -11,9 +11,11 @@ https://docs.djangoproject.com/en/5.1/ref/settings/
 """
 
 import os
+import sys
 from pathlib import Path
 from dotenv import load_dotenv
 from django.core.exceptions import ImproperlyConfigured
+from datetime import timedelta
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env")
@@ -41,6 +43,7 @@ else:
 
 
 MODE = os.getenv("MODE", "dev")
+RUNNING_TESTS = len(sys.argv) > 1 and sys.argv[1] == "test"
 
 if MODE	== "prod":
     CSRF_TRUSTED_ORIGINS = os.getenv("CSRF_TRUSTED_ORIGINS", "").split(",")
@@ -50,12 +53,14 @@ if MODE	== "prod":
 
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:8101",
+    "http://127.0.0.1:8101",
     "http://booml.letovo.site",
     "https://booml.letovo.site",
 ]
 
 CSRF_TRUSTED_ORIGINS = [
     "http://localhost:8101",
+    "http://127.0.0.1:8101",
     "http://booml.letovo.site",
     "https://booml.letovo.site",
     "http://backend.booml.letovo.site",
@@ -77,6 +82,10 @@ INSTALLED_APPS = [
     'rest_framework',
     'corsheaders'
 ]
+
+REST_FRAMEWORK = {
+    "EXCEPTION_HANDLER": "runner.api.exception_handlers.custom_exception_handler",
+}
 
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
@@ -191,6 +200,12 @@ USE_TZ = True
 STATIC_URL = 'static/'
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
+PROBLEM_DATA_ROOT = Path(
+    os.environ.get(
+        "PROBLEM_DATA_ROOT",
+        str(BASE_DIR.parent / "problem_data" / "problem_data"),
+    )
+)
 RUNTIME_SANDBOX_ROOT = BASE_DIR / "media" / "notebook_sessions"
 RUNTIME_VM_BACKEND = os.environ.get("RUNTIME_VM_BACKEND", "auto")
 RUNTIME_VM_IMAGE = os.environ.get("RUNTIME_VM_IMAGE", "runner-vm:latest")
@@ -205,7 +220,6 @@ RUNTIME_VM_NET_ALLOWLIST = tuple(
 )
 RUNTIME_VM_ROOT = Path(os.environ.get("RUNTIME_VM_ROOT", str(BASE_DIR / "media" / "notebook_sessions")))
 RUNTIME_EXECUTION_BACKEND = os.environ.get("RUNTIME_EXECUTION_BACKEND", "legacy")
-# To use jupyter interface, set RUNTIME_EXECUTION_BACKEND to "jupyter"
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field
@@ -225,6 +239,45 @@ RUNNER_USE_CELERY_QUEUE = os.environ.get("RUNNER_USE_CELERY_QUEUE", "0").lower()
 CELERY_TASK_ALWAYS_EAGER = False  # для реального async
 CELERY_TASK_EAGER_PROPAGATES = True
 
+if RUNNING_TESTS:
+    LOGGING = {
+        "version": 1,
+        "disable_existing_loggers": False,
+        "handlers": {
+            "console": {
+                "class": "logging.StreamHandler",
+                "level": "ERROR",
+            }
+        },
+        "loggers": {
+            "kombu.connection": {
+                "handlers": ["console"],
+                "level": "ERROR",
+                "propagate": False,
+            },
+            "runner.services.report_service": {
+                "handlers": ["console"],
+                "level": "CRITICAL",
+                "propagate": False,
+            },
+            "runner.views.receive_test_result": {
+                "handlers": ["console"],
+                "level": "CRITICAL",
+                "propagate": False,
+            },
+            "runner.services.checker": {
+                "handlers": ["console"],
+                "level": "ERROR",
+                "propagate": False,
+            },
+            "runner.services.worker": {
+                "handlers": ["console"],
+                "level": "CRITICAL",
+                "propagate": False,
+            },
+        },
+    }
+
 CHANNEL_LAYER_REDIS_URL = os.getenv("CHANNEL_LAYER_REDIS_URL", "").strip()
 if CHANNEL_LAYER_REDIS_URL:
     CHANNEL_LAYERS = {
@@ -239,3 +292,31 @@ else:
             "BACKEND": "channels.layers.InMemoryChannelLayer",
         }
     }
+
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
+    'ROTATE_REFRESH_TOKENS': True,
+    'BLACKLIST_AFTER_ROTATION': True,
+    'UPDATE_LAST_LOGIN': True,
+
+    'ALGORITHM': 'HS256',
+    'SIGNING_KEY': SECRET_KEY,
+    'VERIFYING_KEY': None,
+    'AUDIENCE': None,
+    'ISSUER': None,
+
+    'AUTH_HEADER_TYPES': ('Bearer',),
+    'AUTH_HEADER_NAME': 'HTTP_AUTHORIZATION',
+    'USER_ID_FIELD': 'id',
+    'USER_ID_CLAIM': 'user_id',
+}
+
+CAPTCHA_PROVIDER = os.getenv("CAPTCHA_PROVIDER", "").strip().lower()
+CAPTCHA_DISABLE_DURING_TESTS = os.getenv("CAPTCHA_DISABLE_DURING_TESTS", "1").lower() in {"1", "true", "yes"}
+TURNSTILE_SITE_KEY = os.getenv("TURNSTILE_SITE_KEY", "").strip()
+TURNSTILE_SECRET_KEY = os.getenv("TURNSTILE_SECRET_KEY", "").strip()
+TURNSTILE_VERIFY_URL = os.getenv(
+    "TURNSTILE_VERIFY_URL",
+    "https://challenges.cloudflare.com/turnstile/v0/siteverify",
+).strip()
