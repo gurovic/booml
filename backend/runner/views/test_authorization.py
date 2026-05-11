@@ -386,15 +386,50 @@ class AuthorizationViewsTestCase(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.data['is_authenticated'])
+        self.assertFalse(response.data['is_platform_admin'])
         self.assertEqual(response.data['user']['username'], 'testuser')
         self.assertEqual(response.data['user']['email'], 'test@example.com')
+        self.assertFalse(response.data['user']['is_platform_admin'])
         self.assertIn('tokens', response.data)
+
+    def test_backend_check_auth_api_admin_sets_platform_flag(self):
+        admin = User.objects.create_user(
+            username='admin',
+            email='admin@example.com',
+            password='AdminPass123',
+        )
+        self.client.login(username=admin.username, password='AdminPass123')
+        response = self.client.get(self.api_check_auth_url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.data['is_authenticated'])
+        self.assertTrue(response.data['is_platform_admin'])
+        self.assertEqual(response.data['user']['email'], 'admin@example.com')
+        self.assertTrue(response.data['user']['is_platform_admin'])
+        self.assertIn('tokens', response.data)
+
+    def test_backend_check_auth_api_platform_admin(self):
+        User.objects.create_user(
+            username='admin',
+            email='admin@example.com',
+            password='AdminPass123'
+        )
+        self.client.login(username='admin', password='AdminPass123')
+
+        response = self.client.get(self.api_check_auth_url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.data['is_authenticated'])
+        self.assertTrue(response.data['is_platform_admin'])
+        self.assertTrue(response.data['user']['is_platform_admin'])
+        self.assertEqual(response.data['user']['username'], 'admin')
 
     def test_backend_check_auth_api_unauthenticated(self):
         response = self.api_client.get(self.api_check_auth_url)
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertFalse(response.data['is_authenticated'])
+        self.assertFalse(response.data['is_platform_admin'])
         self.assertIsNone(response.data['user'])  # Fixed: user should be None, not fields inside user
 
     def test_get_csrf_token_api(self):

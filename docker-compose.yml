@@ -2,12 +2,24 @@ services:
   postgres:
     container_name: booml-postgres
     image: postgres:16-alpine
+    command: >
+      sh -c "
+        mkdir -p /logs/postgres &&
+        chown -R postgres:postgres /logs/postgres &&
+        exec docker-entrypoint.sh postgres
+          -c logging_collector=on
+          -c log_directory=/logs/postgres
+          -c log_filename=postgres.log
+          -c log_rotation_age=1d
+          -c log_truncate_on_rotation=off
+      "
     environment:
       POSTGRES_DB: booml
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
     volumes:
       - postgres-data:/var/lib/postgresql/data
+      - ./logs/postgres:/logs/postgres
     ports:
       - "5432:5432"
     healthcheck:
@@ -19,9 +31,15 @@ services:
   redis:
     container_name: booml-redis
     image: redis:7-alpine
-    command: ["redis-server", "--appendonly", "yes"]
+    command: >
+      sh -c "
+        mkdir -p /logs/redis &&
+        chown -R redis:redis /logs/redis &&
+        exec redis-server --appendonly yes --logfile /logs/redis/redis.log
+      "
     volumes:
       - redis-data:/data
+      - ./logs/redis:/logs/redis
     ports:
       - "6379:6379"
     healthcheck:
@@ -40,6 +58,20 @@ services:
       context: ./backend
       dockerfile: docker/Dockerfile
     command: ["true"]
+    volumes:
+      - ./logs/runner-vm:/logs/runner-vm
+
+  prometheus:
+    container_name: booml-prometheus
+    image: prom/prometheus:latest
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    depends_on:
+      - backend
 
   backend:
     container_name: booml-backend
@@ -48,12 +80,14 @@ services:
       dockerfile: Dockerfile
     command: >
       sh -c "
+        mkdir -p /logs/backend &&
         python manage.py migrate &&
         python manage.py runserver 0.0.0.0:8100
       "
     working_dir: /app
     volumes:
       - ./backend:/app
+      - ./logs/backend:/logs/backend
       - ./problem_data:/problem_data
       - /var/run/docker.sock:/var/run/docker.sock
     ports:
@@ -91,6 +125,11 @@ services:
       CELERY_RESULT_BACKEND: redis://redis:6379/1
       CHANNEL_LAYER_REDIS_URL: redis://redis:6379/2
       RUNNER_USE_CELERY_QUEUE: ${RUNNER_USE_CELERY_QUEUE:-1}
+      PROMETHEUS_URL: http://prometheus:9090
+      PROMETHEUS_METRIC_NAMESPACE: booml
+      DASHBOARD_CPU_SESSION_CAPACITY: ${DASHBOARD_CPU_SESSION_CAPACITY:-8}
+      DASHBOARD_GPU_SESSION_CAPACITY: ${DASHBOARD_GPU_SESSION_CAPACITY:-1}
+      LOG_DIR: /logs/backend
 
   celery:
     container_name: booml-celery
@@ -99,11 +138,13 @@ services:
       dockerfile: Dockerfile
     command: >
       sh -c "
-        celery -A runner.celery:app worker -l info
+        mkdir -p /logs/celery &&
+        celery -A runner.celery:app worker -l info --logfile=/logs/celery/celery.log
       "
     working_dir: /app
     volumes:
       - ./backend:/app
+      - ./logs/celery:/logs/celery
       - ./problem_data:/problem_data
       - /var/run/docker.sock:/var/run/docker.sock
     extra_hosts:
@@ -134,18 +175,22 @@ services:
       CELERY_RESULT_BACKEND: redis://redis:6379/1
       CHANNEL_LAYER_REDIS_URL: redis://redis:6379/2
       RUNNER_USE_CELERY_QUEUE: ${RUNNER_USE_CELERY_QUEUE:-1}
+      LOG_DIR: /logs/celery
 
   frontend:
     container_name: booml-frontend
     image: node:18
     working_dir: /app
     command: >
-      sh -c "
-        npm install &&
-        npm run serve -- --host 0.0.0.0 --port 8101
+      bash -lc "
+        set -o pipefail &&
+        mkdir -p /logs/frontend &&
+        npm install 2>&1 | tee -a /logs/frontend/container.log &&
+        npm run serve -- --host 0.0.0.0 --port 8101 2>&1 | tee -a /logs/frontend/container.log
       "
     volumes:
       - ./frontend:/app
+      - ./logs/frontend:/logs/frontend
       - frontend-node-modules:/app/node_modules
     environment:
       VUE_APP_API_BASE: /api

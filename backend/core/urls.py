@@ -24,7 +24,8 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('', include(('runner.urls', 'runner'), namespace='runner')),
     path('reverse.js', views.urls_js, name='reverse_js'),
-    path('api/', include('runner.api.urls'))
+    path('api/', include('runner.api.urls')),
+    path('prometheus/', include('django_prometheus.urls')),
 ]
 
 if settings.DEBUG:
