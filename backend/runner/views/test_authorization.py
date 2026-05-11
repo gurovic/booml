@@ -399,6 +399,13 @@ class AuthorizationViewsTestCase(TestCase):
             password='AdminPass123',
         )
         self.client.login(username=admin.username, password='AdminPass123')
+        response = self.client.get(self.api_check_auth_url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.data['is_authenticated'])
+        self.assertTrue(response.data['is_platform_admin'])
+        self.assertEqual(response.data['user']['email'], 'admin@example.com')
+        self.assertTrue(response.data['user']['is_platform_admin'])
         self.assertIn('tokens', response.data)
 
     def test_backend_check_auth_api_platform_admin(self):

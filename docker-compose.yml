@@ -58,6 +58,8 @@ services:
       context: ./backend
       dockerfile: docker/Dockerfile
     command: ["true"]
+    volumes:
+      - ./logs/runner-vm:/logs/runner-vm
 
   prometheus:
     container_name: booml-prometheus
@@ -70,10 +72,6 @@ services:
       - "9090:9090"
     depends_on:
       - backend
-
-  backend:
-    volumes:
-      - ./logs/runner-vm:/logs/runner-vm
 
   backend:
     container_name: booml-backend
