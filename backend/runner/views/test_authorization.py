@@ -399,6 +399,15 @@ class AuthorizationViewsTestCase(TestCase):
             password='AdminPass123',
         )
         self.client.login(username=admin.username, password='AdminPass123')
+        self.assertIn('tokens', response.data)
+
+    def test_backend_check_auth_api_platform_admin(self):
+        User.objects.create_user(
+            username='admin',
+            email='admin@example.com',
+            password='AdminPass123'
+        )
+        self.client.login(username='admin', password='AdminPass123')
 
         response = self.client.get(self.api_check_auth_url)
 
@@ -406,6 +415,7 @@ class AuthorizationViewsTestCase(TestCase):
         self.assertTrue(response.data['is_authenticated'])
         self.assertTrue(response.data['is_platform_admin'])
         self.assertTrue(response.data['user']['is_platform_admin'])
+        self.assertEqual(response.data['user']['username'], 'admin')
 
     def test_backend_check_auth_api_unauthenticated(self):
         response = self.api_client.get(self.api_check_auth_url)
