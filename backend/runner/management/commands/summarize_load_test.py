@@ -55,15 +55,16 @@ class Command(BaseCommand):
             submissions_qs.values("status").annotate(total=Count("id")).values_list("status", "total")
         )
 
-        prevalidation_count = PreValidation.objects.filter(submission_id__in=submission_ids).count()
-        submissions_with_prevalidation = set(
-            PreValidation.objects.filter(submission_id__in=submission_ids).values_list(
-                "submission_id", flat=True
-            )
+        prevalidation_qs = PreValidation.objects.filter(submission_id__in=submission_ids)
+        prevalidation_count = prevalidation_qs.count()
+        prevalidation_missing_sample_limit = 100
+        prevalidation_missing_qs = submissions_qs.exclude(
+            id__in=prevalidation_qs.values("submission_id")
+        ).order_by("id")
+        prevalidation_missing_count = prevalidation_missing_qs.count()
+        prevalidation_missing = list(
+            prevalidation_missing_qs.values_list("id", flat=True)[:prevalidation_missing_sample_limit]
         )
-        prevalidation_missing = [
-            sid for sid in submission_ids if sid not in submissions_with_prevalidation
-        ]
 
         report_count = 0
         if problem_ids or submission_ids:
