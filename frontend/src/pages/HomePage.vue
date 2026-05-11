@@ -233,6 +233,7 @@ let user = userStore.getCurrentUser()
 let isAuthorized = computed(() => user.value != null)
 const isTeacher = computed(() => String(userStore.currentUser?.role || '') === 'teacher')
 
+
 const canEditSection = (s) => {
   if (!isAuthorized.value) return false
   if (!s) return false
@@ -1099,4 +1100,5 @@ onMounted(loadSidebar)
   .home__layout { flex-direction: column; }
   .home__sidebar { width: 100%; flex: 0 0 auto; position: static; top: auto; }
 }
+
 </style>

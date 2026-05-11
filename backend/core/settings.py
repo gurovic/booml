@@ -57,6 +57,9 @@ CORS_ALLOWED_ORIGINS = [
     "http://booml.letovo.site",
     "https://booml.letovo.site",
 ]
+_env_csrf = os.getenv("CSRF_TRUSTED_ORIGINS", "")
+if _env_csrf:
+    CSRF_TRUSTED_ORIGINS = [o.strip() for o in _env_csrf.split(",") if o.strip()]
 
 CSRF_TRUSTED_ORIGINS = [
     "http://localhost:8101",
@@ -66,6 +69,10 @@ CSRF_TRUSTED_ORIGINS = [
     "http://backend.booml.letovo.site",
     "https://backend.booml.letovo.site",
 ]
+_env_csrf = os.getenv("CSRF_TRUSTED_ORIGINS", "")
+if _env_csrf:
+    CSRF_TRUSTED_ORIGINS = [o.strip() for o in _env_csrf.split(",") if o.strip()]
+
 
 # Application definition
 
@@ -200,6 +207,15 @@ USE_TZ = True
 STATIC_URL = 'static/'
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
+LOG_DIR = Path(os.environ.get("LOG_DIR", str(BASE_DIR.parent / "logs" / "backend")))
+APP_LOG_PATH = Path(
+    os.environ.get("APP_LOG_PATH", str(LOG_DIR / "app.log"))
+)
+ERROR_CSV_LOG_PATH = Path(
+    os.environ.get("ERROR_CSV_LOG_PATH", str(LOG_DIR / "errors.csv"))
+)
+APP_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+ERROR_CSV_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
 PROBLEM_DATA_ROOT = Path(
     os.environ.get(
         "PROBLEM_DATA_ROOT",
@@ -239,42 +255,74 @@ RUNNER_USE_CELERY_QUEUE = os.environ.get("RUNNER_USE_CELERY_QUEUE", "0").lower()
 CELERY_TASK_ALWAYS_EAGER = False  # для реального async
 CELERY_TASK_EAGER_PROPAGATES = True
 
-if RUNNING_TESTS:
-    LOGGING = {
-        "version": 1,
-        "disable_existing_loggers": False,
-        "handlers": {
-            "console": {
-                "class": "logging.StreamHandler",
-                "level": "ERROR",
-            }
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "filters": {
+        "errors_only": {
+            "()": "core.csv_logging.ErrorLevelFilter",
+        }
+    },
+    "formatters": {
+        "standard": {
+            "format": "%(asctime)s %(levelname)s %(name)s %(message)s",
+        }
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "level": "INFO",
+            "formatter": "standard",
         },
-        "loggers": {
-            "kombu.connection": {
-                "handlers": ["console"],
-                "level": "ERROR",
-                "propagate": False,
-            },
-            "runner.services.report_service": {
-                "handlers": ["console"],
-                "level": "CRITICAL",
-                "propagate": False,
-            },
-            "runner.views.receive_test_result": {
-                "handlers": ["console"],
-                "level": "CRITICAL",
-                "propagate": False,
-            },
-            "runner.services.checker": {
-                "handlers": ["console"],
-                "level": "ERROR",
-                "propagate": False,
-            },
-            "runner.services.worker": {
-                "handlers": ["console"],
-                "level": "CRITICAL",
-                "propagate": False,
-            },
+        "file": {
+            "class": "logging.FileHandler",
+            "level": "INFO",
+            "formatter": "standard",
+            "filename": str(APP_LOG_PATH),
+            "encoding": "utf-8",
+        },
+        "error_csv": {
+            "()": "core.csv_logging.CsvErrorFileHandler",
+            "level": "ERROR",
+            "filename": str(ERROR_CSV_LOG_PATH),
+            "filters": ["errors_only"],
+        },
+    },
+    "root": {
+        "handlers": ["console", "file", "error_csv"],
+        "level": "INFO",
+    },
+}
+
+if RUNNING_TESTS:
+    LOGGING["handlers"]["console"]["level"] = "ERROR"
+    LOGGING["handlers"]["file"]["level"] = "ERROR"
+    LOGGING["root"]["level"] = "ERROR"
+    LOGGING["loggers"] = {
+        "kombu.connection": {
+            "handlers": ["console", "file", "error_csv"],
+            "level": "ERROR",
+            "propagate": False,
+        },
+        "runner.services.report_service": {
+            "handlers": ["console", "file", "error_csv"],
+            "level": "CRITICAL",
+            "propagate": False,
+        },
+        "runner.views.receive_test_result": {
+            "handlers": ["console", "error_csv"],
+            "level": "CRITICAL",
+            "propagate": False,
+        },
+        "runner.services.checker": {
+            "handlers": ["console", "error_csv"],
+            "level": "ERROR",
+            "propagate": False,
+        },
+        "runner.services.worker": {
+            "handlers": ["console", "error_csv"],
+            "level": "CRITICAL",
+            "propagate": False,
         },
     }
 
