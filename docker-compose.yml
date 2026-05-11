@@ -61,6 +61,18 @@ services:
     volumes:
       - ./logs/runner-vm:/logs/runner-vm
 
+  prometheus:
+    container_name: booml-prometheus
+    image: prom/prometheus:latest
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    depends_on:
+      - backend
+
   backend:
     container_name: booml-backend
     build:
@@ -113,6 +125,10 @@ services:
       CELERY_RESULT_BACKEND: redis://redis:6379/1
       CHANNEL_LAYER_REDIS_URL: redis://redis:6379/2
       RUNNER_USE_CELERY_QUEUE: ${RUNNER_USE_CELERY_QUEUE:-1}
+      PROMETHEUS_URL: http://prometheus:9090
+      PROMETHEUS_METRIC_NAMESPACE: booml
+      DASHBOARD_CPU_SESSION_CAPACITY: ${DASHBOARD_CPU_SESSION_CAPACITY:-8}
+      DASHBOARD_GPU_SESSION_CAPACITY: ${DASHBOARD_GPU_SESSION_CAPACITY:-1}
       LOG_DIR: /logs/backend
 
   celery:

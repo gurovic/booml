@@ -79,6 +79,7 @@ from .views.profile import (get_my_profile,
                             teacher_access_request,
                             )
 from .views.search import search
+from .views.dashboard_metrics import backend_ping, backend_request_metrics
 
 
 app_name = 'runner'
@@ -248,6 +249,8 @@ urlpatterns = [
     path('backend/logout/', backend_logout, name='backend_logout'),
     path('backend/user/', backend_current_user, name='backend_current_user'),
     path('backend/check-auth/', backend_check_auth, name='backend_check_auth'),
+    path('backend/ping/', backend_ping, name='backend_ping'),
+    path('backend/dashboard/request-metrics/', backend_request_metrics, name='backend_request_metrics'),
     path('backend/csrf-token/', get_csrf_token, name='backend_csrf_token'),
     path('backend/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('backend/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),

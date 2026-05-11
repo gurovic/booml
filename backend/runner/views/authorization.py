@@ -79,6 +79,7 @@ def backend_register(request):
                 'username': user.username,
                 'email': user.email,
                 'role': get_user_role(user),
+                'is_platform_admin': is_platform_admin(user),
             },
             'tokens': {
                 'refresh': str(refresh),
@@ -115,6 +116,7 @@ def backend_login(request):
                 'username': user.username,
                 'email': user.email,
                 'role': get_user_role(user),
+                'is_platform_admin': is_platform_admin(user),
             },
             'tokens': {
                 'refresh': str(refresh),
@@ -150,11 +152,13 @@ def backend_current_user(request):
 
     return Response({
         'is_authenticated': True,
+        'is_platform_admin': is_platform_admin(request.user),
         'user': {
                 'id': request.user.id,
                 'username': request.user.username,
                 'email': request.user.email,
                 'role': get_user_role(request.user),
+                'is_platform_admin': is_platform_admin(request.user),
             },
         'tokens': {
             'refresh': str(refresh),
@@ -177,6 +181,7 @@ def backend_check_auth(request):
                 'username': request.user.username,
                 'email': request.user.email,
                 'role': get_user_role(request.user),
+                'is_platform_admin': is_platform_admin(request.user),
             },
             'tokens': {
                 'refresh': str(refresh),
