@@ -37,10 +37,16 @@ def _save_problem_files(problem: Problem, *, rows: int, column: str) -> ProblemD
     test = ContentFile(_csv_bytes(min(rows, 1000), column=column), name=f"{problem.id}_test.csv")
 
     problem_data, _ = ProblemData.objects.get_or_create(problem=problem)
-    problem_data.answer_file = answer
-    problem_data.sample_submission_file = sample
-    problem_data.train_file = train
-    problem_data.test_file = test
+
+    for field_name in ("answer_file", "sample_submission_file", "train_file", "test_file"):
+        existing_file = getattr(problem_data, field_name)
+        if existing_file and existing_file.name:
+            existing_file.delete(save=False)
+
+    problem_data.answer_file.save(answer.name, answer, save=False)
+    problem_data.sample_submission_file.save(sample.name, sample, save=False)
+    problem_data.train_file.save(train.name, train, save=False)
+    problem_data.test_file.save(test.name, test, save=False)
     problem_data.save()
     return problem_data
 
