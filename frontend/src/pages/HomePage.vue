@@ -498,7 +498,6 @@ onMounted(loadSidebar)
 
 <style scoped>
 .home {
-  min-height: 100vh;
   padding: 0 0 24px;
   font-family: var(--font-default);
   color: var(--color-text-primary);

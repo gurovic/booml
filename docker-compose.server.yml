@@ -145,6 +145,7 @@ services:
     volumes:
       - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
       - ./backend/staticfiles:/staticfiles:ro
+      - ./backend/media:/media_files:ro
     ports:
       - "8090:8090"
       - "8092:8092"
