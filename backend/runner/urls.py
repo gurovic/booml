@@ -79,6 +79,7 @@ from .views.profile import (get_my_profile,
                             teacher_access_request,
                             )
 from .views.search import search
+from .views.logs import logs_api
 
 
 app_name = 'runner'
@@ -257,5 +258,6 @@ urlpatterns = [
     path('backend/profiles/delete-avatar/', delete_avatar, name='profile-delete-avatar'),
     path('backend/profiles/update-info/', update_profile_info, name='profile-update-info'),
     path('backend/profiles/teacher-request/', teacher_access_request, name='profile-teacher-request'),
-    path('backend/search/', search, name='search')
+    path('backend/search/', search, name='search'),
+    path('backend/logs/', logs_api, name='backend_logs'),
 ]
