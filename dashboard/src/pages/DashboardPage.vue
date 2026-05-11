@@ -33,6 +33,7 @@
                   <th>Уровень</th>
                   <th>Logger</th>
                   <th>Модуль</th>
+                  <th>Путь</th>
                   <th>Строка</th>
                   <th>Сообщение</th>
                   <th>Исключение</th>
@@ -44,6 +45,7 @@
                   <td><span class="log-badge" :class="levelClass(row.level)">{{ row.level }}</span></td>
                   <td class="log-table__logger">{{ row.logger }}</td>
                   <td>{{ row.module }}</td>
+                  <td class="log-table__path">{{ row.pathname }}</td>
                   <td>{{ row.lineno }}</td>
                   <td class="log-table__msg">{{ row.message }}</td>
                   <td class="log-table__exc"><pre v-if="row.exception">{{ row.exception }}</pre></td>
@@ -117,11 +119,18 @@ onMounted(async () => {
       window.location.href = mainAppUrl
       return
     }
+  } catch (err) {
+    error.value = 'Не удалось проверить авторизацию.'
+    loading.value = false
+    return
+  }
+
+  try {
     const logs = await getLogs()
     appLog.value = logs.app_log || []
     errorLog.value = logs.error_log || []
   } catch (err) {
-    error.value = 'Не удалось загрузить данные.'
+    error.value = 'Не удалось загрузить журналы логов.'
   } finally {
     loading.value = false
   }
@@ -289,13 +298,23 @@ body {
 }
 
 .log-table__msg {
-  word-break: break-all;
+  overflow-wrap: break-word;
+  word-break: break-word;
   max-width: 400px;
+}
+
+.log-table__path {
+  overflow-wrap: break-word;
+  word-break: break-word;
+  max-width: 200px;
+  font-size: 11px;
+  color: #888;
 }
 
 .log-table__exc pre {
   white-space: pre-wrap;
-  word-break: break-all;
+  overflow-wrap: break-word;
+  word-break: break-word;
   font-size: 11px;
   color: #c0392b;
   max-width: 300px;

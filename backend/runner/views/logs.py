@@ -29,12 +29,13 @@ def _read_app_log(path: Path, max_lines: int = _MAX_APP_LOG_LINES) -> list[dict]
         # Each line has format: "<timestamp> <LEVEL> <logger> <message…>"
         parts = line.split(" ", 3)
         if len(parts) >= 4:
+            rest = parts[3].split(" ", 1)
             entries.append(
                 {
                     "timestamp": f"{parts[0]} {parts[1]}",
                     "level": parts[2],
-                    "logger": parts[3].split(" ", 1)[0] if " " in parts[3] else parts[3],
-                    "message": parts[3].split(" ", 1)[1] if " " in parts[3] else "",
+                    "logger": rest[0],
+                    "message": rest[1] if len(rest) > 1 else "",
                     "source": "app.log",
                 }
             )
