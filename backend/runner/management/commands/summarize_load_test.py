@@ -1,6 +1,6 @@
 import json
 
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 from django.contrib.auth import get_user_model
 from django.db.models import Count, Q
 
@@ -36,7 +36,7 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         run_id = str(options["run_id"]).strip()
         if not run_id:
-            raise ValueError("--run-id must be non-empty")
+            raise CommandError("--run-id must be non-empty")
 
         prefix = f"loadtest_{run_id}"
         user_ids = list(User.objects.filter(username__startswith=prefix).values_list("id", flat=True))
