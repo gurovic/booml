@@ -11,6 +11,18 @@
         </a>
 
         <div class="dashboard__header-actions">
+          <div v-if="!loading && !error" class="dashboard__range-controls">
+            <button
+              v-for="range in ranges"
+              :key="range.key"
+              type="button"
+              class="dashboard__range-button"
+              :class="{ 'dashboard__range-button--active': activeRange === range.key }"
+              @click="activeRange = range.key"
+            >
+              {{ range.label }}
+            </button>
+          </div>
           <a :href="mainAppUrl" class="dashboard__header-link">Основной сервис</a>
         </div>
       </div>
@@ -95,21 +107,8 @@
         <section class="panel">
           <div class="panel__header">
             <div>
-              <h2 class="panel__title">Запросы к серверу</h2>
-              <p class="panel__subtitle">Ping и API запросы</p>
-            </div>
-
-            <div class="panel__controls">
-              <button
-                v-for="range in ranges"
-                :key="range.key"
-                type="button"
-                class="panel__range-button"
-                :class="{ 'panel__range-button--active': activeRange === range.key }"
-                @click="activeRange = range.key"
-              >
-                {{ range.label }}
-              </button>
+              <h2 class="panel__title">Активные сессии</h2>
+              <p class="panel__subtitle">{{ activeSessionsSubtitle }}</p>
             </div>
           </div>
 
@@ -117,6 +116,25 @@
             <div class="chart-card__plot">
               <VChart
                 class="chart-card__chart"
+                :option="activeSessionsChartOption"
+                autoresize
+              />
+            </div>
+          </div>
+        </section>
+
+        <section class="panel panel--compact">
+          <div class="panel__header panel__header--compact">
+            <div>
+              <h2 class="panel__title panel__title--compact">Запросы к серверу</h2>
+              <p class="panel__subtitle panel__subtitle--compact">Ping и API запросы</p>
+            </div>
+          </div>
+
+          <div class="chart-card chart-card--compact">
+            <div class="chart-card__plot chart-card__plot--compact">
+              <VChart
+                class="chart-card__chart chart-card__chart--compact"
                 :option="mainChartOption"
                 autoresize
               />
@@ -134,29 +152,15 @@
             </div>
           </div>
 
-          <div class="panel__summary">
+          <div class="panel__summary panel__summary--compact">
             <div class="summary-metric">
               <div class="summary-metric__label">Средняя задержка</div>
               <div class="summary-metric__value">{{ averageDurationLabel }}</div>
             </div>
             <div class="summary-metric">
-              <div class="summary-metric__label">Средний ping</div>
-              <div class="summary-metric__value">{{ averagePingLabel }}</div>
-            </div>
-            <div class="summary-metric">
               <div class="summary-metric__label">Частота 5xx</div>
               <div class="summary-metric__value">{{ errorRateLabel }}</div>
             </div>
-            <div class="summary-metric">
-              <div class="summary-metric__label">Пик за период</div>
-              <div class="summary-metric__value">{{ peakRequestsLabel }}</div>
-            </div>
-          </div>
-
-          <div class="panel__footnote">
-            <span>Текущее round-trip ping из дашборда: {{ livePingLabel }}</span>
-            <span>Агрегация ряда: {{ granularityLabel }}</span>
-            <span>Обновлено: {{ generatedAtLabel || 'н/д' }}</span>
           </div>
         </section>
       </template>
@@ -214,7 +218,6 @@ const error = ref('')
 const refreshError = ref('')
 const activeRange = ref('24h')
 const metricsPayload = ref(null)
-const latestPingMs = ref(null)
 
 let refreshTimer = null
 
@@ -223,25 +226,25 @@ const cards = computed(() => activeRangeData.value?.cards || null)
 const points = computed(() => activeRangeData.value?.points || [])
 const summary = computed(() => activeRangeData.value?.summary || null)
 
-const generatedAtLabel = computed(() => (
-  metricsPayload.value?.generated_at ? formatDateTime(metricsPayload.value.generated_at) : ''
-))
 const averageDurationLabel = computed(() => formatMilliseconds(summary.value?.avg_duration_ms))
-const averagePingLabel = computed(() => formatMilliseconds(summary.value?.avg_ping_ms))
 const errorRateLabel = computed(() => `${formatNumber(summary.value?.error_rate ?? 0)}%`)
-const peakRequestsLabel = computed(() => formatCount(summary.value?.peak_requests ?? 0))
-const livePingLabel = computed(() => formatMilliseconds(latestPingMs.value))
-const granularityLabel = computed(() => {
-  if (activeRangeData.value?.granularity === 'hour') {
-    return 'почасовая'
+
+const activeSessionsSubtitle = computed(() => {
+  if (activeRange.value === '24h') {
+    return 'Динамика за последние 24 часа'
   }
-  if (activeRangeData.value?.granularity === 'day') {
-    return 'подневная'
+  if (activeRange.value === '7d') {
+    return 'Динамика за последние 7 дней'
   }
-  return 'н/д'
+  return 'Динамика за последние 30 дней'
 })
 
 const mainChartOption = computed(() => buildMainChartOption(points.value, activeRange.value))
+const activeSessionsChartOption = computed(() => buildActiveSessionsChartOption(
+  points.value,
+  cards.value?.active_sessions?.points || [],
+  activeRange.value,
+))
 
 const statCards = computed(() => {
   const cardMetrics = cards.value
@@ -325,9 +328,7 @@ async function refreshMetrics({ initial = false } = {}) {
   try {
     refreshError.value = ''
 
-    const pingStartedAt = performance.now()
     await pingServer()
-    latestPingMs.value = performance.now() - pingStartedAt
 
     metricsPayload.value = await getRequestMetrics()
   } catch (err) {
@@ -416,16 +417,6 @@ function formatTrendPeriod(rangeKey) {
     return 'к предыдущим 30 дн'
   }
   return 'к предыдущему периоду'
-}
-
-function formatDateTime(value) {
-  if (!value) return 'н/д'
-  return new Intl.DateTimeFormat('ru-RU', {
-    hour: '2-digit',
-    minute: '2-digit',
-    day: '2-digit',
-    month: 'short',
-  }).format(new Date(value))
 }
 
 function buildSparklineOption(values, tone) {
@@ -654,6 +645,152 @@ function buildMainChartOption(sourcePoints, rangeKey) {
   }
 }
 
+function buildActiveSessionsChartOption(sourcePoints, sessionValues, rangeKey) {
+  const xAxisData = sourcePoints.map((point) => formatAxisLabel(point.timestamp, rangeKey))
+  const values = sourcePoints.map((_, index) => Number(sessionValues[index] || 0))
+  const labelInterval = Math.max(0, Math.ceil(Math.max(sourcePoints.length, 1) / 8) - 1)
+
+  return {
+    animationDuration: 500,
+    textStyle: {
+      fontFamily: 'Manrope, Avenir Next, Segoe UI, sans-serif',
+    },
+    tooltip: {
+      trigger: 'axis',
+      backgroundColor: 'rgba(34, 42, 72, 0.94)',
+      borderWidth: 0,
+      textStyle: {
+        color: '#ffffff',
+      },
+      axisPointer: {
+        type: 'line',
+        lineStyle: {
+          color: 'rgba(115, 92, 247, 0.28)',
+          width: 1,
+        },
+      },
+      formatter(params) {
+        const point = sourcePoints[params?.[0]?.dataIndex] || null
+        const title = point ? formatTooltipLabel(point.timestamp, rangeKey) : ''
+        const value = params?.[0]?.value ?? 0
+        return `${title}<br/>${params?.[0]?.marker || ''}Активные сессии: ${formatCount(value)}`
+      },
+    },
+    toolbox: {
+      show: true,
+      top: 4,
+      right: 6,
+      itemSize: 16,
+      iconStyle: {
+        borderColor: '#5f6c92',
+      },
+      emphasis: {
+        iconStyle: {
+          borderColor: '#344362',
+        },
+      },
+      feature: {
+        restore: {
+          title: 'Сбросить',
+        },
+        saveAsImage: {
+          title: 'Сохранить',
+          name: `booml-active-sessions-${rangeKey}`,
+          pixelRatio: 2,
+          backgroundColor: '#ffffff',
+        },
+      },
+    },
+    grid: {
+      top: 28,
+      right: 14,
+      bottom: 30,
+      left: 52,
+    },
+    xAxis: {
+      type: 'category',
+      boundaryGap: false,
+      data: xAxisData,
+      axisTick: {
+        show: false,
+      },
+      axisLine: {
+        lineStyle: {
+          color: '#8f9bc0',
+          width: 1.5,
+        },
+      },
+      axisLabel: {
+        color: '#7c87ab',
+        fontSize: 12,
+        fontWeight: 600,
+        margin: 16,
+        interval: labelInterval,
+      },
+      splitLine: {
+        show: true,
+        lineStyle: {
+          color: 'rgba(177, 189, 228, 0.38)',
+          type: 'dashed',
+        },
+      },
+    },
+    yAxis: {
+      type: 'value',
+      min: 0,
+      axisTick: {
+        show: false,
+      },
+      axisLine: {
+        lineStyle: {
+          color: '#8f9bc0',
+          width: 1.5,
+        },
+      },
+      axisLabel: {
+        color: '#7c87ab',
+        fontSize: 12,
+        fontWeight: 600,
+        margin: 14,
+      },
+      splitLine: {
+        show: true,
+        lineStyle: {
+          color: 'rgba(177, 189, 228, 0.38)',
+          type: 'dashed',
+        },
+      },
+    },
+    series: [
+      {
+        name: 'Активные сессии',
+        type: 'line',
+        data: values,
+        smooth: true,
+        symbol: 'none',
+        lineStyle: {
+          color: '#735cf7',
+          width: 4,
+          cap: 'round',
+        },
+        areaStyle: {
+          color: {
+            type: 'linear',
+            x: 0,
+            y: 0,
+            x2: 0,
+            y2: 1,
+            colorStops: [
+              { offset: 0, color: 'rgba(115, 92, 247, 0.18)' },
+              { offset: 1, color: 'rgba(115, 92, 247, 0.02)' },
+            ],
+          },
+        },
+      },
+    ],
+  }
+}
+
 function formatAxisLabel(timestamp, rangeKey) {
   const date = new Date(timestamp)
   if (rangeKey === '24h') {
@@ -812,7 +949,41 @@ a {
 .dashboard__header-actions {
   display: flex;
   align-items: center;
+  gap: 12px;
+}
+
+.dashboard__range-controls {
+  display: inline-flex;
+  align-items: center;
   gap: 8px;
+  padding: 4px;
+  border-radius: 12px;
+  background: rgba(228, 218, 255, 0.22);
+  box-shadow: inset 0 0 0 1px rgba(228, 218, 255, 0.2);
+  backdrop-filter: blur(10px);
+}
+
+.dashboard__range-button {
+  min-width: 54px;
+  min-height: 40px;
+  padding: 10px 14px;
+  border: 0;
+  border-radius: 10px;
+  background: rgba(228, 218, 255, 0.88);
+  color: #59617d;
+  cursor: pointer;
+  font-size: 15px;
+  font-weight: 700;
+  transition: transform 0.2s ease, background-color 0.2s ease, color 0.2s ease;
+}
+
+.dashboard__range-button:hover {
+  transform: translateY(-1px);
+}
+
+.dashboard__range-button--active {
+  background: #ffffff;
+  color: #27346a;
 }
 
 .dashboard__header-link {
@@ -993,10 +1164,19 @@ a {
   box-shadow: var(--dashboard-shadow);
 }
 
+.panel--compact {
+  max-width: calc(50% - 9px);
+  margin-top: 20px;
+}
+
 .panel__header {
   display: flex;
   justify-content: space-between;
   gap: 18px;
+  align-items: flex-start;
+}
+
+.panel__header--compact {
   align-items: flex-start;
 }
 
@@ -1006,42 +1186,26 @@ a {
   font-weight: 800;
 }
 
+.panel__title--compact {
+  font-size: 1.5rem;
+}
+
 .panel__subtitle {
   margin: 8px 0 0;
   color: var(--dashboard-muted);
   font-size: 1.1rem;
 }
 
-.panel__controls {
-  display: inline-flex;
-  gap: 10px;
-  align-self: center;
-}
-
-.panel__range-button {
-  min-width: 72px;
-  height: 44px;
-  padding: 0 16px;
-  border: 0;
-  border-radius: 15px;
-  background: rgba(115, 92, 247, 0.16);
-  color: #5c6280;
-  cursor: pointer;
-  font-weight: 700;
-  transition: transform 0.2s ease, background-color 0.2s ease, color 0.2s ease;
-}
-
-.panel__range-button:hover {
-  transform: translateY(-1px);
-}
-
-.panel__range-button--active {
-  background: #344362;
-  color: #fff;
+.panel__subtitle--compact {
+  font-size: 0.98rem;
 }
 
 .chart-card {
   margin-top: 22px;
+}
+
+.chart-card--compact {
+  margin-top: 18px;
 }
 
 .chart-card__plot {
@@ -1052,11 +1216,20 @@ a {
   border: 1px solid rgba(223, 230, 251, 0.9);
 }
 
+.chart-card__plot--compact {
+  padding: 14px 14px 4px;
+}
+
 .chart-card__chart {
   width: 100%;
   height: min(52vw, 520px);
   min-height: 340px;
   display: block;
+}
+
+.chart-card__chart--compact {
+  height: 320px;
+  min-height: 320px;
 }
 
 .chart-card__legend {
@@ -1098,6 +1271,10 @@ a {
   border-top: 1px solid rgba(223, 230, 251, 0.9);
 }
 
+.panel__summary--compact {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .summary-metric__label {
   color: var(--dashboard-muted);
   font-size: 1rem;
@@ -1125,6 +1302,10 @@ a {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .panel--compact {
+    max-width: 100%;
+  }
+
   .panel__summary {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -1144,12 +1325,17 @@ a {
   }
 
   .dashboard__header-actions,
-  .panel__controls {
+  .dashboard__range-controls {
     justify-content: flex-start;
   }
 
   .chart-card__chart {
     height: 360px;
+  }
+
+  .chart-card__chart--compact {
+    height: 300px;
+    min-height: 300px;
   }
 }
 
@@ -1162,9 +1348,23 @@ a {
     padding: 10px 0;
   }
 
+  .dashboard__range-controls {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .dashboard__range-button {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+
   .dashboard__stats,
   .panel__summary {
     grid-template-columns: 1fr;
+  }
+
+  .panel--compact {
+    max-width: 100%;
   }
 
   .panel,
