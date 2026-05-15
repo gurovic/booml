@@ -74,6 +74,32 @@ class TestChecker(unittest.TestCase):
         """Очистка после тестов"""
         pass
 
+    def test_text_submission_exact_match(self):
+        self.mock_submission.source = Submission.SOURCE_TEXT
+        self.mock_submission.raw_text = "42"
+        self.mock_problem_data.text_answer = "42"
+
+        checker = SubmissionChecker()
+        result = checker.check_submission(self.mock_submission)
+
+        self.assertTrue(result.ok)
+        self.assertEqual(result.outputs["metric_name"], "exact_match")
+        self.assertEqual(result.outputs["raw_metric"], 1.0)
+        self.assertEqual(result.outputs["score_100"], 100.0)
+        self.mock_submission.save.assert_called_once_with(update_fields=["metrics"])
+
+    def test_text_submission_mismatch(self):
+        self.mock_submission.source = Submission.SOURCE_TEXT
+        self.mock_submission.raw_text = "41"
+        self.mock_problem_data.text_answer = "42"
+
+        checker = SubmissionChecker()
+        result = checker.check_submission(self.mock_submission)
+
+        self.assertTrue(result.ok)
+        self.assertEqual(result.outputs["raw_metric"], 0.0)
+        self.assertEqual(result.outputs["score_100"], 0.0)
+
     @patch('runner.services.checker.broadcast_metric_update')
     @patch('runner.services.checker.ReportGenerator')
     @patch('runner.services.checker.pd.read_csv')
