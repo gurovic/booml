@@ -53,10 +53,11 @@ def _apply_limits() -> None:
         return
     if resource is None:
         return
-    try:
-        resource.setrlimit(resource.RLIMIT_CPU, (cfg.TIMEOUT_S + 1, cfg.TIMEOUT_S + 1))
-    except Exception:
-        pass
+    if cfg.TIMEOUT_S > 0:
+        try:
+            resource.setrlimit(resource.RLIMIT_CPU, (cfg.TIMEOUT_S + 1, cfg.TIMEOUT_S + 1))
+        except Exception:
+            pass
 
     try:
         resource.setrlimit(resource.RLIMIT_FSIZE, (cfg.MAX_FILE_BYTES, cfg.MAX_FILE_BYTES))
@@ -177,17 +178,20 @@ def run_python(code: str, media_root: Path, run_id: Optional[str] = None, timeou
         )
 
         timed_out = False
-        try:
-            stdout_bytes, stderr_bytes = proc.communicate(timeout=timeout_s)
-        except subprocess.TimeoutExpired:
-            timed_out = True
+        if timeout_s and timeout_s > 0:
             try:
-                if os.name == "posix":
-                    os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
-                else:
-                    proc.kill()
-            finally:
-                stdout_bytes, stderr_bytes = proc.communicate()
+                stdout_bytes, stderr_bytes = proc.communicate(timeout=timeout_s)
+            except subprocess.TimeoutExpired:
+                timed_out = True
+                try:
+                    if os.name == "posix":
+                        os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+                    else:
+                        proc.kill()
+                finally:
+                    stdout_bytes, stderr_bytes = proc.communicate()
+        else:
+            stdout_bytes, stderr_bytes = proc.communicate()
 
         elapsed_ms = int((time.time() - started_at) * 1000)
 

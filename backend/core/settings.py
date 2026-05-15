@@ -57,7 +57,6 @@ CORS_ALLOWED_ORIGINS = [
     "http://booml.letovo.site",
     "https://booml.letovo.site",
 ]
-
 CSRF_TRUSTED_ORIGINS = [
     "http://localhost:8101",
     "http://127.0.0.1:8101",
@@ -66,6 +65,10 @@ CSRF_TRUSTED_ORIGINS = [
     "http://backend.booml.letovo.site",
     "https://backend.booml.letovo.site",
 ]
+_env_csrf = os.getenv("CSRF_TRUSTED_ORIGINS", "")
+if _env_csrf:
+    CSRF_TRUSTED_ORIGINS = [o.strip() for o in _env_csrf.split(",") if o.strip()]
+
 
 # Application definition
 
@@ -232,6 +235,10 @@ RUNTIME_VM_NET_OUTBOUND = os.environ.get("RUNTIME_VM_NET_OUTBOUND", "deny")
 _runtime_vm_allowlist = os.environ.get("RUNTIME_VM_NET_ALLOWLIST", "")
 RUNTIME_VM_NET_ALLOWLIST = tuple(
     item.strip() for item in _runtime_vm_allowlist.split(",") if item.strip()
+)
+_runtime_vm_gpu_mig_uuids = os.environ.get("RUNTIME_VM_GPU_MIG_UUIDS", "")
+RUNTIME_VM_GPU_MIG_UUIDS = tuple(
+    item.strip() for item in _runtime_vm_gpu_mig_uuids.split(",") if item.strip()
 )
 RUNTIME_VM_ROOT = Path(os.environ.get("RUNTIME_VM_ROOT", str(BASE_DIR / "media" / "notebook_sessions")))
 RUNTIME_EXECUTION_BACKEND = os.environ.get("RUNTIME_EXECUTION_BACKEND", "legacy")
