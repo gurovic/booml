@@ -263,3 +263,56 @@ class RunPrevalidationTestCase(TestCase):
         self.assertEqual(preval.status, "warnings")
         self.assertEqual(preval.errors_count, 0)
         self.assertGreaterEqual(preval.warnings_count, 1)
+
+    @override_settings(MEDIA_ROOT=tempfile.gettempdir())
+    def test_text_submission_with_configured_text_answer_passes_without_csv_parsing(self):
+        problem = Problem.objects.create(title="Text Problem", created_at=timezone.now().date())
+        ProblemDescriptor.objects.create(
+            problem=problem,
+            id_column="id",
+            target_column="value",
+            target_type="str",
+            check_order=False,
+        )
+        ProblemData.objects.create(problem=problem, text_answer="42")
+
+        test_user = User.objects.create_user(username="textuser_ok")
+        submission = Submission.objects.create(
+            problem=problem,
+            user=test_user,
+            source=Submission.SOURCE_TEXT,
+            raw_text="42",
+        )
+
+        preval = run_prevalidation(submission)
+
+        self.assertEqual(preval.status, "passed")
+        self.assertEqual(preval.errors_count, 0)
+        self.assertEqual(preval.rows_total, 1)
+        self.assertEqual(preval.stats.get("mode"), "text_answer")
+
+    @override_settings(MEDIA_ROOT=tempfile.gettempdir())
+    def test_text_submission_with_empty_payload_fails(self):
+        problem = Problem.objects.create(title="Text Problem", created_at=timezone.now().date())
+        ProblemDescriptor.objects.create(
+            problem=problem,
+            id_column="id",
+            target_column="value",
+            target_type="str",
+            check_order=False,
+        )
+        ProblemData.objects.create(problem=problem, text_answer="hello")
+
+        test_user = User.objects.create_user(username="textuser_fail")
+        submission = Submission.objects.create(
+            problem=problem,
+            user=test_user,
+            source=Submission.SOURCE_TEXT,
+            raw_text="   ",
+        )
+
+        preval = run_prevalidation(submission)
+
+        self.assertEqual(preval.status, "failed")
+        self.assertGreaterEqual(preval.errors_count, 1)
+        self.assertTrue(any("Текстовый ответ пуст" in err for err in preval.errors))
