@@ -39,9 +39,17 @@ NOTEBOOK_SESSION_PREFIX = 'notebook:'
 CPU_SESSION_CAPACITY = max(1, int(os.getenv('DASHBOARD_CPU_SESSION_CAPACITY', str(os.cpu_count() or 8))))
 GPU_SESSION_CAPACITY = max(1, int(os.getenv('DASHBOARD_GPU_SESSION_CAPACITY', '1')))
 DEFAULT_SESSION_CPU = max(1, int(getattr(settings, 'RUNTIME_VM_CPU', 2)))
+DEFAULT_SESSION_RAM_GB = max(0.1, float(getattr(settings, 'RUNTIME_VM_RAM_MB', 4096)) / 1024)
+RAM_TOTAL_GB = max(1.0, float(os.getenv('DASHBOARD_RAM_TOTAL_GB', str(CPU_SESSION_CAPACITY * DEFAULT_SESSION_RAM_GB))))
+VRAM_TOTAL_GB = max(1.0, float(os.getenv('DASHBOARD_VRAM_TOTAL_GB', '24')))
+SESSION_VRAM_GB = max(0.1, float(os.getenv('DASHBOARD_GPU_SESSION_VRAM_GB', str(VRAM_TOTAL_GB))))
+WORKER_CAPACITY = max(1, int(os.getenv('DASHBOARD_WORKER_CAPACITY', os.getenv('CELERY_WORKER_CONCURRENCY', '16'))))
 _RUNTIME_OVERVIEW_CACHE_TTL_SECONDS = 5
+_SUBMISSION_QUEUE_CACHE_TTL_SECONDS = 5
 _runtime_overview_cache_generated_at: dt.datetime | None = None
-_runtime_overview_cache_payload: dict[str, float | int] | None = None
+_runtime_overview_cache_payload: dict[str, object] | None = None
+_submission_queue_cache_generated_at: dt.datetime | None = None
+_submission_queue_cache_payload: dict[str, object] | None = None
 
 REQUEST_COUNTER = Counter(
     'http_requests',
@@ -84,6 +92,20 @@ CPU_LOAD_PERCENT_GAUGE = Gauge(
 GPU_LOAD_PERCENT_GAUGE = Gauge(
     'gpu_load_percent',
     'Approximate GPU load derived from active GPU runtime sessions.',
+    namespace=METRIC_NAMESPACE,
+    subsystem='backend',
+)
+
+SUBMISSION_QUEUE_GAUGE = Gauge(
+    'submission_queue_size',
+    'Current number of pending submissions waiting for evaluation.',
+    namespace=METRIC_NAMESPACE,
+    subsystem='backend',
+)
+
+SUBMISSION_RUNNING_GAUGE = Gauge(
+    'submission_running_size',
+    'Current number of submissions being evaluated.',
     namespace=METRIC_NAMESPACE,
     subsystem='backend',
 )
@@ -161,7 +183,11 @@ def _clamp_percent(value: float) -> float:
     return round(max(0.0, min(100.0, float(value))), 1)
 
 
-def _build_runtime_overview_snapshot() -> dict[str, float | int]:
+def _format_seconds(value: float) -> int:
+    return int(max(0, round(float(value))))
+
+
+def _build_runtime_overview_snapshot() -> dict[str, object]:
     global _runtime_overview_cache_generated_at, _runtime_overview_cache_payload
 
     now = timezone.now()
@@ -173,6 +199,8 @@ def _build_runtime_overview_snapshot() -> dict[str, float | int]:
         return _runtime_overview_cache_payload
 
     try:
+        from django.db.models import Count
+
         from ..models.notebook import Notebook
         from .runtime import _sessions
     except Exception:
@@ -181,6 +209,12 @@ def _build_runtime_overview_snapshot() -> dict[str, float | int]:
             'online_users': 0,
             'cpu_load_percent': 0.0,
             'gpu_load_percent': 0.0,
+            'ram_used_gb': 0.0,
+            'ram_total_gb': RAM_TOTAL_GB,
+            'vram_used_gb': 0.0,
+            'vram_total_gb': VRAM_TOTAL_GB,
+            'sessions': [],
+            'session_cells_total': 0,
         }
         _runtime_overview_cache_generated_at = now
         _runtime_overview_cache_payload = snapshot
@@ -202,13 +236,23 @@ def _build_runtime_overview_snapshot() -> dict[str, float | int]:
         active_sessions.append((notebook_id, session))
         notebook_ids.add(notebook_id)
 
-    notebooks = Notebook.objects.filter(id__in=notebook_ids).values('id', 'owner_id', 'compute_device')
+    notebooks = Notebook.objects.filter(id__in=notebook_ids).annotate(cell_count=Count('cells')).values(
+        'id',
+        'title',
+        'owner_id',
+        'owner__email',
+        'owner__username',
+        'compute_device',
+        'cell_count',
+    )
     notebooks_by_id = {notebook['id']: notebook for notebook in notebooks}
 
     online_user_ids: set[int] = set()
     cpu_sessions = 0
     gpu_sessions = 0
     cpu_reserved = 0
+    session_rows = []
+    session_cells_total = 0
 
     for notebook_id, session in active_sessions:
         notebook = notebooks_by_id.get(notebook_id)
@@ -216,6 +260,8 @@ def _build_runtime_overview_snapshot() -> dict[str, float | int]:
         if owner_id is not None:
             online_user_ids.add(owner_id)
 
+        cell_count = int((notebook or {}).get('cell_count') or 0)
+        session_cells_total += cell_count
         vm = getattr(session, 'vm', None)
         vm_spec = getattr(vm, 'spec', None)
         vm_resources = getattr(vm_spec, 'resources', None)
@@ -223,20 +269,84 @@ def _build_runtime_overview_snapshot() -> dict[str, float | int]:
 
         if is_gpu:
             gpu_sessions += 1
-            continue
+            cpu_count = max(1, int(getattr(vm_resources, 'cpu', DEFAULT_SESSION_CPU)))
+        else:
+            cpu_sessions += 1
+            cpu_count = max(1, int(getattr(vm_resources, 'cpu', DEFAULT_SESSION_CPU)))
+            cpu_reserved += cpu_count
 
-        cpu_sessions += 1
-        cpu_reserved += max(1, int(getattr(vm_resources, 'cpu', DEFAULT_SESSION_CPU)))
+        updated_at = _normalize_datetime(getattr(session, 'updated_at', now))
+        created_at = _normalize_datetime(getattr(session, 'created_at', now))
+        session_rows.append({
+            'session_id': f'{NOTEBOOK_SESSION_PREFIX}{notebook_id}',
+            'notebook_id': notebook_id,
+            'notebook_title': (notebook or {}).get('title') or f'notebook_{notebook_id}.ipynb',
+            'user': (notebook or {}).get('owner__email') or (notebook or {}).get('owner__username') or 'unknown',
+            'cells': cell_count,
+            'execution_type': 'GPU runtime' if is_gpu else 'CPU runtime',
+            'gpu': bool(is_gpu),
+            'status': 'running',
+            'wait_seconds': 0,
+            'age_seconds': _format_seconds((now - created_at).total_seconds()),
+            'updated_seconds_ago': _format_seconds((now - updated_at).total_seconds()),
+        })
 
     snapshot = {
         'active_sessions': len(active_sessions),
         'online_users': len(online_user_ids),
         'cpu_load_percent': _clamp_percent((cpu_reserved / CPU_SESSION_CAPACITY) * 100),
         'gpu_load_percent': _clamp_percent((gpu_sessions / GPU_SESSION_CAPACITY) * 100),
+        'ram_used_gb': round(min(RAM_TOTAL_GB, len(active_sessions) * DEFAULT_SESSION_RAM_GB), 1),
+        'ram_total_gb': round(RAM_TOTAL_GB, 1),
+        'vram_used_gb': round(min(VRAM_TOTAL_GB, gpu_sessions * SESSION_VRAM_GB), 1),
+        'vram_total_gb': round(VRAM_TOTAL_GB, 1),
+        'sessions': sorted(session_rows, key=lambda item: item['updated_seconds_ago'])[:10],
+        'session_cells_total': session_cells_total,
     }
 
     _runtime_overview_cache_generated_at = now
     _runtime_overview_cache_payload = snapshot
+    return snapshot
+
+
+def _build_submission_queue_snapshot() -> dict[str, object]:
+    global _submission_queue_cache_generated_at, _submission_queue_cache_payload
+
+    now = timezone.now()
+    if (
+        _submission_queue_cache_generated_at is not None
+        and _submission_queue_cache_payload is not None
+        and (now - _submission_queue_cache_generated_at).total_seconds() < _SUBMISSION_QUEUE_CACHE_TTL_SECONDS
+    ):
+        return _submission_queue_cache_payload
+
+    try:
+        from ..models.submission import Submission
+    except Exception:
+        snapshot = {
+            'pending': 0,
+            'running': 0,
+            'avg_wait_seconds': 0,
+            'max_wait_seconds': 0,
+        }
+        _submission_queue_cache_generated_at = now
+        _submission_queue_cache_payload = snapshot
+        return snapshot
+
+    pending_qs = Submission.objects.filter(status=Submission.STATUS_PENDING)
+    running_qs = Submission.objects.filter(status=Submission.STATUS_RUNNING)
+    pending_times = list(pending_qs.values_list('submitted_at', flat=True))
+    waits = [_format_seconds((now - _normalize_datetime(submitted_at)).total_seconds()) for submitted_at in pending_times if submitted_at]
+
+    snapshot = {
+        'pending': pending_qs.count(),
+        'running': running_qs.count(),
+        'avg_wait_seconds': _format_seconds(sum(waits) / len(waits)) if waits else 0,
+        'max_wait_seconds': max(waits, default=0),
+    }
+
+    _submission_queue_cache_generated_at = now
+    _submission_queue_cache_payload = snapshot
     return snapshot
 
 
@@ -275,6 +385,10 @@ def _latency_average_query(*, interval: str, category: str | None = None) -> str
 
 def _average_gauge_query(metric: str, *, interval: str) -> str:
     return f'avg_over_time({metric}[{interval}])'
+
+
+def _peak_gauge_query(metric: str, *, interval: str) -> str:
+    return f'max_over_time({metric}[{interval}])'
 
 
 def _to_float(value) -> float:
@@ -350,6 +464,12 @@ def _build_timestamps(end: dt.datetime, *, step: dt.timedelta, points: int) -> l
     return [start + step * index for index in range(points)]
 
 
+def _with_current_tail(values: list[float], current_value: float) -> list[float]:
+    if not values:
+        return values
+    return values[:-1] + [float(current_value)]
+
+
 def record_request(path: str, status_code: int, duration_ms: float, *, method: str = 'GET') -> None:
     if str(method).upper() == 'OPTIONS':
         return
@@ -369,6 +489,7 @@ def record_request(path: str, status_code: int, duration_ms: float, *, method: s
 def build_request_metrics_payload() -> dict[str, object]:
     generated_at = timezone.now().astimezone(dt.timezone.utc)
     runtime_snapshot = _build_runtime_overview_snapshot()
+    queue_snapshot = _build_submission_queue_snapshot()
     ranges: dict[str, object] = {}
 
     for range_key, config in RANGE_CONFIG.items():
@@ -416,28 +537,42 @@ def build_request_metrics_payload() -> dict[str, object]:
             points=points_count,
         )
         active_session_values = _query_range_values(
-            _metric_name('active_sessions'),
+            _peak_gauge_query(_metric_name('active_sessions'), interval=step_interval),
             start=timestamps[0],
             end=generated_at,
             step=step,
             points=points_count,
         )
         online_user_values = _query_range_values(
-            _metric_name('online_users'),
+            _peak_gauge_query(_metric_name('online_users'), interval=step_interval),
             start=timestamps[0],
             end=generated_at,
             step=step,
             points=points_count,
         )
         cpu_load_values = _query_range_values(
-            _metric_name('cpu_load_percent'),
+            _peak_gauge_query(_metric_name('cpu_load_percent'), interval=step_interval),
             start=timestamps[0],
             end=generated_at,
             step=step,
             points=points_count,
         )
         gpu_load_values = _query_range_values(
-            _metric_name('gpu_load_percent'),
+            _peak_gauge_query(_metric_name('gpu_load_percent'), interval=step_interval),
+            start=timestamps[0],
+            end=generated_at,
+            step=step,
+            points=points_count,
+        )
+        submission_queue_values = _query_range_values(
+            _peak_gauge_query(_metric_name('submission_queue_size'), interval=step_interval),
+            start=timestamps[0],
+            end=generated_at,
+            step=step,
+            points=points_count,
+        )
+        submission_running_values = _query_range_values(
+            _peak_gauge_query(_metric_name('submission_running_size'), interval=step_interval),
             start=timestamps[0],
             end=generated_at,
             step=step,
@@ -445,6 +580,7 @@ def build_request_metrics_payload() -> dict[str, object]:
         )
 
         points = []
+        queue_points = []
         for index, timestamp in enumerate(timestamps):
             ping_requests = int(round(ping_values[index]))
             user_requests = int(round(user_values[index]))
@@ -457,6 +593,11 @@ def build_request_metrics_payload() -> dict[str, object]:
                 'error_requests': error_requests,
                 'avg_duration_ms': round(avg_duration_values[index], 1),
                 'avg_ping_ms': round(avg_ping_values[index], 1),
+            })
+            queue_points.append({
+                'timestamp': timestamp.isoformat(),
+                'pending': int(round(submission_queue_values[index])),
+                'running': int(round(submission_running_values[index])),
             })
 
         total_requests = int(round(_query_instant(_counter_query(interval=window_interval), at=generated_at)))
@@ -471,6 +612,20 @@ def build_request_metrics_payload() -> dict[str, object]:
         online_users_current = int(round(float(runtime_snapshot['online_users'])))
         cpu_load_current = round(float(runtime_snapshot['cpu_load_percent']), 1)
         gpu_load_current = round(float(runtime_snapshot['gpu_load_percent']), 1)
+        queue_pending_current = int(round(float(queue_snapshot['pending'])))
+        queue_running_current = int(round(float(queue_snapshot['running'])))
+        active_session_values = _with_current_tail(active_session_values, active_sessions_current)
+        online_user_values = _with_current_tail(online_user_values, online_users_current)
+        cpu_load_values = _with_current_tail(cpu_load_values, cpu_load_current)
+        gpu_load_values = _with_current_tail(gpu_load_values, gpu_load_current)
+        submission_queue_values = _with_current_tail(submission_queue_values, queue_pending_current)
+        submission_running_values = _with_current_tail(submission_running_values, queue_running_current)
+        if queue_points:
+            queue_points[-1] = {
+                **queue_points[-1],
+                'pending': queue_pending_current,
+                'running': queue_running_current,
+            }
         active_sessions_trend = _compute_trend(
             _query_instant(_average_gauge_query(_metric_name('active_sessions'), interval=window_interval), at=generated_at),
             _query_instant(_average_gauge_query(_metric_name('active_sessions'), interval=window_interval), at=previous_end),
@@ -493,6 +648,12 @@ def build_request_metrics_payload() -> dict[str, object]:
             (cpu_load_average + gpu_load_average) / 2,
             (cpu_load_average_previous + gpu_load_average_previous) / 2,
         )
+        queue_average = _query_instant(_average_gauge_query(_metric_name('submission_queue_size'), interval=window_interval), at=generated_at)
+        queue_average_previous = _query_instant(
+            _average_gauge_query(_metric_name('submission_queue_size'), interval=window_interval),
+            at=previous_end,
+        )
+        queue_trend = _compute_trend(queue_average, queue_average_previous)
         combined_load_points = [
             round((cpu_load_values[index] + gpu_load_values[index]) / 2, 1)
             for index in range(points_count)
@@ -523,6 +684,20 @@ def build_request_metrics_payload() -> dict[str, object]:
                     'trend_percent': online_users_trend,
                     'points': [int(round(value)) for value in online_user_values],
                 },
+                'submission_queue': {
+                    'value': queue_pending_current,
+                    'running': queue_running_current,
+                    'trend_percent': queue_trend,
+                    'points': [int(round(value)) for value in submission_queue_values],
+                    'running_points': [int(round(value)) for value in submission_running_values],
+                },
+            },
+            'queue': {
+                'pending': queue_pending_current,
+                'running': queue_running_current,
+                'avg_wait_seconds': int(queue_snapshot['avg_wait_seconds']),
+                'max_wait_seconds': int(queue_snapshot['max_wait_seconds']),
+                'points': queue_points,
             },
             'summary': {
                 'total_requests': total_requests,
@@ -542,6 +717,22 @@ def build_request_metrics_payload() -> dict[str, object]:
         'collector_started_at': None,
         'generated_at': generated_at.isoformat(),
         'source': 'django-prometheus + Prometheus',
+        'resources': {
+            'cpu_percent': round(float(runtime_snapshot['cpu_load_percent']), 1),
+            'gpu_percent': round(float(runtime_snapshot['gpu_load_percent']), 1),
+            'ram_used_gb': round(float(runtime_snapshot['ram_used_gb']), 1),
+            'ram_total_gb': round(float(runtime_snapshot['ram_total_gb']), 1),
+            'vram_used_gb': round(float(runtime_snapshot['vram_used_gb']), 1),
+            'vram_total_gb': round(float(runtime_snapshot['vram_total_gb']), 1),
+            'workers_busy': min(WORKER_CAPACITY, int(queue_snapshot['running'])),
+            'workers_total': WORKER_CAPACITY,
+        },
+        'sessions': {
+            'updated_at': generated_at.isoformat(),
+            'rows': runtime_snapshot['sessions'],
+            'total_notebooks': int(runtime_snapshot['active_sessions']),
+            'total_cells': int(runtime_snapshot['session_cells_total']),
+        },
         'ranges': ranges,
     }
 
@@ -550,3 +741,5 @@ ACTIVE_SESSIONS_GAUGE.set_function(lambda: float(_build_runtime_overview_snapsho
 ONLINE_USERS_GAUGE.set_function(lambda: float(_build_runtime_overview_snapshot()['online_users']))
 CPU_LOAD_PERCENT_GAUGE.set_function(lambda: float(_build_runtime_overview_snapshot()['cpu_load_percent']))
 GPU_LOAD_PERCENT_GAUGE.set_function(lambda: float(_build_runtime_overview_snapshot()['gpu_load_percent']))
+SUBMISSION_QUEUE_GAUGE.set_function(lambda: float(_build_submission_queue_snapshot()['pending']))
+SUBMISSION_RUNNING_GAUGE.set_function(lambda: float(_build_submission_queue_snapshot()['running']))

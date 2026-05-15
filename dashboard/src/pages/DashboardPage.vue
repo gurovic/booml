@@ -123,44 +123,180 @@
           </div>
         </section>
 
-        <section class="panel panel--compact">
-          <div class="panel__header panel__header--compact">
+        <div class="dashboard__insight-grid">
+          <section class="panel panel--compact">
+            <div class="panel__header panel__header--compact">
+              <div>
+                <h2 class="panel__title panel__title--compact">Запросы к серверу</h2>
+                <p class="panel__subtitle panel__subtitle--compact">Ping и API запросы</p>
+              </div>
+            </div>
+
+            <div class="chart-card chart-card--compact">
+              <div class="chart-card__plot chart-card__plot--compact">
+                <VChart
+                  class="chart-card__chart chart-card__chart--compact"
+                  :option="mainChartOption"
+                  autoresize
+                />
+              </div>
+
+              <div class="chart-card__legend">
+                <div class="chart-card__legend-item">
+                  <span class="chart-card__legend-swatch chart-card__legend-swatch--ping"></span>
+                  Ping
+                </div>
+                <div class="chart-card__legend-item">
+                  <span class="chart-card__legend-swatch chart-card__legend-swatch--user"></span>
+                  Пользовательские обращения
+                </div>
+              </div>
+            </div>
+
+            <div class="panel__summary panel__summary--compact">
+              <div class="summary-metric">
+                <div class="summary-metric__label">Средняя задержка</div>
+                <div class="summary-metric__value">{{ averageDurationLabel }}</div>
+              </div>
+              <div class="summary-metric">
+                <div class="summary-metric__label">Частота 5xx</div>
+                <div class="summary-metric__value">{{ errorRateLabel }}</div>
+              </div>
+            </div>
+          </section>
+
+          <section class="panel panel--compact resource-panel">
+            <div class="panel__header panel__header--compact">
+              <div>
+                <h2 class="panel__title panel__title--compact">Использование ресурсов</h2>
+                <p class="panel__subtitle panel__subtitle--compact">CPU, GPU и память</p>
+              </div>
+            </div>
+
+            <div class="resource-panel__rings">
+              <div class="resource-ring" :style="resourceRingStyle(resourceMetrics.cpu_percent, 'violet')">
+                <div class="resource-ring__inner">
+                  <div class="resource-ring__value">{{ formatPercentValue(resourceMetrics.cpu_percent) }}</div>
+                  <div class="resource-ring__label">CPU</div>
+                </div>
+              </div>
+              <div class="resource-ring" :style="resourceRingStyle(resourceMetrics.gpu_percent, 'blue')">
+                <div class="resource-ring__inner">
+                  <div class="resource-ring__value">{{ formatPercentValue(resourceMetrics.gpu_percent) }}</div>
+                  <div class="resource-ring__label">GPU</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="panel__summary resource-panel__summary">
+              <div class="summary-metric">
+                <div class="summary-metric__label">RAM</div>
+                <div class="summary-metric__value summary-metric__value--small">
+                  {{ formatGigabytes(resourceMetrics.ram_used_gb) }} / {{ formatGigabytes(resourceMetrics.ram_total_gb) }}
+                </div>
+              </div>
+              <div class="summary-metric">
+                <div class="summary-metric__label">VRAM</div>
+                <div class="summary-metric__value summary-metric__value--small">
+                  {{ formatGigabytes(resourceMetrics.vram_used_gb) }} / {{ formatGigabytes(resourceMetrics.vram_total_gb) }}
+                </div>
+              </div>
+              <div class="summary-metric">
+                <div class="summary-metric__label">Workers</div>
+                <div class="summary-metric__value summary-metric__value--small">
+                  {{ formatCount(resourceMetrics.workers_busy) }} / {{ formatCount(resourceMetrics.workers_total) }}
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="panel panel--compact queue-panel">
+            <div class="panel__header panel__header--compact">
+              <div>
+                <h2 class="panel__title panel__title--compact">Очередь решений</h2>
+                <p class="panel__subtitle panel__subtitle--compact">История отправок на проверку</p>
+              </div>
+            </div>
+
+            <div class="chart-card chart-card--compact">
+              <div class="chart-card__plot chart-card__plot--compact">
+                <VChart
+                  class="chart-card__chart chart-card__chart--compact"
+                  :option="queueChartOption"
+                  autoresize
+                />
+              </div>
+            </div>
+
+            <div class="panel__summary queue-panel__summary">
+              <div class="summary-metric">
+                <div class="summary-metric__label">В очереди</div>
+                <div class="summary-metric__value summary-metric__value--small">{{ formatCount(queueMetrics.pending) }}</div>
+              </div>
+              <div class="summary-metric">
+                <div class="summary-metric__label">Выполняется</div>
+                <div class="summary-metric__value summary-metric__value--small">{{ formatCount(queueMetrics.running) }}</div>
+              </div>
+              <div class="summary-metric">
+                <div class="summary-metric__label">Ср. ожидание</div>
+                <div class="summary-metric__value summary-metric__value--small">{{ formatDuration(queueMetrics.avg_wait_seconds) }}</div>
+              </div>
+              <div class="summary-metric">
+                <div class="summary-metric__label">Макс. ожидание</div>
+                <div class="summary-metric__value summary-metric__value--small">{{ formatDuration(queueMetrics.max_wait_seconds) }}</div>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <section class="panel sessions-panel">
+          <div class="panel__header">
             <div>
-              <h2 class="panel__title panel__title--compact">Запросы к серверу</h2>
-              <p class="panel__subtitle panel__subtitle--compact">Ping и API запросы</p>
+              <h2 class="panel__title panel__title--compact">Очередь выполнения ноутбуков</h2>
+              <p class="panel__subtitle panel__subtitle--compact">Статус runtime-сессий по пользователям</p>
             </div>
+            <div class="sessions-panel__updated">Обновлено: {{ sessionsUpdatedAtLabel }}</div>
           </div>
 
-          <div class="chart-card chart-card--compact">
-            <div class="chart-card__plot chart-card__plot--compact">
-              <VChart
-                class="chart-card__chart chart-card__chart--compact"
-                :option="mainChartOption"
-                autoresize
-              />
+          <div class="sessions-table">
+            <div class="sessions-table__head">
+              <div>Ноутбук</div>
+              <div>Пользователь</div>
+              <div>Ячейки</div>
+              <div>Тип выполнения</div>
+              <div>GPU</div>
+              <div>Статус</div>
+              <div>Время ожидания</div>
             </div>
-
-            <div class="chart-card__legend">
-              <div class="chart-card__legend-item">
-                <span class="chart-card__legend-swatch chart-card__legend-swatch--ping"></span>
-                Ping
-              </div>
-              <div class="chart-card__legend-item">
-                <span class="chart-card__legend-swatch chart-card__legend-swatch--user"></span>
-                Пользовательские обращения
-              </div>
+            <div v-if="sessionRows.length === 0" class="sessions-table__empty">
+              Нет активных runtime-сессий
             </div>
+            <template v-else>
+              <div
+                v-for="session in sessionRows"
+                :key="session.session_id"
+                class="sessions-table__row"
+              >
+                <div class="sessions-table__notebook">
+                  <span class="sessions-table__avatar">{{ session.notebook_title.slice(0, 1).toUpperCase() }}</span>
+                  <span>{{ session.notebook_title }}</span>
+                </div>
+                <div>{{ session.user }}</div>
+                <div><span class="sessions-table__pill sessions-table__pill--violet">{{ formatCount(session.cells) }} ячеек</span></div>
+                <div>{{ session.execution_type }}</div>
+                <div>
+                  <span class="sessions-table__pill" :class="session.gpu ? 'sessions-table__pill--blue' : 'sessions-table__pill--gray'">
+                    {{ session.gpu ? 'Да' : 'Нет' }}
+                  </span>
+                </div>
+                <div><span class="sessions-table__pill sessions-table__pill--green">{{ formatSessionStatus(session.status) }}</span></div>
+                <div>{{ formatDuration(session.wait_seconds) }}</div>
+              </div>
+            </template>
           </div>
 
-          <div class="panel__summary panel__summary--compact">
-            <div class="summary-metric">
-              <div class="summary-metric__label">Средняя задержка</div>
-              <div class="summary-metric__value">{{ averageDurationLabel }}</div>
-            </div>
-            <div class="summary-metric">
-              <div class="summary-metric__label">Частота 5xx</div>
-              <div class="summary-metric__value">{{ errorRateLabel }}</div>
-            </div>
+          <div class="sessions-panel__footer">
+            Всего в работе: <strong>{{ formatCount(sessionsSummary.total_notebooks) }} ноутбуков · {{ formatCount(sessionsSummary.total_cells) }} ячеек</strong>
           </div>
         </section>
       </template>
@@ -171,7 +307,7 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { use } from 'echarts/core'
-import { LineChart } from 'echarts/charts'
+import { BarChart, LineChart } from 'echarts/charts'
 import { GridComponent, ToolboxComponent, TooltipComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 import VChart from 'vue-echarts'
@@ -180,7 +316,7 @@ import projectLogo from '@/assets/logo.png'
 import { getRequestMetrics, pingServer } from '../api/dashboard'
 import { checkAuth } from '../api/user'
 
-use([CanvasRenderer, GridComponent, LineChart, ToolboxComponent, TooltipComponent])
+use([BarChart, CanvasRenderer, GridComponent, LineChart, ToolboxComponent, TooltipComponent])
 
 const mainAppUrl = process.env.VUE_APP_MAIN_APP_URL || 'http://localhost:8101'
 
@@ -225,6 +361,37 @@ const activeRangeData = computed(() => metricsPayload.value?.ranges?.[activeRang
 const cards = computed(() => activeRangeData.value?.cards || null)
 const points = computed(() => activeRangeData.value?.points || [])
 const summary = computed(() => activeRangeData.value?.summary || null)
+const queueMetrics = computed(() => activeRangeData.value?.queue || {
+  pending: 0,
+  running: 0,
+  avg_wait_seconds: 0,
+  max_wait_seconds: 0,
+  points: [],
+})
+const resourceMetrics = computed(() => metricsPayload.value?.resources || {
+  cpu_percent: 0,
+  gpu_percent: 0,
+  ram_used_gb: 0,
+  ram_total_gb: 0,
+  vram_used_gb: 0,
+  vram_total_gb: 0,
+  workers_busy: 0,
+  workers_total: 0,
+})
+const sessionsSummary = computed(() => metricsPayload.value?.sessions || {
+  updated_at: '',
+  rows: [],
+  total_notebooks: 0,
+  total_cells: 0,
+})
+const sessionRows = computed(() => (sessionsSummary.value.rows || []).map((row) => ({
+  ...row,
+  notebook_title: row.notebook_title || 'notebook.ipynb',
+  user: row.user || 'unknown',
+})))
+const sessionsUpdatedAtLabel = computed(() => (
+  sessionsSummary.value.updated_at ? formatDateTime(sessionsSummary.value.updated_at) : 'н/д'
+))
 
 const averageDurationLabel = computed(() => formatMilliseconds(summary.value?.avg_duration_ms))
 const errorRateLabel = computed(() => `${formatNumber(summary.value?.error_rate ?? 0)}%`)
@@ -240,6 +407,7 @@ const activeSessionsSubtitle = computed(() => {
 })
 
 const mainChartOption = computed(() => buildMainChartOption(points.value, activeRange.value))
+const queueChartOption = computed(() => buildQueueChartOption(queueMetrics.value.points || [], activeRange.value))
 const activeSessionsChartOption = computed(() => buildActiveSessionsChartOption(
   points.value,
   cards.value?.active_sessions?.points || [],
@@ -293,6 +461,18 @@ const statCards = computed(() => {
     },
   ]
 })
+
+function resourceRingStyle(value, tone) {
+  const palette = {
+    violet: '#735cf7',
+    blue: '#59b6df',
+  }
+  const numeric = Math.max(0, Math.min(100, Number(value || 0)))
+  return {
+    '--resource-angle': `${numeric * 3.6}deg`,
+    '--resource-color': palette[tone] || palette.violet,
+  }
+}
 
 onMounted(async () => {
   try {
@@ -385,6 +565,14 @@ function formatPercentValue(value) {
   return `${Math.round(Number(value || 0))}%`
 }
 
+function formatGigabytes(value) {
+  const numeric = Number(value || 0)
+  if (Number.isInteger(numeric)) {
+    return `${numeric} GB`
+  }
+  return `${trimZeros(numeric.toFixed(1))} GB`
+}
+
 function formatCpuGpuValue(cpuValue, gpuValue) {
   return `${formatPercentValue(cpuValue)} / ${formatPercentValue(gpuValue)}`
 }
@@ -417,6 +605,48 @@ function formatTrendPeriod(rangeKey) {
     return 'к предыдущим 30 дн'
   }
   return 'к предыдущему периоду'
+}
+
+function formatDuration(seconds) {
+  const totalSeconds = Math.max(0, Math.round(Number(seconds || 0)))
+  if (totalSeconds < 60) {
+    return `${totalSeconds}s`
+  }
+
+  const minutes = Math.floor(totalSeconds / 60)
+  const restSeconds = totalSeconds % 60
+  if (minutes < 60) {
+    return restSeconds ? `${minutes}m ${restSeconds}s` : `${minutes}m`
+  }
+
+  const hours = Math.floor(minutes / 60)
+  const restMinutes = minutes % 60
+  if (hours >= 24) {
+    const days = Math.floor(hours / 24)
+    const restHours = hours % 24
+    return restHours ? `${days}d ${restHours}h` : `${days}d`
+  }
+  return restMinutes ? `${hours}h ${restMinutes}m` : `${hours}h`
+}
+
+function formatSessionStatus(status) {
+  if (status === 'running') {
+    return 'Выполняется'
+  }
+  if (status === 'queued') {
+    return 'В очереди'
+  }
+  return status || 'н/д'
+}
+
+function formatDateTime(value) {
+  if (!value) return 'н/д'
+  return new Intl.DateTimeFormat('ru-RU', {
+    hour: '2-digit',
+    minute: '2-digit',
+    day: '2-digit',
+    month: 'short',
+  }).format(new Date(value))
 }
 
 function buildSparklineOption(values, tone) {
@@ -639,6 +869,123 @@ function buildMainChartOption(sourcePoints, rangeKey) {
               { offset: 1, color: 'rgba(115, 92, 247, 0.02)' },
             ],
           },
+        },
+      },
+    ],
+  }
+}
+
+function buildQueueChartOption(sourcePoints, rangeKey) {
+  const xAxisData = sourcePoints.map((point) => formatAxisLabel(point.timestamp, rangeKey))
+  const pendingValues = sourcePoints.map((point) => Number(point.pending || 0))
+  const runningValues = sourcePoints.map((point) => Number(point.running || 0))
+  const labelInterval = Math.max(0, Math.ceil(Math.max(sourcePoints.length, 1) / 8) - 1)
+
+  return {
+    animationDuration: 500,
+    textStyle: {
+      fontFamily: 'Manrope, Avenir Next, Segoe UI, sans-serif',
+    },
+    tooltip: {
+      trigger: 'axis',
+      backgroundColor: 'rgba(34, 42, 72, 0.94)',
+      borderWidth: 0,
+      textStyle: {
+        color: '#ffffff',
+      },
+      axisPointer: {
+        type: 'shadow',
+        shadowStyle: {
+          color: 'rgba(247, 129, 40, 0.08)',
+        },
+      },
+      formatter(params) {
+        const point = sourcePoints[params?.[0]?.dataIndex] || null
+        const title = point ? formatTooltipLabel(point.timestamp, rangeKey) : ''
+        const rows = params
+          .map((item) => `${item.marker}${item.seriesName}: ${formatCount(item.value)}`)
+          .join('<br/>')
+        return `${title}<br/>${rows}`
+      },
+    },
+    grid: {
+      top: 24,
+      right: 12,
+      bottom: 28,
+      left: 48,
+    },
+    xAxis: {
+      type: 'category',
+      data: xAxisData,
+      axisTick: {
+        show: false,
+      },
+      axisLine: {
+        lineStyle: {
+          color: '#8f9bc0',
+          width: 1.5,
+        },
+      },
+      axisLabel: {
+        color: '#7c87ab',
+        fontSize: 12,
+        fontWeight: 600,
+        interval: labelInterval,
+      },
+      splitLine: {
+        show: true,
+        lineStyle: {
+          color: 'rgba(177, 189, 228, 0.38)',
+          type: 'dashed',
+        },
+      },
+    },
+    yAxis: {
+      type: 'value',
+      min: 0,
+      axisTick: {
+        show: false,
+      },
+      axisLine: {
+        lineStyle: {
+          color: '#8f9bc0',
+          width: 1.5,
+        },
+      },
+      axisLabel: {
+        color: '#7c87ab',
+        fontSize: 12,
+        fontWeight: 600,
+      },
+      splitLine: {
+        show: true,
+        lineStyle: {
+          color: 'rgba(177, 189, 228, 0.38)',
+          type: 'dashed',
+        },
+      },
+    },
+    series: [
+      {
+        name: 'В очереди',
+        type: 'bar',
+        stack: 'queue',
+        data: pendingValues,
+        barWidth: '48%',
+        itemStyle: {
+          color: '#f78128',
+          borderRadius: [9, 9, 0, 0],
+        },
+      },
+      {
+        name: 'Выполняется',
+        type: 'bar',
+        stack: 'queue',
+        data: runningValues,
+        barWidth: '48%',
+        itemStyle: {
+          color: '#735cf7',
+          borderRadius: [9, 9, 0, 0],
         },
       },
     ],
@@ -1165,8 +1512,18 @@ a {
 }
 
 .panel--compact {
-  max-width: calc(50% - 9px);
+  min-width: 0;
+}
+
+.dashboard__insight-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
   margin-top: 20px;
+}
+
+.queue-panel {
+  grid-column: 2;
 }
 
 .panel__header {
@@ -1287,6 +1644,63 @@ a {
   letter-spacing: -0.04em;
 }
 
+.summary-metric__value--small {
+  font-size: 1.35rem;
+  letter-spacing: 0;
+}
+
+.resource-panel__rings {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(130px, 1fr));
+  gap: 26px;
+  justify-items: center;
+  padding: 30px 20px 24px;
+}
+
+.resource-ring {
+  --resource-angle: 0deg;
+  --resource-color: var(--dashboard-violet);
+  width: 142px;
+  height: 142px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background:
+    conic-gradient(var(--resource-color) var(--resource-angle), rgba(226, 222, 247, 0.9) 0deg);
+}
+
+.resource-ring__inner {
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  background: #ffffff;
+}
+
+.resource-ring__value {
+  font-size: 2rem;
+  line-height: 1;
+  font-weight: 800;
+}
+
+.resource-ring__label {
+  margin-top: 8px;
+  color: var(--dashboard-muted);
+  font-size: 1rem;
+  font-weight: 500;
+}
+
+.resource-panel__summary,
+.queue-panel__summary {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.queue-panel__summary {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
 .panel__footnote {
   display: flex;
   justify-content: space-between;
@@ -1297,13 +1711,131 @@ a {
   line-height: 1.5;
 }
 
+.sessions-panel {
+  margin-top: 20px;
+}
+
+.sessions-panel__updated {
+  color: var(--dashboard-muted);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.sessions-table {
+  margin-top: 18px;
+  overflow-x: auto;
+}
+
+.sessions-table__head,
+.sessions-table__row {
+  display: grid;
+  grid-template-columns: minmax(280px, 1.7fr) minmax(180px, 1fr) minmax(110px, 0.6fr) minmax(160px, 0.9fr) minmax(90px, 0.5fr) minmax(140px, 0.8fr) minmax(130px, 0.7fr);
+  align-items: center;
+  min-width: 1120px;
+  gap: 14px;
+}
+
+.sessions-table__head {
+  padding: 16px 18px;
+  border-radius: 18px 18px 0 0;
+  background: #ded8f2;
+  color: #47506e;
+  font-weight: 800;
+}
+
+.sessions-table__row {
+  padding: 16px 18px;
+  border-bottom: 1px solid rgba(223, 230, 251, 0.9);
+  color: #5f6c92;
+}
+
+.sessions-table__notebook {
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+  color: var(--dashboard-ink);
+  font-weight: 800;
+}
+
+.sessions-table__notebook span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sessions-table__avatar {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  background: rgba(115, 92, 247, 0.16);
+  color: var(--dashboard-violet);
+  font-weight: 800;
+}
+
+.sessions-table__pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 30px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 0.86rem;
+  font-weight: 800;
+}
+
+.sessions-table__pill--violet {
+  background: rgba(115, 92, 247, 0.14);
+  color: var(--dashboard-violet);
+}
+
+.sessions-table__pill--blue {
+  background: rgba(89, 182, 223, 0.22);
+  color: #3786a8;
+}
+
+.sessions-table__pill--gray {
+  background: rgba(95, 108, 146, 0.12);
+  color: #5f6c92;
+}
+
+.sessions-table__pill--green {
+  background: rgba(74, 192, 116, 0.16);
+  color: var(--dashboard-mint);
+}
+
+.sessions-table__empty {
+  min-width: 1120px;
+  padding: 42px 18px;
+  border-bottom: 1px solid rgba(223, 230, 251, 0.9);
+  color: var(--dashboard-muted);
+  text-align: center;
+}
+
+.sessions-panel__footer {
+  margin-top: 22px;
+  color: var(--dashboard-muted);
+}
+
+.sessions-panel__footer strong {
+  color: var(--dashboard-ink);
+}
+
 @media (max-width: 1200px) {
   .dashboard__stats {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .panel--compact {
-    max-width: 100%;
+  .dashboard__insight-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .queue-panel {
+    grid-column: auto;
   }
 
   .panel__summary {
@@ -1337,6 +1869,11 @@ a {
     height: 300px;
     min-height: 300px;
   }
+
+  .resource-panel__summary,
+  .queue-panel__summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 680px) {
@@ -1363,8 +1900,8 @@ a {
     grid-template-columns: 1fr;
   }
 
-  .panel--compact {
-    max-width: 100%;
+  .resource-panel__rings {
+    grid-template-columns: 1fr;
   }
 
   .panel,
