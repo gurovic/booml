@@ -16,7 +16,7 @@ from django.conf import settings
 from django.utils import timezone
 
 from .vm_agent_server import VM_AGENT_SERVER_SOURCE
-from .vm_exceptions import VmAlreadyExistsError, VmNotFoundError
+from .vm_exceptions import GpuSlotsBusy, VmAlreadyExistsError, VmNotFoundError
 from .vm_models import (
     VirtualMachine,
     VirtualMachineState,
@@ -24,6 +24,8 @@ from .vm_models import (
     VmResources,
     VmSpec,
 )
+
+MIG_UUID_LABEL = "booml.mig_uuid"
 
 logger = logging.getLogger(__name__)
 
@@ -185,9 +187,10 @@ def _is_windows_host_path(path_str: str) -> bool:
 class DockerVmBackend(VmBackend):
     """Provision VMs as long-lived Docker containers with a workspace mount."""
 
-    def __init__(self, root: Path):
+    def __init__(self, root: Path, *, gpu_mig_uuids: tuple[str, ...] = ()):
         self.root = Path(root)
         self.root.mkdir(parents=True, exist_ok=True)
+        self._gpu_mig_uuids: tuple[str, ...] = tuple(gpu_mig_uuids)
         host_root = os.environ.get("RUNTIME_VM_HOST_ROOT")
         if host_root:
             host_root = host_root.strip().replace("\\", "/")
@@ -229,16 +232,22 @@ class DockerVmBackend(VmBackend):
         timestamp = _resolve_now(now)
 
         container_name = vm_id
+        mig_uuid: str | None = None
         try:
-            self._create_container(container_name, spec, vm_dir, workspace)
+            mig_uuid = self._create_container(container_name, spec, vm_dir, workspace)
             self._start_agent(container_name)
             self._wait_for_agent(agent_dir)
+        except GpuSlotsBusy:
+            # Configured MIG pool is full. Do NOT silently downgrade to CPU:
+            # the caller asked for GPU explicitly, so surface the busy state.
+            shutil.rmtree(vm_dir, ignore_errors=True)
+            raise
         except Exception as exc:
             if spec.gpu:
                 self._run_docker(("rm", "-f", container_name), check=False)
                 cpu_spec = replace(spec, gpu=False)
                 try:
-                    self._create_container(container_name, cpu_spec, vm_dir, workspace)
+                    mig_uuid = self._create_container(container_name, cpu_spec, vm_dir, workspace)
                     self._start_agent(container_name)
                     self._wait_for_agent(agent_dir)
                     spec = cpu_spec
@@ -254,6 +263,10 @@ class DockerVmBackend(VmBackend):
                 shutil.rmtree(vm_dir, ignore_errors=True)
                 raise
 
+        backend_data: Dict[str, str] = {"container": container_name}
+        if mig_uuid:
+            backend_data["mig_uuid"] = mig_uuid
+
         vm = VirtualMachine(
             id=vm_id,
             session_id=session_id,
@@ -263,7 +276,7 @@ class DockerVmBackend(VmBackend):
             created_at=timestamp,
             updated_at=timestamp,
             backend="docker",
-            backend_data={"container": container_name},
+            backend_data=backend_data,
         )
         self._write_metadata(vm_dir, vm)
         return vm
@@ -311,7 +324,8 @@ class DockerVmBackend(VmBackend):
         spec: VmSpec,
         vm_dir: Path,
         workspace: Path,
-    ) -> None:
+    ) -> str | None:
+        """Create the docker container. Returns the assigned MIG UUID (if any)."""
         source_vm_dir = self._map_to_host(vm_dir)
         source_workspace = self._map_to_host(workspace)
         args = [
@@ -331,8 +345,18 @@ class DockerVmBackend(VmBackend):
             "--mount",
             f"type=bind,source={source_workspace},target=/workspace",
         ]
+        mig_uuid: str | None = None
         if spec.gpu:
-            args += ["--gpus", "all"]
+            if self._gpu_mig_uuids:
+                mig_uuid = self._pick_free_mig_uuid()
+                args += [
+                    "--label",
+                    f"{MIG_UUID_LABEL}={mig_uuid}",
+                    "--gpus",
+                    f"device={mig_uuid}",
+                ]
+            else:
+                args += ["--gpus", "all"]
         if spec.network.outbound == "deny":
             args += ["--network", "none"]
         else:
@@ -341,6 +365,49 @@ class DockerVmBackend(VmBackend):
         args += [spec.image, "sleep", "infinity"]
         self._run_docker(tuple(args))
         self._run_docker(("start", container_name))
+        return mig_uuid
+
+    def _pick_free_mig_uuid(self) -> str:
+        """Pick a MIG UUID from the configured pool that no live container holds.
+
+        Lookup is best-effort and racy without a coordinated pool: between this
+        query and `docker create`, another caller could claim the same slot.
+        For a single-host setup with low contention this is acceptable; a real
+        pool with atomic acquire would be needed for strict isolation.
+        """
+        used = self._list_used_mig_uuids()
+        for uuid in self._gpu_mig_uuids:
+            if uuid not in used:
+                return uuid
+        raise GpuSlotsBusy(
+            f"All {len(self._gpu_mig_uuids)} GPU slots are currently in use"
+        )
+
+    def _list_used_mig_uuids(self) -> set[str]:
+        result = self._run_docker_capture(
+            (
+                "ps",
+                "-a",
+                "--filter",
+                f"label={MIG_UUID_LABEL}",
+                "--format",
+                "{{.Labels}}",
+            ),
+            check=False,
+        )
+        if result.returncode != 0:
+            # Best-effort: if docker is unreachable we let the create call fail loudly later.
+            return set()
+        used: set[str] = set()
+        for line in result.stdout.splitlines():
+            for pair in line.split(","):
+                key, sep, value = pair.partition("=")
+                if not sep or key.strip() != MIG_UUID_LABEL:
+                    continue
+                value = value.strip()
+                if value:
+                    used.add(value)
+        return used
 
     def _map_to_host(self, container_path: Path) -> str:
         """
@@ -397,6 +464,17 @@ class DockerVmBackend(VmBackend):
                 raise ValueError(f"suspicious shell metacharacter detected in docker argument: {arg!r}")
         cmd = [self._docker_bin, *args]
         return subprocess.run(cmd, check=check, capture_output=False, text=True)
+
+    def _run_docker_capture(self, args: tuple[str, ...], *, check: bool = True) -> subprocess.CompletedProcess[str]:
+        """Like _run_docker but captures stdout/stderr (used for read-only queries)."""
+        suspicious_chars = {";", "&", "|", "$", ">", "<", "`"}
+        for arg in args:
+            if not isinstance(arg, str):
+                raise ValueError(f"docker arguments must be str, got {type(arg)}: {arg!r}")
+            if any(char in arg for char in suspicious_chars):
+                raise ValueError(f"suspicious shell metacharacter detected in docker argument: {arg!r}")
+        cmd = [self._docker_bin, *args]
+        return subprocess.run(cmd, check=check, capture_output=True, text=True)
 
     def _vm_dir(self, vm_id: str) -> Path:
         return self.root / vm_id

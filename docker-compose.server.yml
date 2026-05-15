@@ -78,6 +78,7 @@ services:
       RUNTIME_VM_BACKEND: docker
       PROBLEM_DATA_ROOT: /problem_data/problem_data
       RUNTIME_VM_HOST_ROOT: /home/booml/booml/backend
+      RUNTIME_VM_GPU_MIG_UUIDS: ${RUNTIME_VM_GPU_MIG_UUIDS:-}
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/1
       CHANNEL_LAYER_REDIS_URL: redis://redis:6379/2
@@ -115,6 +116,7 @@ services:
       RUNTIME_VM_BACKEND: docker
       PROBLEM_DATA_ROOT: /problem_data/problem_data
       RUNTIME_VM_HOST_ROOT: /home/booml/booml/backend
+      RUNTIME_VM_GPU_MIG_UUIDS: ${RUNTIME_VM_GPU_MIG_UUIDS:-}
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/1
       CHANNEL_LAYER_REDIS_URL: redis://redis:6379/2

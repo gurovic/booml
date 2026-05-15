@@ -19,6 +19,7 @@ class VmConfig:
     net_outbound: str
     net_allowlist: Tuple[str, ...]
     root_dir: Path
+    gpu_mig_uuids: Tuple[str, ...] = ()
 
 
 def get_vm_config() -> VmConfig:
@@ -30,6 +31,7 @@ def get_vm_config() -> VmConfig:
     ttl_sec = int(getattr(settings, "RUNTIME_VM_TTL_SEC", 3600))
     net_outbound = str(getattr(settings, "RUNTIME_VM_NET_OUTBOUND", "deny"))
     allowlist = _normalize_allowlist(getattr(settings, "RUNTIME_VM_NET_ALLOWLIST", ()))
+    gpu_mig_uuids = _normalize_allowlist(getattr(settings, "RUNTIME_VM_GPU_MIG_UUIDS", ()))
     root_value = getattr(settings, "RUNTIME_VM_ROOT", None) or (Path(settings.BASE_DIR) / "media" / "notebook_sessions")
     root_path = _resolve_root(root_value)
     root_path.mkdir(parents=True, exist_ok=True)
@@ -44,6 +46,7 @@ def get_vm_config() -> VmConfig:
         net_outbound=net_outbound,
         net_allowlist=allowlist,
         root_dir=root_path,
+        gpu_mig_uuids=gpu_mig_uuids,
     )
 
 

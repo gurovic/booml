@@ -236,6 +236,10 @@ _runtime_vm_allowlist = os.environ.get("RUNTIME_VM_NET_ALLOWLIST", "")
 RUNTIME_VM_NET_ALLOWLIST = tuple(
     item.strip() for item in _runtime_vm_allowlist.split(",") if item.strip()
 )
+_runtime_vm_gpu_mig_uuids = os.environ.get("RUNTIME_VM_GPU_MIG_UUIDS", "")
+RUNTIME_VM_GPU_MIG_UUIDS = tuple(
+    item.strip() for item in _runtime_vm_gpu_mig_uuids.split(",") if item.strip()
+)
 RUNTIME_VM_ROOT = Path(os.environ.get("RUNTIME_VM_ROOT", str(BASE_DIR / "media" / "notebook_sessions")))
 RUNTIME_EXECUTION_BACKEND = os.environ.get("RUNTIME_EXECUTION_BACKEND", "legacy")
 
