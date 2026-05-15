@@ -73,6 +73,7 @@ def edit_problem_polygon(request, problem_id):
     }
     errors = {}
     descriptor_errors = {}
+    text_answer_value = (problem_data.text_answer if problem_data else "") or ""
 
     if request.method == "POST":
         form_data["title"] = (request.POST.get("title") or "").strip()
@@ -121,6 +122,8 @@ def edit_problem_polygon(request, problem_id):
         ):
             descriptor_errors["metric_name"] = "Выберите метрику из списка или добавьте Python код"
 
+        text_answer_value = (request.POST.get("text_answer") or "").strip()
+
         uploaded_files = {}
         file_errors = {}
         for field_name in ("train_file", "test_file", "sample_submission_file", "answer_file"):
@@ -160,10 +163,11 @@ def edit_problem_polygon(request, problem_id):
                 },
             )
 
-            if uploaded_files:
+            if uploaded_files or text_answer_value != ((problem_data.text_answer if problem_data else "") or ""):
                 problem_data, _ = ProblemData.objects.get_or_create(problem=problem)
                 for field_name, file_obj in uploaded_files.items():
                     setattr(problem_data, field_name, file_obj)
+                problem_data.text_answer = text_answer_value or None
                 problem_data.save()
 
             return redirect("runner:polygon_edit_problem", problem_id=problem.id)
@@ -183,5 +187,6 @@ def edit_problem_polygon(request, problem_id):
             "min_rating": MIN_RATING,
             "max_rating": MAX_RATING,
             "problem_data": problem_data,
+            "text_answer_value": text_answer_value,
         },
     )

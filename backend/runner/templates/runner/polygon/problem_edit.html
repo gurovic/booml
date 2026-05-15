@@ -147,6 +147,12 @@
       {% endif %}
     </div><br>
 
+    <div class="form-group">
+      <label for="text-answer-input">Текстовый правильный ответ (для задач с ответом числом/словом)</label>
+      <input id="text-answer-input" type="text" name="text_answer" value="{{ text_answer_value }}" placeholder="Например: 42 или hello">
+      <small>Если заполнено, участник может отправлять текстовый ответ вместо CSV.</small>
+    </div><br>
+
     <div class="actions">
       <button type="submit">Сохранить изменения</button>
     </div>
