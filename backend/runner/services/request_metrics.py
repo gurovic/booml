@@ -202,11 +202,17 @@ def _build_runtime_overview_snapshot() -> dict[str, object]:
         from django.db.models import Count
 
         from ..models.notebook import Notebook
+        from ..models.profile import Profile
         from .runtime import _sessions
     except Exception:
         snapshot = {
             'active_sessions': 0,
             'online_users': 0,
+            'online_users_by_role': {
+                'students': 0,
+                'teachers': 0,
+                'gpu_access': 0,
+            },
             'cpu_load_percent': 0.0,
             'gpu_load_percent': 0.0,
             'ram_used_gb': 0.0,
@@ -248,6 +254,11 @@ def _build_runtime_overview_snapshot() -> dict[str, object]:
     notebooks_by_id = {notebook['id']: notebook for notebook in notebooks}
 
     online_user_ids: set[int] = set()
+    online_users_by_role = {
+        'students': 0,
+        'teachers': 0,
+        'gpu_access': 0,
+    }
     cpu_sessions = 0
     gpu_sessions = 0
     cpu_reserved = 0
@@ -291,9 +302,24 @@ def _build_runtime_overview_snapshot() -> dict[str, object]:
             'updated_seconds_ago': _format_seconds((now - updated_at).total_seconds()),
         })
 
+    if online_user_ids:
+        profiled_user_ids: set[int] = set()
+        profiles = Profile.objects.filter(user_id__in=online_user_ids).values_list('user_id', 'role', 'gpu_access')
+        for user_id, role, gpu_access in profiles:
+            profiled_user_ids.add(user_id)
+            if role == Profile.ROLE_TEACHER:
+                online_users_by_role['teachers'] += 1
+            else:
+                online_users_by_role['students'] += 1
+            if gpu_access:
+                online_users_by_role['gpu_access'] += 1
+
+        online_users_by_role['students'] += len(online_user_ids - profiled_user_ids)
+
     snapshot = {
         'active_sessions': len(active_sessions),
         'online_users': len(online_user_ids),
+        'online_users_by_role': online_users_by_role,
         'cpu_load_percent': _clamp_percent((cpu_reserved / CPU_SESSION_CAPACITY) * 100),
         'gpu_load_percent': _clamp_percent((gpu_sessions / GPU_SESSION_CAPACITY) * 100),
         'ram_used_gb': round(min(RAM_TOTAL_GB, len(active_sessions) * DEFAULT_SESSION_RAM_GB), 1),
@@ -610,6 +636,7 @@ def build_request_metrics_payload() -> dict[str, object]:
         trend_percent = _compute_trend(total_requests, previous_total)
         active_sessions_current = int(round(float(runtime_snapshot['active_sessions'])))
         online_users_current = int(round(float(runtime_snapshot['online_users'])))
+        online_users_by_role = runtime_snapshot.get('online_users_by_role') or {}
         cpu_load_current = round(float(runtime_snapshot['cpu_load_percent']), 1)
         gpu_load_current = round(float(runtime_snapshot['gpu_load_percent']), 1)
         queue_pending_current = int(round(float(queue_snapshot['pending'])))
@@ -683,6 +710,11 @@ def build_request_metrics_payload() -> dict[str, object]:
                     'value': online_users_current,
                     'trend_percent': online_users_trend,
                     'points': [int(round(value)) for value in online_user_values],
+                    'by_role': {
+                        'students': int(online_users_by_role.get('students', 0)),
+                        'teachers': int(online_users_by_role.get('teachers', 0)),
+                        'gpu_access': int(online_users_by_role.get('gpu_access', 0)),
+                    },
                 },
                 'submission_queue': {
                     'value': queue_pending_current,
