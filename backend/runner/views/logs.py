@@ -1,5 +1,5 @@
 import csv
-import io
+from collections import deque
 from pathlib import Path
 
 from django.conf import settings
@@ -18,11 +18,11 @@ def _read_app_log(path: Path, max_lines: int = _MAX_APP_LOG_LINES) -> list[dict]
     """Read the last *max_lines* lines from the plain-text app log."""
     entries = []
     try:
-        text = path.read_text(encoding="utf-8", errors="replace")
+        with path.open("r", encoding="utf-8", errors="replace") as handle:
+            lines = deque(handle, maxlen=max_lines)
     except FileNotFoundError:
         return entries
-    lines = text.splitlines()
-    for line in lines[-max_lines:]:
+    for line in lines:
         line = line.strip()
         if not line:
             continue
@@ -56,12 +56,12 @@ def _read_errors_csv(path: Path, max_rows: int = _MAX_ERROR_ROWS) -> list[dict]:
     """Read the last *max_rows* data rows from the CSV error log."""
     entries = []
     try:
-        text = path.read_text(encoding="utf-8", errors="replace")
+        with path.open("r", encoding="utf-8", errors="replace", newline="") as handle:
+            reader = csv.DictReader(handle)
+            rows = deque(reader, maxlen=max_rows)
     except FileNotFoundError:
         return entries
-    reader = csv.DictReader(io.StringIO(text))
-    all_rows = list(reader)
-    for row in all_rows[-max_rows:]:
+    for row in rows:
         entries.append(
             {
                 "timestamp": row.get("timestamp", ""),
