@@ -14,7 +14,8 @@ from runner.services.user_access import is_platform_admin
 _MAX_APP_LOG_LINES = 500
 _MAX_ERROR_ROWS = 200
 _APP_LOG_LEVELS = {"DEBUG", "INFO", "WARNING", "WARN", "ERROR", "CRITICAL"}
-_TS_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+_TS_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+_TS_TIME_RE = re.compile(r"^\d{2}:\d{2}:\d{2}(?:,\d+)?$")
 
 
 def _read_app_log(path: Path, max_lines: int = _MAX_APP_LOG_LINES) -> list[dict]:
@@ -29,11 +30,14 @@ def _read_app_log(path: Path, max_lines: int = _MAX_APP_LOG_LINES) -> list[dict]
         line = line.strip()
         if not line:
             continue
-        # Each line has format: "<timestamp> <LEVEL> <logger> <message…>"
+        # Split shape for standard format:
+        # parts[0] = YYYY-MM-DD, parts[1] = HH:MM:SS,mmm, parts[2] = LEVEL,
+        # parts[3] = "<logger> <message...>"
         parts = line.split(" ", 3)
         is_expected_format = (
             len(parts) >= 4
-            and _TS_RE.match(parts[0])
+            and _TS_DATE_RE.match(parts[0])
+            and _TS_TIME_RE.match(parts[1])
             and parts[2] in _APP_LOG_LEVELS
         )
         if is_expected_format:
