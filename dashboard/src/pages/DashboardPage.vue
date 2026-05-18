@@ -558,10 +558,13 @@ function formatNumber(value) {
 }
 
 function formatOnlineUsersByRole(byRole) {
-  const students = formatCount(byRole?.students)
-  const teachers = formatCount(byRole?.teachers)
-  const gpuUsers = formatCount(byRole?.gpu_access)
-  return `Ученики: ${students} · Учителя: ${teachers} · GPU: ${gpuUsers}`
+  if (!byRole) {
+    return ''
+  }
+  const students = formatCount(byRole.students)
+  const teachers = formatCount(byRole.teachers)
+  const gpuUsers = formatCount(byRole.gpu_access)
+  return `Ученики: ${students}, Учителя: ${teachers}, GPU: ${gpuUsers}`
 }
 
 function formatMilliseconds(value) {

@@ -309,11 +309,13 @@ def _build_runtime_overview_snapshot() -> dict[str, object]:
             profiled_user_ids.add(user_id)
             if role == Profile.ROLE_TEACHER:
                 online_users_by_role['teachers'] += 1
-            else:
+            elif role == Profile.ROLE_STUDENT:
                 online_users_by_role['students'] += 1
             if gpu_access:
                 online_users_by_role['gpu_access'] += 1
 
+        # Users without a profile are treated as students because student is the
+        # default platform role for newly created accounts.
         online_users_by_role['students'] += len(online_user_ids - profiled_user_ids)
 
     snapshot = {
@@ -636,7 +638,7 @@ def build_request_metrics_payload() -> dict[str, object]:
         trend_percent = _compute_trend(total_requests, previous_total)
         active_sessions_current = int(round(float(runtime_snapshot['active_sessions'])))
         online_users_current = int(round(float(runtime_snapshot['online_users'])))
-        online_users_by_role = runtime_snapshot.get('online_users_by_role') or {}
+        online_users_by_role = runtime_snapshot.get('online_users_by_role', {})
         cpu_load_current = round(float(runtime_snapshot['cpu_load_percent']), 1)
         gpu_load_current = round(float(runtime_snapshot['gpu_load_percent']), 1)
         queue_pending_current = int(round(float(queue_snapshot['pending'])))
