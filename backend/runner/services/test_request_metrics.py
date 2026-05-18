@@ -29,6 +29,10 @@ class RuntimeOverviewSnapshotTests(TestCase):
     def test_counts_active_sessions_users_and_device_load(self):
         owner_a = User.objects.create_user(username='owner-a', password='test')
         owner_b = User.objects.create_user(username='owner-b', password='test')
+        owner_a.profile.gpu_access = True
+        owner_a.profile.save(update_fields=['gpu_access'])
+        owner_b.profile.role = 'teacher'
+        owner_b.profile.save(update_fields=['role'])
 
         cpu_notebook_a = Notebook.objects.create(owner=owner_a, title='CPU A', compute_device='cpu')
         gpu_notebook_a = Notebook.objects.create(owner=owner_a, title='GPU A', compute_device='gpu')
@@ -51,6 +55,9 @@ class RuntimeOverviewSnapshotTests(TestCase):
 
         self.assertEqual(snapshot['active_sessions'], 3)
         self.assertEqual(snapshot['online_users'], 2)
+        self.assertEqual(snapshot['online_users_by_role']['students'], 1)
+        self.assertEqual(snapshot['online_users_by_role']['teachers'], 1)
+        self.assertEqual(snapshot['online_users_by_role']['gpu_access'], 1)
         self.assertEqual(snapshot['cpu_load_percent'], 100.0)
         self.assertEqual(snapshot['gpu_load_percent'], 50.0)
 
@@ -67,6 +74,9 @@ class RuntimeOverviewSnapshotTests(TestCase):
 
         self.assertEqual(snapshot['active_sessions'], 0)
         self.assertEqual(snapshot['online_users'], 0)
+        self.assertEqual(snapshot['online_users_by_role']['students'], 0)
+        self.assertEqual(snapshot['online_users_by_role']['teachers'], 0)
+        self.assertEqual(snapshot['online_users_by_role']['gpu_access'], 0)
         self.assertEqual(snapshot['cpu_load_percent'], 0.0)
         self.assertEqual(snapshot['gpu_load_percent'], 0.0)
 
@@ -138,6 +148,11 @@ class RequestMetricsPayloadTests(SimpleTestCase):
             return_value={
                 'active_sessions': 0,
                 'online_users': 0,
+                'online_users_by_role': {
+                    'students': 0,
+                    'teachers': 0,
+                    'gpu_access': 0,
+                },
                 'cpu_load_percent': 0.0,
                 'gpu_load_percent': 0.0,
                 'ram_used_gb': 0.0,
@@ -170,6 +185,9 @@ class RequestMetricsPayloadTests(SimpleTestCase):
         self.assertEqual(cards['online_users']['value'], 0)
         self.assertEqual(cards['online_users']['points'][-2], 1)
         self.assertEqual(cards['online_users']['points'][-1], 0)
+        self.assertEqual(cards['online_users']['by_role']['students'], 0)
+        self.assertEqual(cards['online_users']['by_role']['teachers'], 0)
+        self.assertEqual(cards['online_users']['by_role']['gpu_access'], 0)
         self.assertEqual(cards['cpu_gpu_load']['cpu_percent'], 0.0)
         self.assertEqual(cards['cpu_gpu_load']['gpu_percent'], 0.0)
         self.assertEqual(cards['cpu_gpu_load']['points'][-2], 60.0)

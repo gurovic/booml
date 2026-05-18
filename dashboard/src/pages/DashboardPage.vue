@@ -55,6 +55,7 @@
               <div>
                 <div class="stat-card__title">{{ card.title }}</div>
                 <div class="stat-card__value">{{ card.value }}</div>
+                <div v-if="card.subtitle" class="stat-card__subtitle">{{ card.subtitle }}</div>
               </div>
               <div class="stat-card__icon">
                 <svg v-if="card.icon === 'server'" viewBox="0 0 24 24" aria-hidden="true">
@@ -453,6 +454,7 @@ const statCards = computed(() => {
       key: 'online-users',
       title: 'Онлайн пользователи',
       value: formatCount(cardMetrics.online_users?.value),
+      subtitle: formatOnlineUsersByRole(cardMetrics.online_users?.by_role),
       delta: formatTrend(cardMetrics.online_users?.trend_percent, activeRange.value),
       deltaTone: trendTone(cardMetrics.online_users?.trend_percent),
       tone: 'mint',
@@ -553,6 +555,16 @@ function formatNumber(value) {
     minimumFractionDigits: Number.isInteger(Number(value || 0)) ? 0 : 1,
     maximumFractionDigits: 1,
   })
+}
+
+function formatOnlineUsersByRole(byRole) {
+  if (!byRole) {
+    return ''
+  }
+  const students = formatCount(byRole.students)
+  const teachers = formatCount(byRole.teachers)
+  const gpuUsers = formatCount(byRole.gpu_access)
+  return `Ученики: ${students}, Учителя: ${teachers}, GPU: ${gpuUsers}`
 }
 
 function formatMilliseconds(value) {
@@ -1439,6 +1451,13 @@ a {
   font-size: clamp(2rem, 2vw, 2.4rem);
   font-weight: 800;
   letter-spacing: -0.04em;
+}
+
+.stat-card__subtitle {
+  margin-top: 8px;
+  color: var(--dashboard-muted);
+  font-size: 0.82rem;
+  line-height: 1.35;
 }
 
 .stat-card__icon {
