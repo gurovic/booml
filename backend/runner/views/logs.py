@@ -1,4 +1,5 @@
 import csv
+import re
 from collections import deque
 from pathlib import Path
 
@@ -12,6 +13,8 @@ from runner.services.user_access import is_platform_admin
 # Maximum number of lines/rows to return per log type
 _MAX_APP_LOG_LINES = 500
 _MAX_ERROR_ROWS = 200
+_APP_LOG_LEVELS = {"DEBUG", "INFO", "WARNING", "WARN", "ERROR", "CRITICAL"}
+_TS_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
 def _read_app_log(path: Path, max_lines: int = _MAX_APP_LOG_LINES) -> list[dict]:
@@ -28,7 +31,12 @@ def _read_app_log(path: Path, max_lines: int = _MAX_APP_LOG_LINES) -> list[dict]
             continue
         # Each line has format: "<timestamp> <LEVEL> <logger> <message…>"
         parts = line.split(" ", 3)
-        if len(parts) >= 4:
+        is_expected_format = (
+            len(parts) >= 4
+            and _TS_RE.match(parts[0])
+            and parts[2] in _APP_LOG_LEVELS
+        )
+        if is_expected_format:
             rest = parts[3].split(" ", 1)
             entries.append(
                 {
