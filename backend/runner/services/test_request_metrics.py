@@ -4,7 +4,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 from django.utils import timezone
 
 from runner.models.notebook import Notebook
@@ -69,3 +69,113 @@ class RuntimeOverviewSnapshotTests(TestCase):
         self.assertEqual(snapshot['online_users'], 0)
         self.assertEqual(snapshot['cpu_load_percent'], 0.0)
         self.assertEqual(snapshot['gpu_load_percent'], 0.0)
+
+
+class RequestMetricsPayloadTests(SimpleTestCase):
+    def test_gauge_series_keep_peak_history_but_end_with_current_snapshot(self):
+        step_interval = '1h'
+
+        def fake_query_range(expression, *, points, **_kwargs):
+            default = [0.0] * points
+
+            if expression == request_metrics._counter_query(interval=step_interval, category='ping'):
+                return [2.0] * points
+            if expression == request_metrics._counter_query(interval=step_interval, category='user'):
+                return [8.0] * points
+            if expression == request_metrics._counter_query(interval=step_interval, errors_only=True):
+                return default
+            if expression == request_metrics._latency_average_query(interval=step_interval):
+                return [16.0] * points
+            if expression == request_metrics._latency_average_query(interval=step_interval, category='ping'):
+                return [9.0] * points
+            if expression == request_metrics._peak_gauge_query(
+                request_metrics._metric_name('active_sessions'),
+                interval=step_interval,
+            ):
+                return default[:-2] + [1.0, 1.0]
+            if expression == request_metrics._peak_gauge_query(
+                request_metrics._metric_name('online_users'),
+                interval=step_interval,
+            ):
+                return default[:-2] + [1.0, 1.0]
+            if expression == request_metrics._peak_gauge_query(
+                request_metrics._metric_name('cpu_load_percent'),
+                interval=step_interval,
+            ):
+                return default[:-2] + [40.0, 40.0]
+            if expression == request_metrics._peak_gauge_query(
+                request_metrics._metric_name('gpu_load_percent'),
+                interval=step_interval,
+            ):
+                return default[:-2] + [80.0, 80.0]
+            if expression == request_metrics._peak_gauge_query(
+                request_metrics._metric_name('submission_queue_size'),
+                interval=step_interval,
+            ):
+                return default[:-2] + [3.0, 3.0]
+            if expression == request_metrics._peak_gauge_query(
+                request_metrics._metric_name('submission_running_size'),
+                interval=step_interval,
+            ):
+                return default[:-2] + [2.0, 2.0]
+            return default
+
+        def fake_query_instant(expression, *, at):
+            del at
+            if expression.startswith('avg_over_time('):
+                return 0.0
+            if expression.startswith('sum(increase('):
+                return 24.0
+            if 'request_latency_seconds' in expression and 'category="ping"' in expression:
+                return 9.0
+            if 'request_latency_seconds' in expression:
+                return 16.0
+            return 0.0
+
+        with patch.object(
+            request_metrics,
+            '_build_runtime_overview_snapshot',
+            return_value={
+                'active_sessions': 0,
+                'online_users': 0,
+                'cpu_load_percent': 0.0,
+                'gpu_load_percent': 0.0,
+                'ram_used_gb': 0.0,
+                'ram_total_gb': 32.0,
+                'vram_used_gb': 0.0,
+                'vram_total_gb': 24.0,
+                'sessions': [],
+                'session_cells_total': 0,
+            },
+        ), patch.object(request_metrics, '_query_range_values', side_effect=fake_query_range), patch.object(
+            request_metrics,
+            '_query_instant',
+            side_effect=fake_query_instant,
+        ), patch.object(
+            request_metrics,
+            '_build_submission_queue_snapshot',
+            return_value={
+                'pending': 0,
+                'running': 0,
+                'avg_wait_seconds': 0,
+                'max_wait_seconds': 0,
+            },
+        ):
+            payload = request_metrics.build_request_metrics_payload()
+
+        cards = payload['ranges']['24h']['cards']
+        self.assertEqual(cards['active_sessions']['value'], 0)
+        self.assertEqual(cards['active_sessions']['points'][-2], 1)
+        self.assertEqual(cards['active_sessions']['points'][-1], 0)
+        self.assertEqual(cards['online_users']['value'], 0)
+        self.assertEqual(cards['online_users']['points'][-2], 1)
+        self.assertEqual(cards['online_users']['points'][-1], 0)
+        self.assertEqual(cards['cpu_gpu_load']['cpu_percent'], 0.0)
+        self.assertEqual(cards['cpu_gpu_load']['gpu_percent'], 0.0)
+        self.assertEqual(cards['cpu_gpu_load']['points'][-2], 60.0)
+        self.assertEqual(cards['cpu_gpu_load']['points'][-1], 0.0)
+        self.assertEqual(cards['submission_queue']['value'], 0)
+        self.assertEqual(cards['submission_queue']['points'][-2], 3)
+        self.assertEqual(cards['submission_queue']['points'][-1], 0)
+        self.assertEqual(cards['submission_queue']['running_points'][-2], 2)
+        self.assertEqual(cards['submission_queue']['running_points'][-1], 0)
