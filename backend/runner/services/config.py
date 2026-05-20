@@ -15,7 +15,8 @@ def _int(name: str, default: int) -> int:
 class RunnerConfig:
     RUNS_SUBDIR: str = os.getenv("RUNS_SUBDIR", "")
 
-    TIMEOUT_S: int = _int("RUN_TIMEOUT_S", 10)
+    # 0 (or negative) disables the wall-clock and CPU rlimits on cell execution.
+    TIMEOUT_S: int = _int("RUN_TIMEOUT_S", 0)
     MAX_CODE_BYTES: int = _int("RUN_MAX_CODE_BYTES", 200_000)
     MAX_STD_BYTES: int = _int("RUN_MAX_STD_BYTES", 500_000)
     MAX_FILE_BYTES: int = _int("RUN_MAX_FILE_BYTES", 10 * 1024 * 1024)

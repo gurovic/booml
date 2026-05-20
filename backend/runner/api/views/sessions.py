@@ -30,6 +30,7 @@ from ...services.runtime import (
 )
 from ...services.permissions import user_has_gpu_access
 from ...services.streaming_runs import cancel_streaming_runs
+from ...services.vm_exceptions import GpuSlotsBusy
 from ..serializers import (
     NotebookCreateSerializer,
     NotebookSessionCreateSerializer,
@@ -260,7 +261,13 @@ class CreateNotebookSessionView(APIView):
         overrides = {
             "gpu": notebook.compute_device == Notebook.ComputeDevice.GPU,
         }
-        session = create_session(session_id, overrides=overrides)
+        try:
+            session = create_session(session_id, overrides=overrides)
+        except GpuSlotsBusy:
+            return Response(
+                {"detail": "Все GPU-слоты сейчас заняты, попробуйте позже"},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
 
         if notebook.problem:
             copy_problem_files_to_session(notebook.problem, session)
@@ -304,6 +311,11 @@ class ResetSessionView(APIView):
             session = reset_session(session_id, overrides=overrides)
         except SessionNotFoundError:
             raise Http404("Session not found")
+        except GpuSlotsBusy:
+            return Response(
+                {"detail": "Все GPU-слоты сейчас заняты, попробуйте позже"},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
         if notebook and notebook.problem:
             copy_problem_files_to_session(notebook.problem, session)
         payload = _build_session_payload(session_id, session, status_label="reset")

@@ -10,4 +10,8 @@ class VmNotFoundError(VmError):
     """Raised when a VM cannot be located."""
 
 
-__all__ = ["VmError", "VmAlreadyExistsError", "VmNotFoundError"]
+class GpuSlotsBusy(VmError):
+    """Raised when all configured GPU (MIG) slots are currently in use."""
+
+
+__all__ = ["VmError", "VmAlreadyExistsError", "VmNotFoundError", "GpuSlotsBusy"]

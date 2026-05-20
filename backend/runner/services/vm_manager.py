@@ -137,7 +137,7 @@ def _build_backend(config: VmConfig) -> VmBackend:
     if backend_name in ("local", "", None):
         return LocalVmBackend(config.root_dir)
     if backend_name == "docker":
-        return DockerVmBackend(config.root_dir)
+        return DockerVmBackend(config.root_dir, gpu_mig_uuids=config.gpu_mig_uuids)
     raise ValueError(f"Unsupported VM backend: {config.backend!r}")
 
 
