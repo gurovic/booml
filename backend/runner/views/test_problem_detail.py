@@ -127,6 +127,35 @@ class ProblemDetailViewTests(TestCase):
         self.assertEqual(feedback["level"], "error")
         self.assertIn("Исправьте ошибки формы", feedback["message"])
 
+
+    @override_settings(MEDIA_ROOT=tempfile.gettempdir())
+    @patch.object(problem_detail_view.validation_service, "run_pre_validation")
+    @patch.object(problem_detail_view, "enqueue_submission_for_evaluation")
+    def test_text_submission_enqueues_without_prevalidation(self, mock_enqueue, mock_pre_validation):
+        self.client.force_login(self.user)
+        ProblemData.objects.create(problem=self.problem, text_answer="42")
+
+        response = self.client.post(self.url, {"raw_text": "42"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(Submission.objects.count(), 1)
+        submission = Submission.objects.first()
+        self.assertEqual(submission.source, Submission.SOURCE_TEXT)
+        self.assertEqual(submission.raw_text, "42")
+        mock_pre_validation.assert_not_called()
+        mock_enqueue.assert_called_once_with(submission.id)
+
+    @override_settings(MEDIA_ROOT=tempfile.gettempdir())
+    def test_text_submission_requires_non_empty_text(self):
+        self.client.force_login(self.user)
+        ProblemData.objects.create(problem=self.problem, text_answer="ok")
+
+        response = self.client.post(self.url, {"raw_text": ""})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(Submission.objects.count(), 0)
+        self.assertContains(response, "Введите текстовый ответ")
+
     @override_settings(MEDIA_ROOT=tempfile.gettempdir())
     @patch.object(problem_detail_view, "enqueue_submission_for_evaluation")
     @patch.object(problem_detail_view.validation_service, "run_pre_validation")

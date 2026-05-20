@@ -57,6 +57,15 @@ class SubmissionChecker:
         if not problem_data:
             return CheckResult(False, errors="ProblemData not found for this task")
 
+        text_answer = ((getattr(problem_data, "text_answer", None) or "").strip())
+        if submission.source == Submission.SOURCE_TEXT and text_answer:
+            submitted_text = (submission.raw_text or "").strip()
+            is_ok = submitted_text == text_answer
+            raw_metric = 1.0 if is_ok else 0.0
+            submission.metrics = {"metric": raw_metric, "raw_metric_name": "exact_match", "score_100": raw_metric * 100.0}
+            submission.save(update_fields=["metrics"])
+            return CheckResult(ok=True, outputs={"metric_score": raw_metric * 100.0, "score_100": raw_metric * 100.0, "metric_name": "exact_match", "raw_metric": raw_metric})
+
         submission_df = self._load_submission_file(submission.file)
         if submission_df is None:
             return CheckResult(False, errors="Failed to load submission file")

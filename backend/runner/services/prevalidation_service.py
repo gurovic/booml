@@ -71,7 +71,9 @@ def run_prevalidation(submission: Submission) -> PreValidation:
         output_columns.append(target_column)
 
     file_path = submission.file_path
-    stats = {"filename": os.path.basename(file_path)}
+    problem_data = getattr(submission.problem, "data", None)
+    text_answer = ((getattr(problem_data, "text_answer", None) or "").strip()) if problem_data else ""
+    stats = {"filename": os.path.basename(file_path) if file_path else "text_submission"}
 
     prevalidation = PreValidation.objects.create(
         submission=submission,
@@ -80,6 +82,14 @@ def run_prevalidation(submission: Submission) -> PreValidation:
         warnings=[],
         stats=stats,
     )
+
+    if submission.source == Submission.SOURCE_TEXT and text_answer:
+        submitted_text = (submission.raw_text or "").strip()
+        prevalidation.rows_total = 1
+        prevalidation.stats["mode"] = "text_answer"
+        if not submitted_text:
+            _append_error(prevalidation, "Текстовый ответ пуст")
+        return _finalize_report(prevalidation, submission, start_ts)
 
     try:
         with open(file_path, "r", encoding="utf-8", newline="") as f:

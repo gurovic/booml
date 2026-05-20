@@ -255,7 +255,8 @@ def problem_detail(request, problem_id):
     problem_data = ProblemData.objects.filter(problem=problem).first()
     descriptor = ProblemDescriptor.objects.filter(problem=problem).first()
 
-    form = SubmissionUploadForm()
+    supports_text_submission = bool(problem_data and (problem_data.text_answer or "").strip())
+    form = SubmissionUploadForm(supports_text=supports_text_submission)
     submission_feedback = None
 
     if request.method == "POST":
@@ -265,42 +266,56 @@ def problem_detail(request, problem_id):
                 "message": "Авторизуйтесь, чтобы отправить решение.",
             }
         else:
-            form = SubmissionUploadForm(request.POST, request.FILES)
+            form = SubmissionUploadForm(request.POST, request.FILES, supports_text=supports_text_submission)
             if form.is_valid():
-                submission = Submission.objects.create(
-                    user=request.user,
-                    problem=problem,
-                    file=form.cleaned_data["file"],
-                )
-
-                descriptor = build_descriptor_from_problem(problem)
-                try:
-                    report = validation_service.run_pre_validation(submission, descriptor=descriptor)
-                except Exception as exc:  # pragma: no cover - defensive
+                if supports_text_submission:
+                    submission = Submission.objects.create(
+                        user=request.user,
+                        problem=problem,
+                        raw_text=form.cleaned_data["raw_text"],
+                        source=Submission.SOURCE_TEXT,
+                    )
+                    enqueue_submission_for_evaluation(submission.id)
                     submission_feedback = {
-                        "level": "error",
-                        "message": "Не удалось запустить предварительную проверку.",
-                        "details": str(exc),
+                        "level": "success",
+                        "message": "Ответ отправлен в тестирующую систему. Проверка начнётся в ближайшее время.",
                     }
+                    form = SubmissionUploadForm(supports_text=True)
                 else:
-                    if _report_is_valid(report):
-                        enqueue_submission_for_evaluation(submission.id)
-                        submission_feedback = {
-                            "level": "success",
-                            "message": "Файл отправлен в тестирующую систему. Проверка начнётся в ближайшее время.",
-                        }
-                        form = SubmissionUploadForm()
-                    else:
-                        details = None
-                        errors = getattr(report, "errors", None)
-                        if errors:
-                            details = errors[0] if isinstance(errors, list) else str(errors)
+                    submission = Submission.objects.create(
+                        user=request.user,
+                        problem=problem,
+                        file=form.cleaned_data["file"],
+                    )
 
+                    descriptor = build_descriptor_from_problem(problem)
+                    try:
+                        report = validation_service.run_pre_validation(submission, descriptor=descriptor)
+                    except Exception as exc:  # pragma: no cover - defensive
                         submission_feedback = {
                             "level": "error",
-                            "message": "Файл не прошёл предварительную проверку.",
-                            "details": details,
+                            "message": "Не удалось запустить предварительную проверку.",
+                            "details": str(exc),
                         }
+                    else:
+                        if _report_is_valid(report):
+                            enqueue_submission_for_evaluation(submission.id)
+                            submission_feedback = {
+                                "level": "success",
+                                "message": "Файл отправлен в тестирующую систему. Проверка начнётся в ближайшее время.",
+                            }
+                            form = SubmissionUploadForm(supports_text=supports_text_submission)
+                        else:
+                            details = None
+                            errors = getattr(report, "errors", None)
+                            if errors:
+                                details = errors[0] if isinstance(errors, list) else str(errors)
+
+                            submission_feedback = {
+                                "level": "error",
+                                "message": "Файл не прошёл предварительную проверку.",
+                                "details": details,
+                            }
             else:
                 submission_feedback = {
                     "level": "error",

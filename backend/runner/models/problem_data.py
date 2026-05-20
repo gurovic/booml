@@ -21,6 +21,7 @@ class ProblemData(models.Model):
     test_file = models.FileField(upload_to=problem_test_path, null=True, blank=True)
     sample_submission_file = models.FileField(upload_to=problem_sample_path, null=True, blank=True)
     answer_file = models.FileField(upload_to=problem_answer_path, null=True, blank=True)
+    text_answer = models.TextField(null=True, blank=True)
 
     created_at = models.DateTimeField(default=timezone.now)
     updated_at = models.DateTimeField(auto_now=True)

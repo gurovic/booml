@@ -113,6 +113,18 @@
             {% if request.user.is_authenticated %}
                 <form method="post" enctype="multipart/form-data" class="submission-form">
                     {% csrf_token %}
+                    {% if data and data.text_answer %}
+                    <label for="{{ form.raw_text.id_for_label }}">Введите текстовый ответ</label>
+                    {{ form.raw_text }}
+
+                    {% if form.raw_text.errors %}
+                        <div class="field-error">
+                            {% for error in form.raw_text.errors %}
+                                <p>{{ error }}</p>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                    {% else %}
                     <label for="{{ form.file.id_for_label }}">Файл в формате CSV</label>
                     {{ form.file }}
 
@@ -122,6 +134,7 @@
                                 <p>{{ error }}</p>
                             {% endfor %}
                         </div>
+                    {% endif %}
                     {% endif %}
 
                     {% if form.non_field_errors %}
