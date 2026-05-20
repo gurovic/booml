@@ -213,3 +213,13 @@ backend/data/
 backend/media/
 backend/notebook_sessions/
 logs/
+
+# Server deployment secrets
+docker-compose.server.yml
+
+# One-off scripts
+backend/del_gurovic.py
+backend/setpwd.py
+
+# Generated
+backend/staticfiles/

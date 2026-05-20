@@ -45,8 +45,7 @@ else:
 MODE = os.getenv("MODE", "dev")
 RUNNING_TESTS = len(sys.argv) > 1 and sys.argv[1] == "test"
 
-if MODE	== "prod":
-    CSRF_TRUSTED_ORIGINS = os.getenv("CSRF_TRUSTED_ORIGINS", "").split(",")
+if MODE == "prod":
     SECURE_SSL_REDIRECT = True
     CSRF_COOKIE_SECURE = True
     SESSION_COOKIE_SECURE = True
@@ -57,18 +56,19 @@ CORS_ALLOWED_ORIGINS = [
     "http://booml.letovo.site",
     "https://booml.letovo.site",
 ]
-CSRF_TRUSTED_ORIGINS = [
-    "http://localhost:8101",
-    "http://127.0.0.1:8101",
-    "http://booml.letovo.site",
-    "https://booml.letovo.site",
-    "http://backend.booml.letovo.site",
-    "https://backend.booml.letovo.site",
-]
-_env_csrf = os.getenv("CSRF_TRUSTED_ORIGINS", "")
-if _env_csrf:
-    CSRF_TRUSTED_ORIGINS = [o.strip() for o in _env_csrf.split(",") if o.strip()]
 
+_csrf_env = os.getenv("CSRF_TRUSTED_ORIGINS", "")
+if _csrf_env:
+    CSRF_TRUSTED_ORIGINS = [o.strip() for o in _csrf_env.split(",") if o.strip()]
+else:
+    CSRF_TRUSTED_ORIGINS = [
+        "http://localhost:8101",
+        "http://127.0.0.1:8101",
+        "http://booml.letovo.site",
+        "https://booml.letovo.site",
+        "http://backend.booml.letovo.site",
+        "https://backend.booml.letovo.site",
+    ]
 
 # Application definition
 
@@ -80,7 +80,6 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'channels',
-    'django_prometheus',
     'django_reverse_js',
     'runner.apps.RunnerConfig',
     'rest_framework',
@@ -92,7 +91,6 @@ REST_FRAMEWORK = {
 }
 
 MIDDLEWARE = [
-    'django_prometheus.middleware.PrometheusBeforeMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
@@ -102,10 +100,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-    'django_prometheus.middleware.PrometheusAfterMiddleware',
 ]
-
-PROMETHEUS_METRIC_NAMESPACE = os.getenv("PROMETHEUS_METRIC_NAMESPACE", "booml")
 
 ROOT_URLCONF = 'core.urls'
 
@@ -209,15 +204,6 @@ USE_TZ = True
 STATIC_URL = 'static/'
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
-LOG_DIR = Path(os.environ.get("LOG_DIR", str(BASE_DIR.parent / "logs" / "backend")))
-APP_LOG_PATH = Path(
-    os.environ.get("APP_LOG_PATH", str(LOG_DIR / "app.log"))
-)
-ERROR_CSV_LOG_PATH = Path(
-    os.environ.get("ERROR_CSV_LOG_PATH", str(LOG_DIR / "errors.csv"))
-)
-APP_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
-ERROR_CSV_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
 PROBLEM_DATA_ROOT = Path(
     os.environ.get(
         "PROBLEM_DATA_ROOT",
@@ -235,10 +221,6 @@ RUNTIME_VM_NET_OUTBOUND = os.environ.get("RUNTIME_VM_NET_OUTBOUND", "deny")
 _runtime_vm_allowlist = os.environ.get("RUNTIME_VM_NET_ALLOWLIST", "")
 RUNTIME_VM_NET_ALLOWLIST = tuple(
     item.strip() for item in _runtime_vm_allowlist.split(",") if item.strip()
-)
-_runtime_vm_gpu_mig_uuids = os.environ.get("RUNTIME_VM_GPU_MIG_UUIDS", "")
-RUNTIME_VM_GPU_MIG_UUIDS = tuple(
-    item.strip() for item in _runtime_vm_gpu_mig_uuids.split(",") if item.strip()
 )
 RUNTIME_VM_ROOT = Path(os.environ.get("RUNTIME_VM_ROOT", str(BASE_DIR / "media" / "notebook_sessions")))
 RUNTIME_EXECUTION_BACKEND = os.environ.get("RUNTIME_EXECUTION_BACKEND", "legacy")
@@ -261,74 +243,42 @@ RUNNER_USE_CELERY_QUEUE = os.environ.get("RUNNER_USE_CELERY_QUEUE", "0").lower()
 CELERY_TASK_ALWAYS_EAGER = False  # для реального async
 CELERY_TASK_EAGER_PROPAGATES = True
 
-LOGGING = {
-    "version": 1,
-    "disable_existing_loggers": False,
-    "filters": {
-        "errors_only": {
-            "()": "core.csv_logging.ErrorLevelFilter",
-        }
-    },
-    "formatters": {
-        "standard": {
-            "format": "%(asctime)s %(levelname)s %(name)s %(message)s",
-        }
-    },
-    "handlers": {
-        "console": {
-            "class": "logging.StreamHandler",
-            "level": "INFO",
-            "formatter": "standard",
-        },
-        "file": {
-            "class": "logging.FileHandler",
-            "level": "INFO",
-            "formatter": "standard",
-            "filename": str(APP_LOG_PATH),
-            "encoding": "utf-8",
-        },
-        "error_csv": {
-            "()": "core.csv_logging.CsvErrorFileHandler",
-            "level": "ERROR",
-            "filename": str(ERROR_CSV_LOG_PATH),
-            "filters": ["errors_only"],
-        },
-    },
-    "root": {
-        "handlers": ["console", "file", "error_csv"],
-        "level": "INFO",
-    },
-}
-
 if RUNNING_TESTS:
-    LOGGING["handlers"]["console"]["level"] = "ERROR"
-    LOGGING["handlers"]["file"]["level"] = "ERROR"
-    LOGGING["root"]["level"] = "ERROR"
-    LOGGING["loggers"] = {
-        "kombu.connection": {
-            "handlers": ["console", "file", "error_csv"],
-            "level": "ERROR",
-            "propagate": False,
+    LOGGING = {
+        "version": 1,
+        "disable_existing_loggers": False,
+        "handlers": {
+            "console": {
+                "class": "logging.StreamHandler",
+                "level": "ERROR",
+            }
         },
-        "runner.services.report_service": {
-            "handlers": ["console", "file", "error_csv"],
-            "level": "CRITICAL",
-            "propagate": False,
-        },
-        "runner.views.receive_test_result": {
-            "handlers": ["console", "error_csv"],
-            "level": "CRITICAL",
-            "propagate": False,
-        },
-        "runner.services.checker": {
-            "handlers": ["console", "error_csv"],
-            "level": "ERROR",
-            "propagate": False,
-        },
-        "runner.services.worker": {
-            "handlers": ["console", "error_csv"],
-            "level": "CRITICAL",
-            "propagate": False,
+        "loggers": {
+            "kombu.connection": {
+                "handlers": ["console"],
+                "level": "ERROR",
+                "propagate": False,
+            },
+            "runner.services.report_service": {
+                "handlers": ["console"],
+                "level": "CRITICAL",
+                "propagate": False,
+            },
+            "runner.views.receive_test_result": {
+                "handlers": ["console"],
+                "level": "CRITICAL",
+                "propagate": False,
+            },
+            "runner.services.checker": {
+                "handlers": ["console"],
+                "level": "ERROR",
+                "propagate": False,
+            },
+            "runner.services.worker": {
+                "handlers": ["console"],
+                "level": "CRITICAL",
+                "propagate": False,
+            },
         },
     }
 

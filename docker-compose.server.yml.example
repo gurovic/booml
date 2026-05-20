@@ -5,7 +5,7 @@ services:
     environment:
       POSTGRES_DB: booml
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_PASSWORD: YOUR_DB_PASSWORD
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
@@ -61,19 +61,19 @@ services:
         condition: service_started
     environment:
       DJANGO_SETTINGS_MODULE: core.settings
-      SECRET_KEY: 919f7d0d675609d2375a212f0ad4d8d5560dc5ce9f71727a7360d7a47bd2c614
+      SECRET_KEY: YOUR_SECRET_KEY_HERE
       DEBUG: "False"
       MODE: dev
       CAPTCHA_PROVIDER: turnstile
       TURNSTILE_SITE_KEY: 1x00000000000000000000AA
-      TURNSTILE_SECRET_KEY: 1x0000000000000000000000000000000AA
+      TURNSTILE_SECRET_KEY: YOUR_TURNSTILE_SECRET
       DB_NAME: booml
       DB_USER: postgres
-      DB_PASSWORD: postgres
+      DB_PASSWORD: YOUR_DB_PASSWORD
       DB_HOST: postgres
       DB_PORT: "5432"
-      ALLOWED_HOSTS: booml.letovo.site,backend.booml.letovo.site,backend,localhost,127.0.0.1,10.8.45.1,10.8.52.11
-      CSRF_TRUSTED_ORIGINS: http://localhost:8101,http://booml.letovo.site,https://booml.letovo.site,http://10.8.45.1:8090,http://10.8.45.1:8092,http://10.8.52.11:8090,http://10.8.52.11:8092
+      ALLOWED_HOSTS: booml.letovo.site,backend.booml.letovo.site,backend,localhost,127.0.0.1,10.8.45.1,10.8.52.11,95.167.212.23,llm.letovo.site
+      CSRF_TRUSTED_ORIGINS: http://localhost:8101,http://booml.letovo.site,https://booml.letovo.site,http://10.8.45.1:8090,http://10.8.45.1:8092,http://10.8.52.11:8090,http://10.8.52.11:8092,http://95.167.212.23:8810,http://95.167.212.23:8090,http://llm.letovo.site:8090,http://llm.letovo.site:8810
       RUNTIME_EXECUTION_BACKEND: legacy
       RUNTIME_VM_BACKEND: docker
       PROBLEM_DATA_ROOT: /problem_data/problem_data
@@ -82,6 +82,7 @@ services:
       CELERY_RESULT_BACKEND: redis://redis:6379/1
       CHANNEL_LAYER_REDIS_URL: redis://redis:6379/2
       RUNNER_USE_CELERY_QUEUE: "1"
+      PROMETHEUS_URL: http://prometheus:9090
 
   celery:
     container_name: booml-celery
@@ -104,12 +105,12 @@ services:
         condition: service_healthy
     environment:
       DJANGO_SETTINGS_MODULE: core.settings
-      SECRET_KEY: 919f7d0d675609d2375a212f0ad4d8d5560dc5ce9f71727a7360d7a47bd2c614
+      SECRET_KEY: YOUR_SECRET_KEY_HERE
       DEBUG: "False"
       MODE: dev
       DB_NAME: booml
       DB_USER: postgres
-      DB_PASSWORD: postgres
+      DB_PASSWORD: YOUR_DB_PASSWORD
       DB_HOST: postgres
       DB_PORT: "5432"
       RUNTIME_VM_BACKEND: docker
@@ -117,7 +118,7 @@ services:
       RUNTIME_VM_HOST_ROOT: /home/booml/booml/backend
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/1
-      CHANNEL_LAYER_REDIS_URL: redis://redis:6379/2
+      CHANNEL_LAYER_LAYERS_URL: redis://redis:6379/2
       RUNNER_USE_CELERY_QUEUE: "1"
       DASHBOARD_CPU_SESSION_CAPACITY: "8"
       DASHBOARD_GPU_SESSION_CAPACITY: "1"
@@ -126,11 +127,7 @@ services:
     container_name: booml-frontend
     image: node:18
     working_dir: /app
-    command: >
-      sh -c "
-        npm install --include=dev &&
-        NODE_ENV=production npm run serve -- --host 0.0.0.0 --port 8101
-      "
+    command: sh -c "NODE_ENV=production npm run serve -- --host 0.0.0.0 --port 8101"
     volumes:
       - ./frontend:/app
       - frontend-node-modules:/app/node_modules
@@ -138,7 +135,7 @@ services:
       VUE_APP_API_BASE: /api
       VUE_APP_BACKEND_URL: http://backend:8100/
       VUE_APP_TURNSTILE_SITE_KEY: 1x00000000000000000000AA
-      VUE_APP_DASHBOARD_URL: http://10.8.45.1:8090/dashboard/
+      VUE_APP_DASHBOARD_URL: http://llm.letovo.site:8090/dashboard/
     depends_on:
       - backend
 
@@ -155,10 +152,22 @@ services:
       - ./dashboard:/app
       - dashboard-node-modules:/app/node_modules
     environment:
-      VUE_APP_BACKEND_URL: http://10.8.45.1:8090/
-      VUE_APP_MAIN_APP_URL: http://10.8.45.1:8090
+      VUE_APP_BACKEND_URL: http://llm.letovo.site:8090/
+      VUE_APP_MAIN_APP_URL: http://llm.letovo.site:8090
     depends_on:
       - backend
+
+  prometheus:
+    container_name: booml-prometheus
+    image: prom/prometheus:latest
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=30d'
+    restart: unless-stopped
 
   nginx:
     container_name: booml-nginx
@@ -170,6 +179,7 @@ services:
     ports:
       - "8090:8090"
       - "8092:8092"
+      - "8810:8090"
     depends_on:
       - frontend
     restart: unless-stopped
@@ -179,3 +189,4 @@ volumes:
   dashboard-node-modules:
   redis-data:
   postgres-data:
+  prometheus-data:

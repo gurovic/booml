@@ -1,4 +1,4 @@
-const { defineConfig } = require('@vue/cli-service')
+﻿const { defineConfig } = require('@vue/cli-service')
 const fs = require('fs')
 
 const runningInDocker = fs.existsSync('/.dockerenv')
@@ -18,6 +18,7 @@ const backendTarget = resolveBackendTarget()
 
 module.exports = defineConfig({
   transpileDependencies: true,
+  publicPath: '/dashboard/',
   pages: {
     index: {
       entry: 'src/main.js',

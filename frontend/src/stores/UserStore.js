@@ -132,13 +132,13 @@ export const useUserStore = defineStore('user', () => {
     async function logoutUser() {
         try {
             await user.logout()
-            clearStorage()
-            resetCourseTreeCache({ userCacheKey: null })
-            return { success: true }
         } catch (err) {
             console.error('Failed to logout user:', err)
-            return { success: false, error: 'Ошибка при выходе' }
+        } finally {
+            clearStorage()
+            resetCourseTreeCache({ userCacheKey: null })
         }
+        return { success: true }
     }
 
     function getCurrentUser() {
